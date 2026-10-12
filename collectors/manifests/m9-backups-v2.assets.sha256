@@ -1,0 +1,5 @@
+198e5b22ce2fc2134b71e0c4b6e2d2a2ccc35c46326d5c76b0ab0e4107aa0078  collector-manifest.v7.schema.json
+976ca433c0fa71b658ddf69e50528e02e638e8ae72332ad67d7c3398d28d0cc0  backups.status.v2.json
+420b00267c9e65d0132ae3afc366ff16711287132f1197efcaf003944112b85f  backups.status.sqlserver15-windows.v2.sql
+f0e487c0be75e16fec7af45a326b0a7f7ca6d056d14dd307c1fdfdb38497557f  backups.status.sqlserver16-windows.v2.sql
+f0e487c0be75e16fec7af45a326b0a7f7ca6d056d14dd307c1fdfdb38497557f  backups.status.sqlserver17-windows.v2.sql

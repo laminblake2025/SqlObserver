@@ -25,7 +25,171 @@ public static class TargetHealthEndpoints
         group.MapGet("/", GetAsync);
         group.MapGet("/databases", ListDatabasesAsync);
         group.MapGet("/files", ListDatabaseFilesAsync);
+        group.MapGet("/database-option-changes", ListDatabaseOptionChangesAsync);
+        group.MapGet("/server-configuration-changes", ListServerConfigurationChangesAsync);
+        group.MapGet("/server-configuration-snapshot", ListServerConfigurationSnapshotAsync);
+        group.MapPut("/server-configuration-collection", SetServerConfigurationCollectionAsync)
+            .RequireRateLimiting(AdministrativeMutationRateLimitPolicy.PolicyName);
         return endpoints;
+    }
+
+    private static async Task<IResult> SetServerConfigurationCollectionAsync(
+        HttpContext context, Guid instanceId, ConfigurationCollectionBody body,
+        IConfigurationCollectionAdministrationService service,
+        WindowsGroupRoleResolver roles,
+        CancellationToken cancellationToken)
+    {
+        AuditCorrelationId correlationId = ApiCorrelation.Begin(context);
+        try
+        {
+            if (body.ExpectedTargetRevision < 1 || body.ExpectedEnabled is null ||
+                body.Enabled is null)
+                return Results.BadRequest();
+            ConfigurationCollectionMutationResult result = await service.SetAsync(
+                roles.Resolve(context.User), new MonitoredInstanceId(instanceId),
+                body.ExpectedTargetRevision, body.ExpectedEnabled.Value, body.Enabled.Value,
+                correlationId, RepositoryTimeout, cancellationToken).ConfigureAwait(false);
+            return result.Status switch
+            {
+                ConfigurationCollectionMutationStatus.Applied => Results.Ok(new
+                {
+                    targetId = instanceId,
+                    targetRevision = body.ExpectedTargetRevision,
+                    collectorEnabled = result.Enabled,
+                    scheduleRevision = result.ScheduleRevision,
+                }),
+                ConfigurationCollectionMutationStatus.NotFound => Results.NotFound(),
+                ConfigurationCollectionMutationStatus.Inactive or
+                    ConfigurationCollectionMutationStatus.RevisionConflict =>
+                    Results.Conflict(new { code = "configuration_collection_conflict",
+                        message = "Server or collection state changed. Reload before trying again." }),
+                _ => throw new InvalidDataException("Configuration collection returned an unknown status."),
+            };
+        }
+        catch (UnauthorizedAccessException) { return Results.Forbid(); }
+        catch (ArgumentException) { return Results.BadRequest(); }
+    }
+
+    private static async Task<IResult> ListServerConfigurationSnapshotAsync(
+        HttpContext context, Guid instanceId,
+        IServerConfigurationSnapshotQueryService service,
+        WindowsGroupRoleResolver roles,
+        ServerConfigurationSnapshotCursorCodec cursorCodec,
+        int limit = 100, string? cursor = null,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            ServerConfigurationSnapshotCursor? decoded = cursor is null ? null :
+                cursorCodec.Decode(cursor);
+            var request = new ServerConfigurationSnapshotRequest(
+                new MonitoredInstanceId(instanceId), limit, RepositoryTimeout, decoded);
+            ServerConfigurationSnapshotPage page = await service.ReadAsync(
+                roles.Resolve(context.User), request, cancellationToken).ConfigureAwait(false);
+            return Results.Ok(new
+            {
+                targetId = instanceId,
+                targetRevision = page.TargetRevision,
+                runId = page.RunId,
+                observedAtUtc = page.ObservedAtUtc,
+                serverMajorVersion = page.ServerMajorVersion,
+                collectorEnabled = page.CollectorEnabled,
+                lastOutcome = page.LastOutcome,
+                coverage = page.RunId is null ? "never_collected" : "latest_complete_scan",
+                items = page.Items,
+                nextCursor = page.NextCursor is null ? null :
+                    cursorCodec.Encode(page.NextCursor),
+            });
+        }
+        catch (ServerConfigurationSnapshotCursorStaleException)
+        {
+            return Results.Conflict(new { code = "cursor_stale",
+                message = "Configuration snapshot changed. Restart from the first page." });
+        }
+        catch (UnauthorizedAccessException) { return Results.Forbid(); }
+        catch (ArgumentException) { return Results.BadRequest(); }
+        catch (FormatException) { return Results.BadRequest(); }
+    }
+
+    private static async Task<IResult> ListServerConfigurationChangesAsync(
+        HttpContext context, Guid instanceId,
+        IServerConfigurationChangeQueryService service,
+        WindowsGroupRoleResolver roles,
+        ServerConfigurationChangeCursorCodec cursorCodec,
+        string? fromUtc = null, string? toUtc = null, int limit = 50,
+        string? cursor = null, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            if (cursor is not null && (fromUtc is null || toUtc is null))
+                throw new ArgumentException("A continuation needs its original UTC window.");
+            DateTimeOffset to = toUtc is null ? DateTimeOffset.UtcNow :
+                DateTimeOffset.Parse(toUtc, CultureInfo.InvariantCulture,
+                    DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal);
+            DateTimeOffset from = fromUtc is null ? to.AddHours(-24) :
+                DateTimeOffset.Parse(fromUtc, CultureInfo.InvariantCulture,
+                    DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal);
+            ServerConfigurationChangeCursor? decoded = cursor is null ? null :
+                cursorCodec.Decode(cursor);
+            var request = new ServerConfigurationChangeRequest(
+                new MonitoredInstanceId(instanceId), from, to, limit,
+                RepositoryTimeout, decoded);
+            ServerConfigurationChangePage page = await service.ReadAsync(
+                roles.Resolve(context.User), request, cancellationToken).ConfigureAwait(false);
+            return Results.Ok(new
+            {
+                targetId = instanceId,
+                fromUtc = from,
+                toUtc = to,
+                targetRevision = page.TargetRevision,
+                publicationGeneration = page.PublicationGeneration,
+                coverage = page.PublicationGeneration == 0 ? "never_collected" : "observed_changes_only",
+                items = page.Items,
+                nextCursor = page.NextCursor is null ? null :
+                    cursorCodec.Encode(page.NextCursor),
+            });
+        }
+        catch (ServerConfigurationCursorStaleException)
+        {
+            return Results.Conflict(new { code = "cursor_stale",
+                message = "Configuration history changed. Restart from the first page." });
+        }
+        catch (UnauthorizedAccessException) { return Results.Forbid(); }
+        catch (ArgumentException) { return Results.BadRequest(); }
+        catch (FormatException) { return Results.BadRequest(); }
+    }
+
+    private static async Task<IResult> ListDatabaseOptionChangesAsync(
+        HttpContext context, Guid instanceId,
+        IDatabaseOptionChangeQueryService service,
+        WindowsGroupRoleResolver roles,
+        string? fromUtc = null, string? toUtc = null, int limit = 100,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            DateTimeOffset to = toUtc is null ? DateTimeOffset.UtcNow :
+                DateTimeOffset.Parse(toUtc, CultureInfo.InvariantCulture,
+                    DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal);
+            DateTimeOffset from = fromUtc is null ? to.AddHours(-24) :
+                DateTimeOffset.Parse(fromUtc, CultureInfo.InvariantCulture,
+                    DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal);
+            var request = new DatabaseOptionChangeRequest(new MonitoredInstanceId(instanceId),
+                from, to, limit, RepositoryTimeout);
+            DatabaseOptionChangeResult result = await service.ReadAsync(
+                roles.Resolve(context.User), request, cancellationToken).ConfigureAwait(false);
+            return Results.Ok(new
+            {
+                targetId = instanceId,
+                fromUtc = from,
+                toUtc = to,
+                semantics = "detected_between_consecutive_complete_inventory_runs",
+                items = result.Items,
+            });
+        }
+        catch (UnauthorizedAccessException) { return Results.Forbid(); }
+        catch (ArgumentException) { return Results.BadRequest(); }
+        catch (FormatException) { return Results.BadRequest(); }
     }
 
     private static async Task<IResult> GetAsync(
@@ -189,7 +353,8 @@ public static class TargetHealthEndpoints
             observation.IsReadOnly,
             observation.CompatibilityLevel,
             observation.ObservedAtUtc,
-            Map(item.Collector));
+            Map(item.Collector),
+            observation.LogReuseWaitDescription);
     }
 
     private static DatabaseFileHealthResponse Map(DatabaseFileHealthItem item)
@@ -210,6 +375,8 @@ public static class TargetHealthEndpoints
             FormatInt64(observation.BytesRead),
             FormatInt64(observation.BytesWritten),
             FormatInt64(observation.IoStallMilliseconds),
+            observation.ReadStallMilliseconds is long readStall ? FormatInt64(readStall) : null,
+            observation.WriteStallMilliseconds is long writeStall ? FormatInt64(writeStall) : null,
             observation.ObservedAtUtc,
             Map(item.Collector));
     }
@@ -476,6 +643,9 @@ public static class TargetHealthEndpoints
             correlationId.Value.ToString("D", CultureInfo.InvariantCulture)),
         statusCode: StatusCodes.Status404NotFound);
 }
+
+public sealed record ConfigurationCollectionBody(long ExpectedTargetRevision,
+    bool? ExpectedEnabled, bool? Enabled);
 
 internal static class HealthCursorCodec
 {

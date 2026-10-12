@@ -13,10 +13,17 @@ public static class QueryPerformancePersistencePayload
     public static byte[] Serialize(
         IReadOnlyList<QueryPerformanceObservation> observations,
         IReadOnlyList<QueryPerformanceDatabaseStatus> statuses,
-        QueryPerformanceTargetStatus? targetStatus)
+        QueryPerformanceTargetStatus? targetStatus,
+        bool contentLinksCommittedWithRun = false)
     {
         ArgumentNullException.ThrowIfNull(observations);
         ArgumentNullException.ThrowIfNull(statuses);
+        // The JSON payload is metadata-only. Sidecar links and wait snapshots
+        // require the repository to commit them in the same transaction.
+        if (!contentLinksCommittedWithRun && observations.Any(static item =>
+                item.ContentReference is not null || item.PlanContentReference is not null ||
+                item.WaitSnapshot is not null))
+            throw new InvalidDataException("Query sidecar evidence requires an atomic commit contract.");
         var observationJson = observations.Select(static x => new
         {
             databaseId = x.Query.DatabaseId,

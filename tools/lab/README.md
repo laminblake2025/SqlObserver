@@ -1,5 +1,106 @@
 # Disposable SQL Server workload
 
+The opt-in
+`CoreBaselineInputsAreBoundedAndComparableUnderOnlyTheVersionSpecificStateGrant`
+test in `SqlObserver.IntegrationTests.SqlServer` verifies the current core
+collector's native SQL baseline inputs. On a disposable instance it creates a
+unique non-sysadmin login, confirms denial without a state grant, grants only
+`VIEW SERVER STATE` (2019) or `VIEW SERVER PERFORMANCE STATE` (2022/2025), and
+checks three consecutive bounded reads for all gauges and comparable counter
+epochs. It removes the login afterward and checks that monitored server state
+is unchanged. Impersonation verifies SQL execution permissions, rather than
+a separate Windows service account's authentication. It refuses the Release
+profile and has the `RequiresSqlServerDisposable` trait.
+
+Configure `SQLOBSERVER_VALIDATION_PROFILE=Local` and
+`SQLOBSERVER_LOCAL_SQLSERVER` with a Windows-authenticated connection to the
+disposable instance; the caller must be a sysadmin to create and remove the
+probe login. Then run only this check from the repository root:
+
+```powershell
+dotnet test tests/SqlObserver.IntegrationTests.SqlServer/SqlObserver.IntegrationTests.SqlServer.csproj --filter FullyQualifiedName~CoreBaselineInputsAreBounded --logger 'trx;LogFileName=sql-core-live-source.trx' --results-directory artifacts/sql-core-live-source
+```
+
+The SQL Server 2022 result and its limits are recorded in ADR-0027. Select the
+test explicitly for each other supported server version before claiming its
+source is qualified. The test does not exercise PostgreSQL ingestion, a busy
+workload, TLS certification or the browser.
+
+`verify-system-health-bookmark.ps1` is a read-only qualification probe for the
+incremental XE contract in [ADR-0024](../../docs/adr/ADR-0024-incremental-system-health-reader.md).
+It uses Windows authentication and validated TLS, discovers the running
+`system_health` event-file path from SQL Server, and compares a full metadata
+read with one resumed after a buffer that contains multiple events. It returns
+aggregate counts only. At least five retained buffers, including a shared-offset
+buffer with a stable successor, are needed for a conclusive result. Run it on
+each supported SQL Server major version with the intended least-privilege
+collector login before enabling a version-2 reader:
+
+```powershell
+pwsh ./tools/lab/verify-system-health-bookmark.ps1 -SqlInstance 'HOST\INSTANCE'
+```
+
+This checks one retained-file snapshot; it does not simulate file rollover,
+session restart, or a buffer growing during a read. Those need separate lab
+cases before the production bookmark can advance across a source epoch.
+
+`verify-sql-volume-capacity-local.ps1` performs a bounded, read-only probe of
+`sys.dm_os_volume_stats` for files visible on a SQL Server 2019/2022/2025
+instance. It prints aggregate coverage and the minimum free capacity across
+files, without paths or volume IDs. Repeated files on one volume are not
+summed. For example:
+
+```powershell
+pwsh ./tools/lab/verify-sql-volume-capacity-local.ps1 -SqlInstance '.\SQLEXPRESS'
+```
+
+`verify-sql-volume-least-privilege-local.ps1` creates a disposable non-sysadmin
+login, grants the version-specific volume DMV permission, measures how many
+`sys.master_files` rows that alone exposes, then adds `VIEW ANY DEFINITION` and
+checks complete file coverage and known capacity. It prints only aggregate
+counts and removes the login in `finally`. Run it on a disposable instance as
+a sysadmin; it changes no database data:
+
+```powershell
+pwsh ./tools/lab/verify-sql-volume-least-privilege-local.ps1 -SqlInstance '.\SQLEXPRESS'
+```
+
+The [volume-capacity contract](../../docs/technical/SqlObserver-Sql-Volume-Capacity-Contract.md)
+defines the separate collector, identity and repository cutover needed before
+these values can appear in Resources.
+
+For a local SQL Server 2022 instance, `verify-query-store-text-local.ps1`
+creates a uniquely named database, runs a small Query Store workload through
+the pinned SQL Server 16 metadata, text, and plan assets, checks that the workload
+row and bounded content are returned with an interval ending no later than collection,
+executes the measured statement inside a disposable stored procedure so repeated
+client connections preserve one tracked plan,
+then holds a five-second lock on its own table to confirm Query Store attributes a
+positive lock-wait category to the blocked plan. It verifies the same quiet-plan
+total is returned on a second read and reconciles that total to Query Store's
+interval/execution-type groups. It also exercises the checksum-pinned
+`collectors/query-store-groups/runtime.sqlserver16-windows.v1.sql` source against a same-interval increment and
+reset, recording whether an ordinary post-flush execution changes the earliest
+execution time. That source is not registered in the production collector. The
+probe drops its database in `finally`.
+Run it only with an instance where the
+current Windows login can create databases:
+
+```powershell
+pwsh ./tools/lab/verify-query-store-text-local.ps1 -SqlInstance '.\SQLEXPRESS'
+```
+
+`verify-query-store-wait-groups-local.ps1` independently checks the checksum-pinned
+`collectors/query-store-groups/waits.sqlserver16-windows.v1.sql` source. It creates a fresh Query Store database,
+records a lock wait, reconciles the grouped wait total and its identity with
+direct wait stats and the candidate runtime group, then reads the wait group
+through a temporary non-sysadmin login with the generated Query Store grants.
+The database and login are removed in `finally`:
+
+```powershell
+pwsh ./tools/lab/verify-query-store-wait-groups-local.ps1 -SqlInstance '.\SQLEXPRESS'
+```
+
 ## Controlled stress and Observer validation
 
 `run-stress-test.ps1` is the bounded, operator-run stress harness. It adds staged
@@ -35,6 +136,10 @@ Backup runs create uniquely named COPY_ONLY compressed, checksum-verified files 
 Allow at least one five-minute collection interval after a run. Validate Health, Activity, Query performance (both source filters), Deadlocks and Operations at https://win-qngov5gdm24:5443/. Availability Groups are unsupported on this single-instance fixture. These workloads are functional smoke tests, not production capacity or release certification.
 
 ## Real transactional replication
+
+For a separate trusted primary/secondary AG pair, see
+[the read-only AG v2 qualification runbook](../../docs/testing/availability-group-v2-lab.md).
+The single-instance fixtures here cannot provide that evidence.
 
 Install the SQL Server Replication feature from the VM's existing `C:\SQL2025\StdDev_ENU` media if absent, then restart SQLSERVERAGENT to load its replication subsystems. Run `setup-replication.ps1` as the lab administrator. It creates SqlObserverLabPublisher, SqlObserverLabSubscriber and SqlObserverLabDistribution, one OrderEvents article and a continuous push subscription on the same SQL instance. SQL Agent's service identity runs the replication jobs; the observer login receives only the explicit monitoring reads. The snapshot-directory ACL applies only to the replication job identity.
 

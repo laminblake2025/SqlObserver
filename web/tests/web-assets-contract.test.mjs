@@ -25,6 +25,22 @@ async function fixture() {
   return root;
 }
 
+test("Vite 8 standalone stylesheet records are reachable only through referenced file identities", async () => {
+  const root = await fixture();
+  try {
+    const file = path.join(root, ".vite", "manifest.json");
+    const manifest = JSON.parse(await readFile(file, "utf8"));
+    manifest["_main-DeF45678.css"] = { file: "assets/main-DeF45678.css", src: "_main-DeF45678.css" };
+    await writeFile(file, JSON.stringify(manifest));
+    const catalog = await makeCatalog(root);
+    assert.ok(catalog.entrypoint.graph.some(entry => entry.key === "_main-DeF45678.css"));
+    await writeFile(path.join(root, "assets", "orphan-abcd1234.css"), "body{color:red}");
+    manifest["_orphan-abcd1234.css"] = { file: "assets/orphan-abcd1234.css", src: "_orphan-abcd1234.css" };
+    await writeFile(file, JSON.stringify(manifest));
+    await assert.rejects(() => makeCatalog(root), /outside the entrypoint graph/);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
 test("asset catalog bytes are deterministic and bind content", async () => {
   const root = await fixture();
   try {

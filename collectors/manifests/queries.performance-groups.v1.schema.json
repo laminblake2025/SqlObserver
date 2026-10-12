@@ -1,0 +1,28 @@
+{
+  "$schema":"https://json-schema.org/draft/2020-12/schema",
+  "$id":"https://sqlobserver.local/queries.performance-groups.v1.schema.json",
+  "title":"SqlObserver passive Query Store interval-group collector manifest v1",
+  "type":"object","additionalProperties":false,
+  "required":["$schema","schemaVersion","collectorId","collectorVersion","displayName","operationalMode","dependsOn","supportedTargets","requiredCapabilities","requiredPermissionsByMajor","cadence","executionBounds","resilience","estimatedCostClass","fallback","queryResources","outputSchemaVersion","outputKind","defaultEnabled"],
+  "properties":{
+    "$schema":{"const":"queries.performance-groups.v1.schema.json"},
+    "schemaVersion":{"const":6},
+    "collectorId":{"const":"queries.performance-groups"},
+    "collectorVersion":{"const":1},
+    "displayName":{"const":"SQL Server Query Store interval deltas"},
+    "operationalMode":{"const":"passive"},
+    "dependsOn":{"const":["capability.connection","engine.core","database.inventory"]},
+    "supportedTargets":{"const":{"product":"Microsoft SQL Server","minimumMajorVersion":16,"maximumMajorVersion":16,"platforms":["Windows"],"engineEditions":[2,3,4]}},
+    "requiredCapabilities":{"const":["connection.tds","authentication.windows-integrated","transport.tls-validated","privilege.non-sysadmin","platform.windows"]},
+    "requiredPermissionsByMajor":{"const":{"16":["database.view-performance-state"]}},
+    "cadence":{"const":{"defaultIntervalSeconds":1800,"minimumIntervalSeconds":300,"nonOverlappingPerTarget":true}},
+    "executionBounds":{"const":{"connectTimeoutSeconds":5,"commandTimeoutSeconds":300,"maximumRows":2000,"maximumResponseBytes":8388608}},
+    "resilience":{"const":{"maximumAttempts":2,"transientRetryDelayMilliseconds":100,"circuitFailureThreshold":3,"circuitOpenSeconds":300}},
+    "estimatedCostClass":{"const":"high"},
+    "fallback":{"const":{"mode":"unsupported"}},
+    "queryResources":{"const":{"runtime":"runtime.sqlserver16-windows.v1.sql","waits":"waits.sqlserver16-windows.v1.sql"}},
+    "outputSchemaVersion":{"const":1},
+    "outputKind":{"const":"query-store-groups"},
+    "defaultEnabled":{"const":false}
+  }
+}

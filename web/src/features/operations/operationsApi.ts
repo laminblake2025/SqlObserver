@@ -1,3 +1,4 @@
+import { apiFetch } from "../../apiClient.ts";
 import { readBoundedJson } from "./operationsParser.mjs";
 import type { OperationalKind, OperationalPage, OperationalState } from "./operationsTypes";
 
@@ -14,7 +15,7 @@ function message(status: number): [string, boolean] { if (status === 400) return
 export interface OperationalQuery { readonly cursor?: string | null; readonly limit?: number; readonly fromUtc?: string; readonly toUtc?: string; readonly signal?: AbortSignal; }
 export async function getOperationalPage(instanceId: string, kind: OperationalKind, query: OperationalQuery = {}): Promise<OperationalPage> {
   const params = new URLSearchParams(); if (query.limit !== undefined) params.set("limit", String(query.limit)); if (query.cursor) params.set("cursor", query.cursor); if (kind === "agent") { if (query.fromUtc) params.set("fromUtc", query.fromUtc); if (query.toUtc) params.set("toUtc", query.toUtc); }
-  const suffix = params.toString(); const response = await fetch(`/api/v1/observation-targets/${encodeURIComponent(instanceId)}/${paths[kind]}${suffix ? `?${suffix}` : ""}`, { credentials: "same-origin", headers: { Accept: "application/json" }, signal: query.signal });
+  const suffix = params.toString(); const response = await apiFetch(`/api/v1/observation-targets/${encodeURIComponent(instanceId)}/${paths[kind]}${suffix ? `?${suffix}` : ""}`, { credentials: "same-origin", headers: { Accept: "application/json" }, signal: query.signal });
   if (!response.ok) { const [text, retryable] = message(response.status); throw new OperationalApiError(response.status, text, retryable); }
   try { return asPage(await readBoundedJson(response, kind, instanceId, query.signal)); } catch (error) { if (error instanceof DOMException && error.name === "AbortError") throw error; if (error instanceof OperationalApiError) throw error; throw new OperationalApiError(502, "Operational health returned invalid data."); }
 }

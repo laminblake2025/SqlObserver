@@ -7,6 +7,76 @@ export type TargetHealthState =
   | "stale"
   | "disabled";
 
+export interface DatabaseOptionChange {
+  readonly databaseId: number;
+  readonly databaseName: string;
+  readonly optionKey: "recovery_model" | "user_access" | "is_read_only" | "compatibility_level";
+  readonly previousValue: string;
+  readonly currentValue: string;
+  readonly previousObservedAtUtc: string;
+  readonly observedAtUtc: string;
+  readonly detectedAtUtc: string;
+  readonly collectionRunId: string;
+}
+
+export interface DatabaseOptionChangeResult {
+  readonly targetId: string;
+  readonly fromUtc: string;
+  readonly toUtc: string;
+  readonly semantics: string;
+  readonly items: readonly DatabaseOptionChange[];
+}
+
+export interface ServerConfigurationChange {
+  readonly configurationId: number;
+  readonly configurationName: string;
+  readonly sourceType: string;
+  readonly previousConfiguredValue: string;
+  readonly configuredValue: string;
+  readonly previousInUseValue: string;
+  readonly inUseValue: string;
+  readonly configuredChanged: boolean;
+  readonly inUseChanged: boolean;
+  readonly previousObservedAtUtc: string;
+  readonly observedAtUtc: string;
+  readonly detectedAtUtc: string;
+  readonly runId: string;
+}
+
+export interface ServerConfigurationChangeResult {
+  readonly targetId: string;
+  readonly fromUtc: string;
+  readonly toUtc: string;
+  readonly targetRevision: number;
+  readonly publicationGeneration: number;
+  readonly coverage: "never_collected" | "observed_changes_only";
+  readonly items: readonly ServerConfigurationChange[];
+  readonly nextCursor: string | null;
+}
+
+export interface ServerConfigurationSetting {
+  readonly configurationId: number;
+  readonly configurationName: string;
+  readonly sourceType: string;
+  readonly configuredValue: string;
+  readonly inUseValue: string;
+  readonly isDynamic: boolean;
+  readonly isAdvanced: boolean;
+}
+
+export interface ServerConfigurationSnapshotResult {
+  readonly targetId: string;
+  readonly targetRevision: number;
+  readonly runId: string | null;
+  readonly observedAtUtc: string | null;
+  readonly serverMajorVersion: number | null;
+  readonly collectorEnabled: boolean;
+  readonly lastOutcome: string | null;
+  readonly coverage: "never_collected" | "latest_complete_scan";
+  readonly items: readonly ServerConfigurationSetting[];
+  readonly nextCursor: string | null;
+}
+
 export type CollectorHealthReason =
   | "none"
   | "capability_profile_missing"
@@ -40,7 +110,9 @@ export type CollectorLossKind =
   | "source_row_limit"
   | "response_byte_limit"
   | "output_validation_failure"
-  | "ingestion_rejection";
+  | "ingestion_rejection"
+  | "duplicate_overlap"
+  | "visibility_incomplete";
 
 export type CollectorCircuitState = "closed" | "open" | "half_open";
 
@@ -121,6 +193,7 @@ export interface DatabaseHealthSummary {
   readonly userAccess: DatabaseUserAccess;
   readonly isReadOnly: boolean;
   readonly compatibilityLevel: number;
+  readonly logReuseWaitDescription: string | null;
   readonly observedAtUtc: string;
   readonly collector: CollectorHealthSummary;
 }
@@ -161,6 +234,8 @@ export interface DatabaseFileHealthSummary {
   readonly bytesRead: string;
   readonly bytesWritten: string;
   readonly ioStallMilliseconds: string;
+  readonly readStallMilliseconds: string | null;
+  readonly writeStallMilliseconds: string | null;
   readonly observedAtUtc: string;
   readonly collector: CollectorHealthSummary;
 }
@@ -178,3 +253,17 @@ export interface TargetHealthEvidence {
   readonly databases: DatabaseHealthPage;
   readonly files: DatabaseFileHealthPage;
 }
+
+export type TargetHealthSource = "target" | "databases" | "files";
+/** Independently validated latest receipts. Missing sources are never empty successful pages. */
+export interface TargetHealthReadResult {
+  readonly target?: TargetHealthSnapshot;
+  readonly databases?: DatabaseHealthPage;
+  readonly files?: DatabaseFileHealthPage;
+  readonly errors: Readonly<Partial<Record<TargetHealthSource, string>>>;
+}
+export type TargetHealthSourceRead =
+  | { readonly source: "target"; readonly value: TargetHealthSnapshot; readonly error?: never }
+  | { readonly source: "databases"; readonly value: DatabaseHealthPage; readonly error?: never }
+  | { readonly source: "files"; readonly value: DatabaseFileHealthPage; readonly error?: never }
+  | { readonly source: TargetHealthSource; readonly error: string; readonly value?: never };

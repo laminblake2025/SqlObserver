@@ -26,9 +26,8 @@ public sealed class OperationalHealthQueryService : IOperationalHealthQueryServi
     private static async ValueTask<T?> Read<T>(AuthorizationContext authorization, OperationalHealthRequest request, Func<OperationalHealthRequest, CancellationToken, ValueTask<T?>> read, Action<T, OperationalHealthRequest> validate, CancellationToken cancellationToken) where T : class
     {
         ArgumentNullException.ThrowIfNull(authorization); ArgumentNullException.ThrowIfNull(request);
-        if (!authorization.IsActive || (!authorization.HasRole(ApplicationRole.Viewer) && !authorization.HasRole(ApplicationRole.Operator) && !authorization.HasRole(ApplicationRole.TargetAdministrator)))
-            throw new UnauthorizedAccessException("Operational-health read role denied.");
-        if (!authorization.CanAccess(request.TargetId)) throw new UnauthorizedAccessException("Operational-health target scope denied.");
+        authorization.RequireAny(request.TargetId,
+            ApplicationRole.Viewer, ApplicationRole.Operator, ApplicationRole.TargetAdministrator);
         ValidateRequest(request);
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         deadline.CancelAfter(RepositoryDeadline);

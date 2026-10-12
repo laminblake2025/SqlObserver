@@ -45,7 +45,8 @@ public sealed record RetentionPreviewEntry(
     {
         "retention_disabled", "duration_unconfigured", "partition_not_attached", "within_retention_window",
         "minimum_partition_floor", "reader_lease_active", "backfill_incomplete",
-        "dependency_pending", "recovery_attestation_missing", "eligible"
+        "dependency_pending", "recovery_attestation_missing",
+        "grace_in_progress", "retention_failed", "eligible"
     };
 
     public void Validate()
@@ -109,5 +110,16 @@ public static class RetentionPolicyValidator
         if (policy.RetainFor is not null && policy.RetainFor < TimeSpan.FromDays(1)) throw new ArgumentOutOfRangeException(nameof(policy));
         if (policy.Enabled && policy.RetainFor is null) throw new ArgumentException("An enabled policy must have a duration.", nameof(policy));
         if (policy.MinimumPartitionsToKeep < 1) throw new ArgumentOutOfRangeException(nameof(policy));
+        if (policy.DataClass == "collection_run_canonical" &&
+            (policy.MinimumPartitionsToKeep != 1 || policy.RetainFor is not null &&
+             (policy.RetainFor < TimeSpan.FromDays(90) || policy.RetainFor > TimeSpan.FromDays(3650))))
+            throw new ArgumentException("Canonical run history requires 90 to 3650 days and a floor of one.", nameof(policy));
+        if (policy.DataClass == "m6_deadlock_read_receipts" &&
+            (policy.MinimumPartitionsToKeep < 2 || policy.Enabled && policy.RetainFor < TimeSpan.FromDays(30)))
+            throw new ArgumentException("Deadlock replay receipts require at least 30 days and two monthly partitions.", nameof(policy));
+        if (policy.Enabled && policy.DataClass == "m7_cache_watermarks" && policy.RetainFor < TimeSpan.FromDays(8))
+            throw new ArgumentException("Cache baselines require at least eight days of retention.", nameof(policy));
+        if (policy.Enabled && (policy.DataClass is "m7_cache_deltas" or "m7_cache_receipts" or "m7_cache_content_receipts" or "m7_cache_content_links") && policy.RetainFor < TimeSpan.FromDays(30))
+            throw new ArgumentException("Cache delta history and replay receipts require at least 30 days of retention.", nameof(policy));
     }
 }

@@ -9,6 +9,7 @@ using SqlObserver.Domain.Telemetry;
 using SqlObserver.Domain.Authorization;
 using SqlObserver.Domain.Security;
 using SqlObserver.Domain.Auditing;
+using SqlObserver.Domain.Coordination;
 using SqlObserver.Infrastructure.PostgreSql;
 using System.Text.Json;
 
@@ -26,6 +27,343 @@ public sealed class M10AnalyticsPostgreSqlIntegrationTests
     private readonly PostgreSql18Fixture fixture;
 
     public M10AnalyticsPostgreSqlIntegrationTests(PostgreSql18Fixture fixture) => this.fixture = fixture;
+
+    [Fact]
+    public async Task RetentionPreviewBlocksOnlyJobsOverlappingItsPartitionWindow()
+    {
+        await using RepositoryTestDatabase database = await CreateMigratedDatabaseAsync();
+        Guid target = Guid.NewGuid();
+        await InsertTargetAsync(database, target, "retention-window", 1);
+        await using NpgsqlConnection connection = await database.DataSource.OpenConnectionAsync();
+        await using var clock = new NpgsqlCommand("SELECT (current_date-1)::timestamptz;", connection);
+        await using NpgsqlDataReader clockReader = await clock.ExecuteReaderAsync();
+        Assert.True(await clockReader.ReadAsync());
+        DateTimeOffset start = clockReader.GetFieldValue<DateTimeOffset>(0);
+        await clockReader.CloseAsync();
+        DateTimeOffset previewAt = start.AddDays(20);
+        await ExecuteAsync(database, "UPDATE system.retention_policy SET enabled=true,retain_for=interval '1 day',minimum_partitions_to_keep=1 WHERE data_class='m10_rollups';");
+        await ExecuteAsync(database, "INSERT INTO system.recovery_attestation(attestation_id,attested_at,attested_by,backup_set_reference,expires_at,attestation_digest) VALUES(@id,clock_timestamp(),'test','restore-tested',@expires,sha256(convert_to('test','UTF8')));",
+            ("id", Guid.NewGuid()), ("expires", previewAt.AddDays(1)));
+
+        Guid disjoint = Guid.NewGuid();
+        await ExecuteAsync(database, "INSERT INTO control.analytics_job(job_id,job_kind,instance_id,target_revision,work_key,from_utc,to_utc,status) VALUES(@job,'baseline',@target,1,'analytics/derivation',@from,@to,'queued');",
+            ("job", disjoint), ("target", target), ("from", start.AddDays(10)), ("to", start.AddDays(11)));
+        Assert.Equal((true, "eligible"), await PreviewAsync());
+
+        Guid overlapping = Guid.NewGuid();
+        await ExecuteAsync(database, "INSERT INTO control.analytics_job(job_id,job_kind,instance_id,target_revision,work_key,from_utc,to_utc,status) VALUES(@job,'baseline',@target,1,'analytics/derivation',@from,@to,'queued');",
+            ("job", overlapping), ("target", target), ("from", start.AddHours(1)), ("to", start.AddHours(2)));
+        Assert.Equal((false, "dependency_pending"), await PreviewAsync());
+        await ExecuteAsync(database, "UPDATE control.analytics_job SET status='succeeded' WHERE job_id=@job;", ("job", overlapping));
+        Assert.Equal((true, "eligible"), await PreviewAsync());
+
+        Guid unknown = Guid.NewGuid();
+        await ExecuteAsync(database, "INSERT INTO control.analytics_job(job_id,job_kind,instance_id,target_revision,work_key,status) VALUES(@job,'baseline',@target,1,'analytics/derivation','queued');",
+            ("job", unknown), ("target", target));
+        Assert.Equal((false, "dependency_pending"), await PreviewAsync());
+
+        async Task<(bool Eligible, string Reason)> PreviewAsync()
+        {
+            await using var preview = new NpgsqlCommand("SELECT eligible,reason FROM system.preview_m10_retention(@now,NULL) WHERE data_class='m10_rollups' AND range_start=@start;", connection);
+            preview.Parameters.AddWithValue("now", previewAt);
+            preview.Parameters.AddWithValue("start", start);
+            await using NpgsqlDataReader reader = await preview.ExecuteReaderAsync();
+            Assert.True(await reader.ReadAsync());
+            return (reader.GetBoolean(0), reader.GetString(1));
+        }
+    }
+
+    [Fact]
+    public async Task RetentionDetachAndDropRespectPartitionJobWindow()
+    {
+        await using RepositoryTestDatabase database = await CreateMigratedDatabaseAsync();
+        Guid target = Guid.NewGuid(), execution = Guid.NewGuid();
+        await InsertTargetAsync(database, target, "retention-lifecycle", 1);
+        await using NpgsqlConnection admin = await database.DataSource.OpenConnectionAsync();
+        await using (var setup = new NpgsqlCommand("""
+            SET TIME ZONE 'UTC';
+            SET ROLE sqlobserver_migrator;
+            DO $$ DECLARE d date:=current_date-3; n text:=format('metric_rollup_v2_p%s',to_char(d,'YYYYMMDD')); BEGIN
+              EXECUTE format('CREATE TABLE analytics.%I PARTITION OF analytics.metric_rollup_v2 FOR VALUES FROM (%L) TO (%L)',
+                n,d::timestamptz,(d+1)::timestamptz);
+              INSERT INTO system.partition_registry(parent_schema,parent_table,partition_schema,partition_name,partition_granularity,range_start,range_end)
+              VALUES('analytics','metric_rollup_v2','analytics',n,'day',d::timestamptz,(d+1)::timestamptz);
+            END $$;
+            RESET ROLE;
+            """, admin))
+            await setup.ExecuteNonQueryAsync();
+        await using var bounds = new NpgsqlCommand("SELECT range_start,partition_name::text FROM system.partition_registry WHERE parent_schema='analytics' AND parent_table='metric_rollup_v2' AND range_start=(current_date-3)::timestamptz;", admin);
+        await using NpgsqlDataReader boundsReader = await bounds.ExecuteReaderAsync();
+        Assert.True(await boundsReader.ReadAsync());
+        DateTimeOffset start = boundsReader.GetFieldValue<DateTimeOffset>(0);
+        string partition = boundsReader.GetString(1);
+        await boundsReader.CloseAsync();
+        await ExecuteAsync(database, "UPDATE system.retention_policy SET enabled=true,retain_for=interval '1 day',minimum_partitions_to_keep=1 WHERE data_class='m10_rollups';");
+        await ExecuteAsync(database, "INSERT INTO system.recovery_attestation(attestation_id,attested_at,attested_by,backup_set_reference,expires_at,attestation_digest) VALUES(@id,clock_timestamp(),'test','restore-tested',clock_timestamp()+interval '3 days',sha256(convert_to('test','UTF8')));", ("id", Guid.NewGuid()));
+        await using (var privilege = new NpgsqlCommand("SELECT has_function_privilege('sqlobserver_collector','system.drop_m10_partition(uuid)','EXECUTE');", admin))
+            Assert.False((bool)(await privilege.ExecuteScalarAsync())!);
+
+        Guid disjoint = Guid.NewGuid(), overlapping = Guid.NewGuid();
+        await AddJobAsync(disjoint, start.AddDays(10), start.AddDays(11));
+        await AddJobAsync(overlapping, start.AddHours(1), start.AddHours(2));
+        await using NpgsqlDataSource server = database.CreateServerDataSource();
+        await using NpgsqlConnection serverConnection = await server.OpenConnectionAsync();
+        PostgresException blocked = await Assert.ThrowsAsync<PostgresException>(() => RetentionAsync("detach", Guid.NewGuid()));
+        Assert.Equal("55000", blocked.SqlState);
+        await ExecuteAsync(database, "UPDATE control.analytics_job SET status='succeeded' WHERE job_id=@job;", ("job", overlapping));
+        Assert.True(await RetentionAsync("detach", Guid.NewGuid()));
+        await ExecuteAsync(database, "UPDATE system.retention_execution SET drop_after=clock_timestamp()-interval '1 minute' WHERE execution_id=@execution;", ("execution", execution));
+
+        Guid secondOverlap = Guid.NewGuid();
+        await AddJobAsync(secondOverlap, start.AddHours(3), start.AddHours(4));
+        Assert.False(await RetentionAsync("drop", Guid.NewGuid()));
+        await ExecuteAsync(database, "UPDATE control.analytics_job SET status='succeeded' WHERE job_id=@job;", ("job", secondOverlap));
+
+        await ExecuteAsync(database, $"CREATE VIEW analytics.retention_drop_dependency AS SELECT count(*) FROM analytics.\"{partition}\";");
+        Assert.False(await RetentionAsync("drop", Guid.NewGuid()));
+        await using (var failed = new NpgsqlCommand("SELECT state,attempt FROM system.retention_execution WHERE execution_id=@execution;", admin))
+        {
+            failed.Parameters.AddWithValue("execution", execution);
+            await using NpgsqlDataReader reader = await failed.ExecuteReaderAsync();
+            Assert.True(await reader.ReadAsync());
+            Assert.Equal("retry", reader.GetString(0));
+            Assert.Equal(1, reader.GetInt32(1));
+        }
+        await ExecuteAsync(database, "DROP VIEW analytics.retention_drop_dependency;");
+        Assert.False(await RetentionAsync("drop", Guid.NewGuid()));
+        await using (var retry = new NpgsqlCommand("SELECT error_code,attempt FROM system.retention_drop_retry JOIN system.retention_execution USING(execution_id) WHERE execution_id=@execution ORDER BY retry_id DESC LIMIT 1;", admin))
+        {
+            retry.Parameters.AddWithValue("execution", execution);
+            await using NpgsqlDataReader reader = await retry.ExecuteReaderAsync();
+            Assert.True(await reader.ReadAsync());
+            Assert.Equal("2BP01", reader.GetString(0));
+            Assert.Equal(1, reader.GetInt32(1));
+        }
+        await ExecuteAsync(database, "INSERT INTO system.retention_drop_retry(execution_id,error_code,error_detail,next_attempt_at) VALUES(@execution,'TEST','elapsed backoff',clock_timestamp()-interval '1 minute');", ("execution", execution));
+        Assert.True(await RetentionAsync("drop", Guid.NewGuid()));
+        await using var outcome = new NpgsqlCommand("SELECT lifecycle_state FROM system.partition_registry WHERE parent_schema='analytics' AND parent_table='metric_rollup_v2' AND partition_name=@partition;", admin);
+        outcome.Parameters.AddWithValue("partition", partition);
+        Assert.Equal("dropped", await outcome.ExecuteScalarAsync());
+        await using var recovery = new NpgsqlCommand("SELECT state,attempt FROM system.retention_execution WHERE execution_id=@execution;", admin);
+        recovery.Parameters.AddWithValue("execution", execution);
+        await using NpgsqlDataReader recoveryReader = await recovery.ExecuteReaderAsync();
+        Assert.True(await recoveryReader.ReadAsync());
+        Assert.Equal("dropped", recoveryReader.GetString(0));
+        Assert.Equal(1, recoveryReader.GetInt32(1));
+
+        async Task AddJobAsync(Guid id, DateTimeOffset from, DateTimeOffset to) =>
+            await ExecuteAsync(database, "INSERT INTO control.analytics_job(job_id,job_kind,instance_id,target_revision,work_key,from_utc,to_utc,status) VALUES(@job,'baseline',@target,1,'analytics/derivation',@from,@to,'queued');",
+                ("job", id), ("target", target), ("from", from), ("to", to));
+
+        async Task<bool> RetentionAsync(string operation, Guid operationId)
+        {
+            await using NpgsqlTransaction transaction = await serverConnection.BeginTransactionAsync();
+            try
+            {
+                await using var context = new NpgsqlCommand("""
+                    SELECT set_config('sqlobserver.role','SecurityAdministrator',true),
+                           set_config('sqlobserver.authorization_scope','global',true),
+                           set_config('sqlobserver.actor_sid','S-1-5-21-1-2-3-1001',true),
+                           set_config('sqlobserver.retention_operation_id',@operation,true),
+                           set_config('sqlobserver.retention_request_digest',repeat('a',64),true),
+                           set_config('sqlobserver.retention_correlation_id',@correlation,true),
+                           set_config('sqlobserver.retention_change_reason','retention window regression',true);
+                    """, serverConnection, transaction);
+                context.Parameters.AddWithValue("operation", operationId.ToString());
+                context.Parameters.AddWithValue("correlation", Guid.NewGuid().ToString());
+                await context.ExecuteNonQueryAsync();
+                string sql = operation == "detach"
+                    ? "SELECT system.detach_m10_partition('analytics','metric_rollup_v2',@partition,@execution);"
+                    : "SELECT system.drop_m10_partition(@execution);";
+                await using var command = new NpgsqlCommand(sql, serverConnection, transaction);
+                command.Parameters.AddWithValue("execution", execution);
+                if (operation == "detach") command.Parameters.AddWithValue("partition", partition);
+                bool result = (bool)(await command.ExecuteScalarAsync())!;
+                await transaction.CommitAsync();
+                return result;
+            }
+            catch
+            {
+                await transaction.RollbackAsync();
+                throw;
+            }
+        }
+    }
+
+    [Fact]
+    public async Task FencedSystemRetentionStepUsesItsOwnAuditActorAndGraceGate()
+    {
+        await using RepositoryTestDatabase database = await CreateMigratedDatabaseAsync();
+        await using NpgsqlConnection admin = await database.DataSource.OpenConnectionAsync();
+        await using (var setup = new NpgsqlCommand("""
+            SET TIME ZONE 'UTC';
+            SET ROLE sqlobserver_migrator;
+            DO $$ DECLARE d date:=current_date-3; n text:=format('metric_rollup_v2_p%s',to_char(d,'YYYYMMDD')); BEGIN
+              EXECUTE format('CREATE TABLE analytics.%I PARTITION OF analytics.metric_rollup_v2 FOR VALUES FROM (%L) TO (%L)',
+                n,d::timestamptz,(d+1)::timestamptz);
+              INSERT INTO system.partition_registry(parent_schema,parent_table,partition_schema,partition_name,partition_granularity,range_start,range_end)
+              VALUES('analytics','metric_rollup_v2','analytics',n,'day',d::timestamptz,(d+1)::timestamptz);
+            END $$;
+            RESET ROLE;
+            """, admin))
+            await setup.ExecuteNonQueryAsync();
+        await using var nameCommand = new NpgsqlCommand("SELECT partition_name::text FROM system.partition_registry WHERE parent_schema='analytics' AND parent_table='metric_rollup_v2' AND range_start=(current_date-3)::timestamptz;", admin);
+        string partition = (string)(await nameCommand.ExecuteScalarAsync())!;
+        await ExecuteAsync(database, "UPDATE system.retention_policy SET enabled=true,retain_for=interval '1 day',minimum_partitions_to_keep=1 WHERE data_class='m10_rollups';");
+
+        await using NpgsqlDataSource collector = database.CreateCollectorDataSource();
+        await using NpgsqlConnection worker = await collector.OpenConnectionAsync();
+        var retention = new PostgreSqlPartitionMaintenancePort(collector);
+        Guid owner = Guid.NewGuid();
+        await using var acquire = new NpgsqlCommand("SELECT fencing_token FROM control.acquire_worker_lease('retention/maintenance',@owner,interval '30 seconds');", worker);
+        acquire.Parameters.AddWithValue("owner", owner);
+        long fence = (long)(await acquire.ExecuteScalarAsync())!;
+        Assert.Equal("idle", await StepAsync(fence));
+        await ExecuteAsync(database, "INSERT INTO system.recovery_attestation(attestation_id,attested_at,attested_by,backup_set_reference,expires_at,attestation_digest) VALUES(@id,clock_timestamp(),'test','restore-tested',clock_timestamp()+interval '3 days',sha256(convert_to('test','UTF8')));", ("id", Guid.NewGuid()));
+        PostgresException stale = await Assert.ThrowsAsync<PostgresException>(() => StepAsync(fence + 1));
+        Assert.Equal("55000", stale.SqlState);
+        Assert.Equal("detached", await StepAsync(fence));
+        Assert.Equal("idle", await StepAsync(fence));
+
+        await using var executionCommand = new NpgsqlCommand("SELECT execution_id FROM system.retention_execution WHERE partition_name=@partition AND state='grace';", admin);
+        executionCommand.Parameters.AddWithValue("partition", partition);
+        Guid execution = (Guid)(await executionCommand.ExecuteScalarAsync())!;
+        await ExecuteAsync(database, "UPDATE system.retention_execution SET drop_after=clock_timestamp()-interval '1 minute' WHERE execution_id=@execution;", ("execution", execution));
+        await ExecuteAsync(database, $"CREATE VIEW analytics.retention_system_dependency AS SELECT count(*) FROM analytics.\"{partition}\";");
+        Assert.Equal("retry", await StepAsync(fence));
+        await ExecuteAsync(database, "DROP VIEW analytics.retention_system_dependency;");
+        Assert.Equal("idle", await StepAsync(fence));
+        await ExecuteAsync(database, "INSERT INTO system.retention_drop_retry(execution_id,error_code,error_detail,next_attempt_at) VALUES(@execution,'TEST','elapsed backoff',clock_timestamp()-interval '1 minute');", ("execution", execution));
+        Assert.Equal("dropped", await StepAsync(fence));
+
+        await using var audit = new NpgsqlCommand("SELECT action_name,actor_kind,actor_identifier,correlation_id,outcome FROM audit.activity WHERE subject_identifier=@partition ORDER BY occurred_at;", admin);
+        audit.Parameters.AddWithValue("partition", partition);
+        await using NpgsqlDataReader reader = await audit.ExecuteReaderAsync();
+        var actions = new List<string>();
+        while (await reader.ReadAsync())
+        {
+            Assert.Equal("system", reader.GetString(1));
+            Assert.Equal("collector/retention", reader.GetString(2));
+            Assert.Equal(execution, reader.GetGuid(3));
+            actions.Add($"{reader.GetString(0)}:{reader.GetString(4)}");
+        }
+        Assert.Collection(actions,
+            action => Assert.Equal("retention.partition.detach:succeeded", action),
+            action => Assert.Equal("retention.partition.drop:failed", action),
+            action => Assert.Equal("retention.partition.drop:succeeded", action));
+        await reader.CloseAsync();
+        await using var grants = new NpgsqlCommand("SELECT has_function_privilege('sqlobserver_collector','system.run_m10_retention_step_safe(uuid,bigint)','EXECUTE'),has_function_privilege('sqlobserver_collector','system.run_m10_retention_step(uuid,bigint)','EXECUTE');", admin);
+        await using NpgsqlDataReader grantReader = await grants.ExecuteReaderAsync();
+        Assert.True(await grantReader.ReadAsync());
+        Assert.True(grantReader.GetBoolean(0));
+        Assert.False(grantReader.GetBoolean(1));
+
+        async Task<string> StepAsync(long token)
+        {
+            var lease = new WorkerLeaseIdentity(new WorkerLeaseKey("retention/maintenance"),
+                new WorkerExecutionId(owner), new FencingToken(token));
+            SystemRetentionStepOutcome result = await retention.RunSystemRetentionStepAsync(
+                lease, new RepositoryCallTimeout(TimeSpan.FromSeconds(5)), CancellationToken.None);
+            return result.ToString().ToLowerInvariant();
+        }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task PolicyChangeDuringGraceReattachesPartitionAndRestoresParentReads(bool remainEnabled)
+    {
+        await using RepositoryTestDatabase database = await CreateMigratedDatabaseAsync();
+        Guid target = Guid.NewGuid();
+        await InsertTargetAsync(database, target, $"reattach-{target:N}", 1);
+        await using NpgsqlConnection admin = await database.DataSource.OpenConnectionAsync();
+        await using (var setup = new NpgsqlCommand("""
+            SET TIME ZONE 'UTC';
+            SET ROLE sqlobserver_migrator;
+            DO $$ DECLARE d date:=current_date-3; n text:=format('metric_rollup_v2_p%s',to_char(d,'YYYYMMDD')); BEGIN
+              EXECUTE format('CREATE TABLE analytics.%I PARTITION OF analytics.metric_rollup_v2 FOR VALUES FROM (%L) TO (%L)',
+                n,d::timestamptz,(d+1)::timestamptz);
+              INSERT INTO system.partition_registry(parent_schema,parent_table,partition_schema,partition_name,partition_granularity,range_start,range_end)
+              VALUES('analytics','metric_rollup_v2','analytics',n,'day',d::timestamptz,(d+1)::timestamptz);
+            END $$;
+            RESET ROLE;
+            """, admin))
+            await setup.ExecuteNonQueryAsync();
+        await ExecuteAsync(database, "INSERT INTO analytics.metric_rollup_v2(bucket_start,instance_id,target_revision,rollup_interval,metric_key,aggregation,dimension_hash,sample_count) VALUES((current_date-3)::timestamptz,@target,1,'hour','engine.cpu.percent','avg',sha256(convert_to('reattach','UTF8')),1);", ("target", target));
+        await ExecuteAsync(database, "UPDATE system.retention_policy SET enabled=true,retain_for=interval '1 day',minimum_partitions_to_keep=1 WHERE data_class='m10_rollups';");
+        await ExecuteAsync(database, "INSERT INTO system.recovery_attestation(attestation_id,attested_at,attested_by,backup_set_reference,expires_at,attestation_digest) VALUES(@id,clock_timestamp(),'test','restore-tested',clock_timestamp()+interval '3 days',sha256(convert_to('test','UTF8')));", ("id", Guid.NewGuid()));
+
+        await using NpgsqlDataSource collector = database.CreateCollectorDataSource();
+        await using NpgsqlConnection worker = await collector.OpenConnectionAsync();
+        Guid owner = Guid.NewGuid();
+        await using var acquire = new NpgsqlCommand("SELECT fencing_token FROM control.acquire_worker_lease('retention/maintenance',@owner,interval '30 seconds');", worker);
+        acquire.Parameters.AddWithValue("owner", owner);
+        long fence = (long)(await acquire.ExecuteScalarAsync())!;
+        var retention = new PostgreSqlPartitionMaintenancePort(collector);
+        var lease = new WorkerLeaseIdentity(new WorkerLeaseKey("retention/maintenance"),
+            new WorkerExecutionId(owner), new FencingToken(fence));
+        var timeout = new RepositoryCallTimeout(TimeSpan.FromSeconds(5));
+        Assert.Equal(SystemRetentionStepOutcome.Detached,
+            await retention.RunSystemRetentionStepAsync(lease, timeout, CancellationToken.None));
+        await using (var hidden = new NpgsqlCommand("SELECT count(*) FROM analytics.metric_rollup_v2 WHERE instance_id=@target;", admin))
+        {
+            hidden.Parameters.AddWithValue("target", target);
+            Assert.Equal(0L, await hidden.ExecuteScalarAsync());
+        }
+
+        await ExecuteAsync(database, "UPDATE system.retention_policy SET enabled=@enabled,retain_for=CASE WHEN @enabled THEN interval '1 day' ELSE NULL END,policy_revision=policy_revision+1 WHERE data_class='m10_rollups';", ("enabled", remainEnabled));
+        Assert.Equal(SystemRetentionStepOutcome.Reattached,
+            await retention.RunSystemRetentionStepAsync(lease, timeout, CancellationToken.None));
+        await using var inspect = new NpgsqlCommand("""
+            SELECT (SELECT count(*) FROM analytics.metric_rollup_v2 WHERE instance_id=@target),
+                   (SELECT count(*) FROM system.partition_registry WHERE parent_schema='analytics'
+                     AND parent_table='metric_rollup_v2' AND lifecycle_state='attached' AND detached_at IS NULL
+                     AND range_start=(current_date-3)::timestamptz),
+                   (SELECT count(*) FROM system.retention_execution WHERE state='reattached'
+                     AND reattached_at IS NOT NULL AND parent_table='metric_rollup_v2'),
+                   (SELECT count(*) FROM audit.activity WHERE action_name='retention.partition.reattach'
+                     AND outcome='succeeded');
+            """, admin);
+        inspect.Parameters.AddWithValue("target", target);
+        await using NpgsqlDataReader reader = await inspect.ExecuteReaderAsync();
+        Assert.True(await reader.ReadAsync());
+        for (int column = 0; column < 4; column++)
+            Assert.Equal(1L, reader.GetInt64(column));
+    }
+
+    [Fact]
+    public async Task PartitionMaintenanceExtendsOnlyActiveM10Streams()
+    {
+        await using RepositoryTestDatabase database = await CreateMigratedDatabaseAsync();
+        await using NpgsqlConnection connection = await database.DataSource.OpenConnectionAsync();
+        static async Task<string[]> ReadParentsAsync(NpgsqlConnection connection)
+        {
+            await using var inspect = new NpgsqlCommand("""
+                SELECT parent_schema::text, parent_table::text
+                FROM system.partition_registry
+                WHERE partition_granularity='day'
+                  AND range_start=(current_date+8)::timestamptz
+                ORDER BY parent_schema,parent_table;
+                """, connection);
+            await using NpgsqlDataReader reader = await inspect.ExecuteReaderAsync();
+            var parents = new List<string>();
+            while (await reader.ReadAsync()) parents.Add($"{reader.GetString(0)}.{reader.GetString(1)}");
+            return parents.ToArray();
+        }
+        string[] before = await ReadParentsAsync(connection);
+        await using NpgsqlDataSource collector = database.CreateCollectorDataSource();
+        await using var maintain = collector.CreateCommand("SELECT control.ensure_m10_partition_set(current_date+1);");
+        Assert.Equal(33, (int)(await maintain.ExecuteScalarAsync())!);
+        string[] after = await ReadParentsAsync(connection);
+        // Other independently maintained streams may already own this date.
+        // This call must create exactly the three active M10 daily streams.
+        string[] added = after.Except(before, StringComparer.Ordinal).ToArray();
+        Assert.Collection(added,
+            item => Assert.Equal("analytics.metric_rollup_v2", item),
+            item => Assert.Equal("telemetry.host_metric_snapshot_v2", item),
+            item => Assert.Equal("telemetry.replication_snapshot_v2", item));
+        Assert.Equal(before, after.Except(added, StringComparer.Ordinal).ToArray());
+    }
 
     [Fact]
     public async Task BackfillInventoryFiltersBeforePagingAndBindsCursorsToItsSurface()
@@ -57,6 +395,149 @@ public sealed class M10AnalyticsPostgreSqlIntegrationTests
     }
 
     [Fact]
+    public async Task PartitionedRunM10ShadowReadersMatchPopulatedBackfillAndRollupInputs()
+    {
+        await using RepositoryTestDatabase database = await CreateMigratedDatabaseAsync();
+        Guid target = Guid.NewGuid(), run = Guid.NewGuid(), sample = Guid.NewGuid(), job = Guid.NewGuid();
+        DateTimeOffset day = new(DateTime.UtcNow.Date.AddDays(-1), TimeSpan.Zero);
+        DateTimeOffset at = day.AddMinutes(10);
+        await InsertTargetAsync(database, target, "m10-run-shadow", 1);
+        await ExecuteAsync(database, """
+            SELECT control.ensure_daily_metric_partition((@at AT TIME ZONE 'UTC')::date);
+            INSERT INTO telemetry.collection_run
+             (run_id,instance_id,collector_id,collector_version,output_schema_version,
+              target_revision,schedule_revision,work_key,owner_execution_id,fencing_token,
+              request_digest,scheduled_for,started_at)
+            VALUES (@run,@target,'engine.core',1,1,1,1,@work,@owner,1,
+             decode(repeat('aa',32),'hex'),@at,@at);
+            INSERT INTO telemetry.collection_run_outcome
+             (run_id,outcome,reason_code,attempt_count,retry_count,duration_ms,
+              source_row_count,output_item_count,inserted_item_count,duplicate_item_count,
+              rejected_item_count,response_bytes,output_bytes,persisted_bytes,truncated,
+              loss_detected,loss_kind,loss_count_exact,lost_row_count,lost_byte_count,
+              completion_digest,completed_at)
+            VALUES (@run,'succeeded','completed',1,0,10,1,1,1,0,0,128,128,128,
+             false,false,'none',true,0,0,decode(repeat('bb',32),'hex'),@at);
+            INSERT INTO telemetry.raw_metric_sample
+             (observed_at,sample_id,instance_id,metric_key,metric_value,
+              dimensions,collected_at,collection_run_id)
+            VALUES (@at,@sample,@target,'host.cpu.percent',42,
+             '{}'::jsonb,@at,@run);
+            INSERT INTO control.analytics_job
+             (job_id,job_kind,instance_id,target_revision,work_key,from_utc,to_utc,status)
+            VALUES (@job,'backfill',@target,1,'analytics/backfill',@day,@end,'queued');
+            """, ("target", target), ("run", run), ("sample", sample),
+            ("owner", Guid.NewGuid()), ("work", $"collector/run/engine.core/{target:N}"),
+            ("at", at), ("day", day), ("end", day.AddHours(1)), ("job", job));
+
+        await using NpgsqlConnection connection = await database.DataSource.OpenConnectionAsync();
+        await using (var role = new NpgsqlCommand("SET ROLE sqlobserver_migrator;", connection))
+            await role.ExecuteNonQueryAsync();
+        await using (var scope = new NpgsqlCommand(
+            "SELECT set_config('sqlobserver.target_scope',@target::text,false);", connection))
+        {
+            scope.Parameters.AddWithValue("target", target);
+            await scope.ExecuteScalarAsync();
+        }
+        async Task<List<string>> Read(string name, bool backfill)
+        {
+            string arguments = backfill
+                ? "@target,1,@day,@end,'host.cpu.percent',NULL::text,100,8388608,@job,1"
+                : "@target,1,@day,@end,'host.cpu.percent',100,@end,'hour',NULL::bytea";
+            await using var command = new NpgsqlCommand(
+                $"SELECT to_jsonb(row)::text FROM reporting.{name}({arguments}) AS row;",
+                connection);
+            command.Parameters.AddWithValue("target", target);
+            command.Parameters.AddWithValue("day", day);
+            command.Parameters.AddWithValue("end", day.AddHours(1));
+            command.Parameters.AddWithValue("job", job);
+            var rows = new List<string>();
+            await using NpgsqlDataReader reader = await command.ExecuteReaderAsync();
+            while (await reader.ReadAsync()) rows.Add(reader.GetString(0));
+            return rows;
+        }
+        List<string> backfillRows = await Read("read_m10_backfill_page", true);
+        Assert.Single(backfillRows);
+        Assert.Equal(backfillRows, await Read("read_m10_backfill_page_v2_shadow", true));
+        Assert.Equal(backfillRows, await Read("read_m10_backfill_page_legacy", true));
+        List<string> rollupRows = await Read("read_m10_rollup_derivation_inputs", false);
+        Assert.Single(rollupRows);
+        Assert.Equal(rollupRows, await Read("read_m10_rollup_derivation_inputs_v2_shadow", false));
+        Assert.Equal(rollupRows, await Read("read_m10_rollup_derivation_inputs_legacy", false));
+        await using var grants = new NpgsqlCommand("""
+            SELECT count(*) FROM pg_proc AS p JOIN pg_namespace AS n ON n.oid=p.pronamespace
+            WHERE n.nspname='reporting'
+              AND p.proname IN ('read_m10_backfill_page_v2_shadow',
+                                'read_m10_backfill_page_legacy',
+                                'read_m10_rollup_derivation_inputs_v2_shadow',
+                                'read_m10_rollup_derivation_inputs_legacy')
+              AND has_function_privilege('sqlobserver_migrator',p.oid,'EXECUTE')
+              AND NOT has_function_privilege('sqlobserver_server',p.oid,'EXECUTE')
+              AND NOT has_function_privilege('sqlobserver_collector',p.oid,'EXECUTE')
+              AND NOT has_function_privilege('sqlobserver_auditor',p.oid,'EXECUTE');
+            """, connection);
+        Assert.Equal(4L, await grants.ExecuteScalarAsync());
+
+        await using (var premature = new NpgsqlCommand(
+            "SELECT control.set_collection_run_v2_m10_read_route(true,10000);", connection))
+            Assert.Equal("55000", (await Assert.ThrowsAsync<PostgresException>(
+                () => premature.ExecuteScalarAsync())).SqlState);
+        await using (NpgsqlTransaction backfill = await connection.BeginTransactionAsync())
+        {
+            foreach (string function in new[]
+                { "backfill_collection_run_v2", "backfill_collection_run_identity" })
+            {
+                await using var copy = new NpgsqlCommand(
+                    $"SELECT complete FROM control.{function}(@target,10);", connection, backfill);
+                copy.Parameters.AddWithValue("target", target);
+                Assert.True((bool)(await copy.ExecuteScalarAsync())!);
+            }
+            await using var certificate = new NpgsqlCommand("""
+                SELECT parity FROM control.record_collection_run_v2_parity_window(
+                 @target,'engine.core',@day,@day + interval '1 day',10);
+                """, connection, backfill);
+            certificate.Parameters.AddWithValue("target", target);
+            certificate.Parameters.AddWithValue("day", day);
+            Assert.True((bool)(await certificate.ExecuteScalarAsync())!);
+            await backfill.CommitAsync();
+        }
+        await using (var activate = new NpgsqlCommand(
+            "SELECT control.set_collection_run_v2_m10_read_route(true,10000);", connection))
+            Assert.Equal(1L, await activate.ExecuteScalarAsync());
+        Assert.Equal(await Read("read_m10_backfill_page_v2_shadow", true),
+            await Read("read_m10_backfill_page", true));
+        Assert.Equal(await Read("read_m10_rollup_derivation_inputs_v2_shadow", false),
+            await Read("read_m10_rollup_derivation_inputs", false));
+        await using (NpgsqlDataSource collector = database.CreateCollectorDataSource())
+        await using (NpgsqlConnection collectorConnection = await collector.OpenConnectionAsync())
+        {
+            await using (var scope = new NpgsqlCommand(
+                "SELECT set_config('sqlobserver.target_scope',@target::text,false);",
+                collectorConnection))
+            {
+                scope.Parameters.AddWithValue("target", target);
+                await scope.ExecuteScalarAsync();
+            }
+            await using var publicRead = new NpgsqlCommand("""
+                SELECT count(*) FROM reporting.read_m10_backfill_page(
+                 @target,1,@day,@end,'host.cpu.percent',NULL::text,100,8388608,@job,1);
+                """, collectorConnection);
+            publicRead.Parameters.AddWithValue("target", target);
+            publicRead.Parameters.AddWithValue("day", day);
+            publicRead.Parameters.AddWithValue("end", day.AddHours(1));
+            publicRead.Parameters.AddWithValue("job", job);
+            Assert.Equal(1L, await publicRead.ExecuteScalarAsync());
+        }
+        await using (var rollback = new NpgsqlCommand(
+            "SELECT control.set_collection_run_v2_m10_read_route(false,10000);", connection))
+            Assert.Equal(2L, await rollback.ExecuteScalarAsync());
+        Assert.Equal(await Read("read_m10_backfill_page_legacy", true),
+            await Read("read_m10_backfill_page", true));
+        Assert.Equal(await Read("read_m10_rollup_derivation_inputs_legacy", false),
+            await Read("read_m10_rollup_derivation_inputs", false));
+    }
+
+    [Fact]
     public async Task DerivationReadsCloseTheirReadersBeforeCompletingTransactions()
     {
         await using RepositoryTestDatabase database = await CreateMigratedDatabaseAsync();
@@ -79,11 +560,19 @@ public sealed class M10AnalyticsPostgreSqlIntegrationTests
         await using RepositoryTestDatabase database = await CreateMigratedDatabaseAsync();
         await using NpgsqlDataSource server = database.CreateServerDataSource();
         var adapter = new PostgreSqlAnalyticsRepositoryPort(server, new IdentityFingerprintKey(new byte[32]));
-        foreach (string dataClass in new[] { "m10_host_metrics", "m10_replication", "m10_rollups", "m10_evidence" })
+        var expectedDurations = new Dictionary<string, TimeSpan>(StringComparer.Ordinal)
+        {
+            ["m10_host_metrics"] = TimeSpan.FromDays(30),
+            ["m10_replication"] = TimeSpan.FromDays(30),
+            ["m10_rollups"] = TimeSpan.FromDays(180),
+            ["m10_evidence"] = TimeSpan.FromDays(180),
+        };
+        foreach ((string dataClass, TimeSpan duration) in expectedDurations)
         {
             RetentionPolicyReadResult result = await adapter.GetPolicyAsync(dataClass, CancellationToken.None);
             Assert.Equal(dataClass, result.Policy.DataClass);
-            Assert.False(result.Policy.Enabled);
+            Assert.True(result.Policy.Enabled);
+            Assert.Equal(duration, result.Policy.RetainFor);
         }
         await using var direct = server.CreateCommand("SELECT count(*) FROM system.retention_policy");
         PostgresException denied = await Assert.ThrowsAsync<PostgresException>(() => direct.ExecuteScalarAsync());
@@ -309,6 +798,97 @@ public sealed class M10AnalyticsPostgreSqlIntegrationTests
         stale.Parameters.AddWithValue("snapshot", now.AddMinutes(1));
         PostgresException conflict = await Assert.ThrowsAsync<PostgresException>(() => stale.ExecuteScalarAsync());
         Assert.Equal("40001", conflict.SqlState);
+    }
+
+    [Fact]
+    public async Task M10DerivationSchedulerAdvancesPastCompletedTargetBatchesAndFindsLateForecastDimensions()
+    {
+        await using RepositoryTestDatabase database = await CreateMigratedDatabaseAsync(295);
+        await ExecuteAsync(database, """
+            INSERT INTO control.observation_target(instance_id,instance_key,display_name,host_name,tcp_port,connect_timeout,
+              authentication_mode,transport_security_mode,lifecycle_state,revision,created_at,updated_at,discovery_requested_at,retired_at)
+            SELECT ('00000000-0000-0000-0000-'||lpad(n::text,12,'0'))::uuid,n::text,'Fleet scheduler target','sql01',1433,
+              interval '5 seconds','windows_integrated_service_identity','mandatory_validated',
+              CASE WHEN n=129 THEN 'pending_discovery' WHEN n=130 THEN 'disabled' WHEN n=131 THEN 'retired' ELSE 'active' END,
+              CASE WHEN n=129 THEN 2 ELSE 1 END,now(),now(),now(),CASE WHEN n=131 THEN now() END FROM generate_series(1,131) n;
+            """);
+        await using NpgsqlDataSource collector = database.CreateCollectorDataSource();
+        Guid owner = Guid.NewGuid();
+        (long token, _) = await AcquireLeaseAsync(collector, "analytics/derivation", owner);
+        await using NpgsqlConnection connection = await collector.OpenConnectionAsync();
+        const string schedule = "SELECT control.schedule_m10_derivation_jobs(@owner,@token);";
+        Assert.Equal(3840, await ScalarIntAsync(connection, schedule, ("owner", owner), ("token", token)));
+        await using NpgsqlConnection inspection = await database.DataSource.OpenConnectionAsync();
+        await ExecuteAsync(database, "UPDATE control.analytics_job SET status='failed',attempt=3 WHERE job_id=(SELECT min(job_id::text)::uuid FROM control.analytics_job);");
+        const string originalJobs = "SELECT md5(jsonb_agg(to_jsonb(j) ORDER BY j.job_id)::text) FROM control.analytics_job j WHERE instance_id<'00000000-0000-0000-0000-000000000129'::uuid;";
+        string originalDigest;
+        await using (var snapshot = new NpgsqlCommand(originalJobs, inspection))
+            originalDigest = (string)(await snapshot.ExecuteScalarAsync())!;
+        var migrator = new PostgreSqlMigrationPort(database.DataSource);
+        MigrationBatchResult upgrade = await migrator.ApplyPendingAsync(new MigrationApplyRequest(1, new RepositoryCallTimeout(TimeSpan.FromSeconds(30))), default);
+        Assert.False(upgrade.HasFailures);
+        Assert.Equal(296, Assert.Single(upgrade.Results).Migration.Number.Value);
+        Assert.Equal(30, await ScalarIntAsync(connection, schedule, ("owner", owner), ("token", token)));
+        Assert.Equal(0, await ScalarIntAsync(connection, schedule, ("owner", owner), ("token", token)));
+        await using (var snapshot = new NpgsqlCommand(originalJobs, inspection))
+            Assert.Equal(originalDigest, await snapshot.ExecuteScalarAsync());
+        const string schedulerLedger = "SELECT to_jsonb(m)::text FROM system.schema_migration m WHERE migration_number=296;";
+        string schedulerLedgerBefore;
+        await using (var ledger = new NpgsqlCommand(schedulerLedger, inspection))
+            schedulerLedgerBefore = Assert.IsType<string>(await ledger.ExecuteScalarAsync());
+        // A repeated bounded request selects the next pending migration in the
+        // full catalog; it must leave the already applied scheduler migration intact.
+        MigrationBatchResult repeatUpgrade = await migrator.ApplyPendingAsync(new MigrationApplyRequest(1, new RepositoryCallTimeout(TimeSpan.FromSeconds(30))), default);
+        Assert.False(repeatUpgrade.HasFailures); Assert.Equal(297, Assert.Single(repeatUpgrade.Results).Migration.Number.Value);
+        await using (var ledger = new NpgsqlCommand(schedulerLedger, inspection))
+            Assert.Equal(schedulerLedgerBefore, Assert.IsType<string>(await ledger.ExecuteScalarAsync()));
+        Assert.True(await ScalarBoolAsync(inspection, """
+            SELECT count(*)=129 AND bool_and(jobs=33 AND rollups=30 AND derivations=3 AND revision=current_revision) FROM (
+              SELECT j.instance_id,count(*) jobs,count(*) FILTER(WHERE job_kind='rollup') rollups,
+                count(*) FILTER(WHERE job_kind<>'rollup') derivations,min(target_revision) revision,max(t.revision) current_revision
+              FROM control.analytics_job j JOIN control.observation_target t USING(instance_id)
+              WHERE source_catalog_version=1 GROUP BY j.instance_id) counts;
+            """));
+        // Dimensions may become available after a target's non-forecast jobs exist.
+        // Both an early target and target 129 must be revisited, with the existing 256-dimension cap.
+        await ExecuteAsync(database, """
+            DO $$ DECLARE d timestamptz:=date_trunc('day',clock_timestamp())-interval '2 days'; BEGIN
+              EXECUTE format('CREATE TABLE IF NOT EXISTS analytics.%I PARTITION OF analytics.metric_rollup_v2 FOR VALUES FROM (%L) TO (%L)',
+                'metric_rollup_v2_p'||to_char(d,'YYYYMMDD'),d,d+interval '1 day');
+            END $$;
+            INSERT INTO analytics.metric_rollup_v2(bucket_start,instance_id,target_revision,rollup_interval,metric_key,aggregation,
+              dimension_hash,generation,sample_count,expected_count,value,visibility_state,source_cutoff_utc,dimensions)
+            SELECT date_trunc('day',clock_timestamp())-interval '2 days',t.instance_id,t.revision,'day','host.volume.free_bytes','avg',
+              sha256(convert_to(n::text,'UTF8')),1,288,288,1000,'complete',date_trunc('day',clock_timestamp())-interval '1 day',
+              jsonb_build_object('volume',n::text)
+            FROM control.observation_target t CROSS JOIN generate_series(1,257) n
+            WHERE t.instance_key='1' OR t.instance_key='129' AND n=1;
+            """);
+        Assert.Equal(0, await ScalarIntAsync(connection, schedule, ("owner", owner), ("token", token)));
+        Assert.Equal(257, await ScalarIntAsync(inspection, "SELECT count(*)::integer FROM control.analytics_job WHERE job_kind='forecast';"));
+        Assert.True(await ScalarBoolAsync(inspection, """
+            SELECT count(*)=2 AND min(jobs)=1 AND max(jobs)=256 FROM (
+              SELECT instance_id,count(*) jobs FROM control.analytics_job WHERE job_kind='forecast' GROUP BY instance_id) counts;
+            """));
+        Assert.True(await ScalarBoolAsync(inspection, """
+            SELECT bool_and(horizon_seconds=2592000 AND source_catalog_version=1 AND dimensions_hash IS NOT NULL
+              AND from_utc=date_trunc('day',clock_timestamp())-interval '29 days'
+              AND to_utc=date_trunc('day',clock_timestamp())-interval '1 day' AND source_cutoff_utc=to_utc)
+            FROM control.analytics_job WHERE job_kind='forecast';
+            """));
+        Assert.Equal(0, await ScalarIntAsync(connection, schedule, ("owner", owner), ("token", token)));
+        Assert.Equal(4514, await ScalarIntAsync(inspection, "SELECT count(*)::integer FROM control.analytics_job;"));
+        PostgresException stale = await Assert.ThrowsAsync<PostgresException>(() =>
+            ScalarIntAsync(connection, schedule, ("owner", owner), ("token", token + 1)));
+        Assert.Equal("55000", stale.SqlState);
+        Assert.True(await ScalarBoolAsync(inspection, """
+            SELECT p.proowner='sqlobserver_migrator'::regrole AND p.prosecdef
+              AND has_function_privilege('sqlobserver_collector',p.oid,'EXECUTE')
+              AND NOT has_function_privilege('sqlobserver_server',p.oid,'EXECUTE')
+              AND NOT has_function_privilege('sqlobserver_auditor',p.oid,'EXECUTE')
+              AND NOT EXISTS(SELECT 1 FROM aclexplode(p.proacl) a WHERE a.grantee=0 AND a.privilege_type='EXECUTE')
+            FROM pg_proc p WHERE p.oid='control.schedule_m10_derivation_jobs(uuid,bigint)'::regprocedure;
+            """));
     }
 
     [Fact]
@@ -558,13 +1138,20 @@ public sealed class M10AnalyticsPostgreSqlIntegrationTests
             schemaVersion = 1, targetId = target.ToString(), targetRevision = 1,
             items = new[] { new { observedAtUtc = observed.ToString("O"), topologyFingerprint = new string('e', 64), role = "primary", synchronizationState = "synchronized", pendingCommands = 3, latencySeconds = 1.5, visibilityScope = 1, stateAvailable = true } },
         });
-        Guid replicationRun = Guid.NewGuid();
-        (long replicationToken, Guid replicationOwner) = await AcquireLeaseAsync(collector, "collector/m10-replication", Guid.NewGuid());
-        (string replicationStatus, int replicationCount) = await CommitReplicationAsync(connection, replicationRun, target, "collector/m10-replication", replicationOwner, replicationToken, digest, replicationPayload, digest);
+        // The compatibility payload/replay seam now requires a genuine canonical
+        // run identity. This is an open attempt, not a fabricated completed run.
+        await ReplicationWindowFixture.EnableAsync(database, target);
+        var canonical = await ReplicationWindowFixture.BeginAsync(database, collector,
+            new PostgreSqlCollectorRuntimeRepositoryPort(collector), target);
+        Guid replicationRun = canonical.Id.Value;
+        long replicationToken = canonical.Lease.FencingToken.Value;
+        Guid replicationOwner = canonical.Lease.Owner.Value;
+        string replicationWorkKey = canonical.Lease.Key.Value;
+        (string replicationStatus, int replicationCount) = await CommitReplicationAsync(connection, replicationRun, target, replicationWorkKey, replicationOwner, replicationToken, digest, replicationPayload, digest);
         Assert.Equal("committed", replicationStatus);
         Assert.Equal(1, replicationCount);
         string changedReplicationPayload = replicationPayload.Replace("synchronized", "unknown", StringComparison.Ordinal);
-        PostgresException replicationDivergence = await Assert.ThrowsAsync<PostgresException>(() => CommitReplicationAsync(connection, replicationRun, target, "collector/m10-replication", replicationOwner, replicationToken, digest, changedReplicationPayload, digest));
+        PostgresException replicationDivergence = await Assert.ThrowsAsync<PostgresException>(() => CommitReplicationAsync(connection, replicationRun, target, replicationWorkKey, replicationOwner, replicationToken, digest, changedReplicationPayload, digest));
         Assert.Equal("40001", replicationDivergence.SqlState);
 
         // Command counts must keep their unit through the public surface.
@@ -635,13 +1222,13 @@ public sealed class M10AnalyticsPostgreSqlIntegrationTests
         Assert.Equal(1000.0, Convert.ToDouble(await capacity.ExecuteScalarAsync(), System.Globalization.CultureInfo.InvariantCulture));
     }
 
-    private async Task<RepositoryTestDatabase> CreateMigratedDatabaseAsync()
+    private async Task<RepositoryTestDatabase> CreateMigratedDatabaseAsync(int maxMigrations = MigrationBatchResult.MaximumResults)
     {
         RepositoryTestDatabase database = await fixture.CreateDatabaseAsync();
         try
         {
             MigrationBatchResult result = await new PostgreSqlMigrationPort(database.DataSource).ApplyPendingAsync(
-                new MigrationApplyRequest(MigrationBatchResult.MaximumResults, new RepositoryCallTimeout(TimeSpan.FromSeconds(30))), CancellationToken.None);
+                new MigrationApplyRequest(maxMigrations, new RepositoryCallTimeout(TimeSpan.FromSeconds(30))), CancellationToken.None);
             Assert.False(result.HasFailures);
             return database;
         }

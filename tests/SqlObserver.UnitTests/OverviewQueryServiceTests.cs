@@ -1,5 +1,6 @@
 using System.Reflection;
 using SqlObserver.Domain.Auditing;
+using SqlObserver.Domain.Backups;
 using SqlObserver.Application.Ports;
 using SqlObserver.Application.Services;
 using SqlObserver.Domain.Alerting;
@@ -31,16 +32,143 @@ public sealed class OverviewQueryServiceTests
         return new(new(new(guid), new($"sql{index}"), new($"SQL {index:D2}"), new(new(new("sql.example.test"), tcpPort:1433), new(TimeSpan.FromSeconds(5))), lifecycle, new(1), At, At, At), null);
     }
     private static OverviewQueryService Service(IReadOnlyList<ObservationTargetStatusSnapshot> inventory, IAlertQueryService? alertService = null,
-        IOverviewHistoryRepositoryPort? history = null, IActivityProjectionQueryService? activityService = null)
+        IOverviewHistoryRepositoryPort? history = null, IActivityProjectionQueryService? activityService = null,
+        IOperationalHealthQueryService? operationsService = null,
+        IOverviewLatestStatusRepositoryPort? latestStatus = null,
+        IHealthProjectionQueryService? healthService = null, IBackupFleetLatestRepositoryPort? backupLatest = null)
     {
         var targets = OverviewStub.Create<IObservationTargetStatusQueryService>((_,args) =>
         {
             var query=(ListObservationTargetsQuery)args![0]!;
             return ValueTask.FromResult(new ObservationTargetStatusPage(inventory.Where(t=>query.Authorization.CanAccess(t.Target.TargetId)).ToArray(),null));
         });
-        return new(targets, OverviewStub.Create<IHealthProjectionQueryService>(), alertService??OverviewStub.Create<IAlertQueryService>(),
-            activityService??OverviewStub.Create<IActivityProjectionQueryService>(),OverviewStub.Create<IDeadlockProjectionQueryService>(),OverviewStub.Create<IOperationalHealthQueryService>(),
-            OverviewStub.Create<IMetricSeriesQueryService>(),history??OverviewStub.Create<IOverviewHistoryRepositoryPort>());
+        return new(targets, healthService??OverviewStub.Create<IHealthProjectionQueryService>(), alertService??OverviewStub.Create<IAlertQueryService>(),
+            activityService??OverviewStub.Create<IActivityProjectionQueryService>(),OverviewStub.Create<IDeadlockProjectionQueryService>(),operationsService??OverviewStub.Create<IOperationalHealthQueryService>(),
+            OverviewStub.Create<IMetricSeriesQueryService>(),history??OverviewStub.Create<IOverviewHistoryRepositoryPort>(),
+            latestStatus??OverviewStub.Create<IOverviewLatestStatusRepositoryPort>(),
+            OverviewStub.Create<IObservationTargetGroupingPort>((_, args) =>
+            {
+                var ids = (IReadOnlyList<Guid>)args![0]!;
+                return Task.FromResult<IReadOnlyDictionary<Guid, ObservationTargetGrouping>>(
+                    ids.ToDictionary(id => id, id => new ObservationTargetGrouping(id, null, [], 0)));
+            }), backupLatest ?? OverviewStub.Create<IBackupFleetLatestRepositoryPort>());
+    }
+
+    private static BackupFleetSummary BackupSummary(MonitoredInstanceId id)
+    {
+        DateTimeOffset now = DateTimeOffset.UtcNow.AddSeconds(-1);
+        now = new(now.Ticks - now.Ticks % TimeSpan.TicksPerMicrosecond, TimeSpan.Zero);
+        var header = new BackupEvidenceHeader(id, now, 1, Guid.NewGuid(), now, now, now,
+            "UTC", DateTime.SpecifyKind(now.Date.AddDays(-35), DateTimeKind.Unspecified), BackupFreshnessCoverage.Complete,
+            BackupEvidenceStatus.Retained, 2, 2, 2, 1, true, 1, 1);
+        return new(header, now.AddMinutes(2), BackupFleetStatus.WithinPolicy, new(1, 0, 0, 0, 0, []), new(0, 0, 0, 1, 0, []), 0);
+    }
+
+    [Theory]
+    [InlineData(false)] [InlineData(true)]
+    public async Task BackupCacheIsIndependentOfCoreCacheAndNeverFallsBackToDatabaseReads(bool selected)
+    {
+        var target = Target(1); var candidate = BackupSummary(target.Target.TargetId); int reads = 0, legacyReads = 0;
+        var backups = OverviewStub.Create<IBackupFleetLatestRepositoryPort>((_, args) =>
+        {
+            Assert.Equal(target.Target.TargetId, args![0]); Assert.Equal(1L, args[1]);
+            Assert.True(candidate.Context.AtUtc <= (DateTimeOffset)args[2]!);
+            Assert.Equal(TimeSpan.FromSeconds(5), ((RepositoryCallTimeout)args[3]!).Value);
+            reads++; return ValueTask.FromResult<BackupFleetSummary?>(candidate);
+        });
+        var operations = OverviewStub.Create<IOperationalHealthQueryService>((method, _) =>
+        {
+            if (method!.Name == nameof(IOperationalHealthQueryService.GetBackupsAsync)) legacyReads++;
+            return Activator.CreateInstance(method!.ReturnType);
+        });
+        OverviewTargetEvidence evidence = Assert.Single((await Service([target], operationsService: operations, backupLatest: backups)
+            .ReadAsync(new(Auth(), selected ? target.Target.TargetId.Value : null, At.AddHours(-1), At, true), CancellationToken.None)).Evidence);
+        Assert.Equal(1, reads); Assert.Equal(0, legacyReads);
+        Assert.Equal("within_policy", evidence.BackupSummary!.Status);
+        Assert.Equal(1, evidence.BackupSummary.Full.WithinThreshold);
+        Assert.Equal(1, evidence.BackupSummary.Log.NotRequired);
+        Assert.DoesNotContain(evidence.Resources, r => r.Label == "Backup evidence");
+    }
+
+    [Theory]
+    [InlineData("missing")] [InlineData("foreign")] [InlineData("revision")]
+    [InlineData("future")] [InlineData("expired")] [InlineData("counts")] [InlineData("status")] [InlineData("failure")]
+    public async Task InvalidBackupCacheHasNoVerdictOrLegacyFallback(string problem)
+    {
+        var target = Target(1); var summary = BackupSummary(target.Target.TargetId);
+        summary = problem switch
+        {
+            "foreign" => summary with { Context = summary.Context with { TargetId = Target(2).Target.TargetId } },
+            "revision" => summary with { Context = summary.Context with { TargetRevision = 2 } },
+            "future" => summary with { Context = summary.Context with { AtUtc = summary.Context.AtUtc.AddMinutes(1) } },
+            "expired" => summary with { ValidUntilUtc = summary.Context.AtUtc },
+            "counts" => summary with { Full = summary.Full with { WithinThreshold = 0 } },
+            "status" => summary with { Status = BackupFleetStatus.PolicyViolated },
+            _ => summary,
+        };
+        var backups = OverviewStub.Create<IBackupFleetLatestRepositoryPort>((_, _) => problem == "failure"
+            ? throw new IOException("private provider detail") : ValueTask.FromResult(problem == "missing" ? null : summary));
+        OverviewTargetEvidence evidence = Assert.Single((await Service([target], backupLatest: backups)
+            .ReadAsync(new(Auth(), null, At.AddHours(-1), At, true), CancellationToken.None)).Evidence);
+        Assert.Null(evidence.BackupSummary); Assert.Empty(evidence.Issues);
+        Assert.Contains(evidence.Gaps, gap => gap.StartsWith(problem == "missing" ? "No current backup policy summary" : "Backup policy summary unavailable", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task BackupFaultsSurviveUnknownAgeWithoutInventingAPolicyViolation()
+    {
+        var target = Target(1); var summary = BackupSummary(target.Target.TargetId);
+        summary = summary with { Status = BackupFleetStatus.Indeterminate, ObservedFaultDatabases = 1,
+            Full = new(0, 0, 1, 0, 0, [new(BackupFreshnessReason.TimestampQualificationUnavailable, 1)]) };
+        var backups = OverviewStub.Create<IBackupFleetLatestRepositoryPort>((_, _) => ValueTask.FromResult<BackupFleetSummary?>(summary));
+        OverviewTargetEvidence evidence = Assert.Single((await Service([target], backupLatest: backups)
+            .ReadAsync(new(Auth(), null, At.AddHours(-1), At, true), CancellationToken.None)).Evidence);
+        Assert.Equal("indeterminate", evidence.BackupSummary!.Status);
+        Assert.Equal("timestamp_qualification_unavailable", Assert.Single(evidence.BackupSummary.Full.UnknownReasons).Reason);
+        Assert.Equal("Backup faults observed", Assert.Single(evidence.Issues).Title);
+        Assert.Equal(0, evidence.BackupSummary.Full.PolicyViolated);
+    }
+
+    [Fact]
+    public async Task BackupPoliciesCanFailAlongsideUnknownLogChecks()
+    {
+        var target = Target(1); var summary = BackupSummary(target.Target.TargetId);
+        summary = summary with { Status = BackupFleetStatus.PolicyViolated, Full = new(0, 1, 0, 0, 0, []),
+            Log = new(0, 0, 1, 0, 0, [new(BackupFreshnessReason.OtherReplicaEvidenceRequired, 1)]) };
+        var backups = OverviewStub.Create<IBackupFleetLatestRepositoryPort>((_, _) => ValueTask.FromResult<BackupFleetSummary?>(summary));
+        OverviewTargetEvidence evidence = Assert.Single((await Service([target], backupLatest: backups)
+            .ReadAsync(new(Auth(), null, At.AddHours(-1), At, true), CancellationToken.None)).Evidence);
+        Assert.Equal("policy_violated", evidence.BackupSummary!.Status);
+        Assert.Equal(1, evidence.BackupSummary.Log.Indeterminate);
+        Assert.Equal("operations", Assert.Single(evidence.Issues).Destination);
+    }
+
+    [Fact]
+    public async Task FastTargetsCannotReturnExpiredBackupVerdictsAfterASlowerFleetTargetFinishes()
+    {
+        var first = Target(1); var second = Target(2); var summary = BackupSummary(first.Target.TargetId);
+        summary = summary with { ValidUntilUtc = summary.Context.AtUtc.AddSeconds(2) };
+        var published = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var backups = OverviewStub.Create<IBackupFleetLatestRepositoryPort>((_, args) =>
+        {
+            if ((MonitoredInstanceId)args![0]! != first.Target.TargetId) return ValueTask.FromResult<BackupFleetSummary?>(null);
+            published.SetResult(); return ValueTask.FromResult<BackupFleetSummary?>(summary);
+        });
+        async Task<IReadOnlyList<OverviewSeries>> History(MonitoredInstanceId id)
+        {
+            if (id == second.Target.TargetId)
+            {
+                await published.Task;
+                TimeSpan remaining = summary.ValidUntilUtc - DateTimeOffset.UtcNow;
+                if (remaining > TimeSpan.Zero) await Task.Delay(remaining + TimeSpan.FromMilliseconds(30));
+            }
+            return [];
+        }
+        var history = OverviewStub.Create<IOverviewHistoryRepositoryPort>((_, args) => History((MonitoredInstanceId)args![0]!));
+        OverviewSnapshot result = await Service([first, second], history: history, backupLatest: backups)
+            .ReadAsync(new(Auth(), null, At.AddHours(-1), At, true), CancellationToken.None);
+        Assert.All(result.Evidence, item => Assert.Null(item.BackupSummary));
+        Assert.Contains("Backup policy summary expired; refresh current evidence", result.Evidence.Single(item => item.TargetId == first.Target.TargetId.Value).Gaps);
     }
 
     [Theory]
@@ -58,6 +186,175 @@ public sealed class OverviewQueryServiceTests
         var inventory=Enumerable.Range(1,10).Select(i=>Target(i)).ToArray();
         var result=await Service(inventory).ReadAsync(new(Auth(),inventory[3].Target.TargetId.Value,At.AddHours(-1),At),CancellationToken.None);
         Assert.Equal(10,result.Targets.Count);Assert.Equal(inventory[3].Target.TargetId.Value,Assert.Single(result.Evidence).TargetId);
+    }
+
+    [Fact]
+    public async Task OptInSelectedServerUsesLatestCurrentEvidenceAndStillReadsWindowedHistory()
+    {
+        var target = Target(1);
+        int latestReads = 0, historyReads = 0, agentReads = 0, blockingHistoryReads = 0;
+        DateTimeOffset now = DateTimeOffset.UtcNow;
+        var latest = OverviewStub.Create<IOverviewLatestStatusRepositoryPort>((_, args) =>
+        {
+            Interlocked.Increment(ref latestReads);
+            Assert.Equal(target.Target.TargetId, (MonitoredInstanceId)args![0]!);
+            Assert.Equal(1L, args[1]);
+            Assert.Equal(TimeSpan.Zero, ((DateTimeOffset)args[2]!).Offset);
+            return Task.FromResult<OverviewLatestStatus?>(new(
+                target.Target.TargetId.Value, 1, 4, now, "current", now,
+                new(3, "current", now), new(2, "current", now),
+                new Dictionary<string, OverviewLatestSource>
+                {
+                    ["alerts"] = new("current", now),
+                    ["blocking"] = new("current", now)
+                },
+                [new(target.Target.TargetId.Value, "Old display name", "Cached alert",
+                    "Evidence", "alerts", 1, now)],
+                [new(target.Target.TargetId.Value, "Old display name", "TempDB used",
+                    50, "%", "current", now)],
+                ["Partial wait coverage"]));
+        });
+        var health = OverviewStub.Create<IHealthProjectionQueryService>((_, _) =>
+            throw new InvalidOperationException("Current health must come from the latest row."));
+        var alerts = OverviewStub.Create<IAlertQueryService>((_, _) =>
+            throw new InvalidOperationException("Current alerts must come from the latest row."));
+        var activity = OverviewStub.Create<IActivityProjectionQueryService>((method, _) =>
+        {
+            if (method!.Name != nameof(IActivityProjectionQueryService.ListBlockingHistoryAsync))
+                throw new InvalidOperationException("Current activity must come from the latest row.");
+            Interlocked.Increment(ref blockingHistoryReads);
+            return ValueTask.FromResult<BlockingHistoryPage?>(null);
+        });
+        var operations = OverviewStub.Create<IOperationalHealthQueryService>((method, _) =>
+        {
+            if (method!.Name != nameof(IOperationalHealthQueryService.GetAgentFailuresAsync))
+                throw new InvalidOperationException("Current operational health must come from the latest row.");
+            Interlocked.Increment(ref agentReads);
+            return ValueTask.FromResult<SqlAgentFailureSnapshot?>(null);
+        });
+        var history = OverviewStub.Create<IOverviewHistoryRepositoryPort>((_, _) =>
+        {
+            Interlocked.Increment(ref historyReads);
+            return Task.FromResult<IReadOnlyList<OverviewSeries>>([]);
+        });
+
+        OverviewSnapshot result = await Service([target], alerts, history, activity,
+            operations, latest, health).ReadAsync(new(Auth(), target.Target.TargetId.Value,
+            At.AddHours(-1), At, true), CancellationToken.None);
+        OverviewTargetEvidence evidence = Assert.Single(result.Evidence);
+        Assert.Equal(1, latestReads);
+        Assert.Equal(2, historyReads);
+        Assert.Equal(1, agentReads);
+        Assert.True(blockingHistoryReads > 0);
+        Assert.Equal("current", evidence.CollectionState);
+        Assert.Equal(3, evidence.ActiveAlerts.Value);
+        Assert.Equal(2, evidence.BlockedSessions.Value);
+        Assert.Equal("SQL 01", Assert.Single(evidence.Issues,
+            issue => issue.Title == "Cached alert").Server);
+        Assert.Equal("SQL 01", Assert.Single(evidence.Resources,
+            resource => resource.Label == "TempDB used").Server);
+        Assert.Contains("Partial wait coverage", evidence.Gaps);
+    }
+
+    [Fact]
+    public async Task FleetLatestStatusReadsEachAuthorizedTargetAndKeepsWindowedHistory()
+    {
+        ObservationTargetStatusSnapshot[] inventory = [Target(1), Target(2)];
+        var latestReads = new System.Collections.Concurrent.ConcurrentBag<Guid>();
+        var historyReads = new System.Collections.Concurrent.ConcurrentBag<Guid>();
+        var latest = OverviewStub.Create<IOverviewLatestStatusRepositoryPort>((_, args) =>
+        {
+            var id = (MonitoredInstanceId)args![0]!;
+            latestReads.Add(id.Value);
+            Assert.Contains(inventory, target => target.Target.TargetId == id);
+            return Task.FromResult<OverviewLatestStatus?>(new(
+                id.Value, 1, 1, DateTimeOffset.UtcNow, "current", DateTimeOffset.UtcNow,
+                new(id == inventory[0].Target.TargetId ? 1 : 2, "current", At),
+                new(0, "current", At),
+                new Dictionary<string, OverviewLatestSource>
+                {
+                    ["alerts"] = new("current", At),
+                    ["blocking"] = new("current", At)
+                }, [], [], []));
+        });
+        var history = OverviewStub.Create<IOverviewHistoryRepositoryPort>((_, args) =>
+        {
+            var id = (MonitoredInstanceId)args![0]!;
+            historyReads.Add(id.Value);
+            return Task.FromResult<IReadOnlyList<OverviewSeries>>([
+                new(id.Value, "", "engine.batch_requests_per_second", "batches/sec", "observed", null,
+                    [new(At.AddMinutes(-5), 12, 1)])
+            ]);
+        });
+        var health = OverviewStub.Create<IHealthProjectionQueryService>((_, _) =>
+            throw new InvalidOperationException("Fleet current health must use the latest row."));
+        var alerts = OverviewStub.Create<IAlertQueryService>((_, _) =>
+            throw new InvalidOperationException("Fleet current alerts must use the latest row."));
+
+        OverviewSnapshot result = await Service(inventory, alerts, history,
+            latestStatus: latest, healthService: health).ReadAsync(
+                new(Auth(), null, At.AddHours(-1), At, true), CancellationToken.None);
+
+        Assert.Equal(inventory.Select(target => target.Target.TargetId.Value).Order(), latestReads.Order());
+        Assert.Equal(inventory.Select(target => target.Target.TargetId.Value).Order(), historyReads.Order());
+        Assert.Equal([1d, 2d], result.Evidence.OrderBy(item => item.DisplayName)
+            .Select(item => item.ActiveAlerts.Value));
+        Assert.All(result.Evidence, item =>
+        {
+            Assert.Single(item.Series, series => series.Metric == "engine.batch_requests_per_second");
+            Assert.DoesNotContain(item.Gaps, gap => gap is "Collection health unavailable" or "Alerts unavailable");
+        });
+    }
+
+    [Fact]
+    public async Task MissingOptInProjectionFallsBackForSelectedServerAndFleet()
+    {
+        var target = Target(1);
+        int healthReads = 0;
+        var latest = OverviewStub.Create<IOverviewLatestStatusRepositoryPort>((_, _) =>
+            Task.FromResult<OverviewLatestStatus?>(null));
+        var health = OverviewStub.Create<IHealthProjectionQueryService>((method, _) =>
+        {
+            if (method!.Name == nameof(IHealthProjectionQueryService.GetInstanceAsync))
+            {
+                Interlocked.Increment(ref healthReads);
+                return ValueTask.FromResult<InstanceHealthProjection?>(null);
+            }
+            return ValueTask.FromResult<DatabaseHealthPage?>(null);
+        });
+        OverviewQueryService service = Service([target], latestStatus: latest,
+            healthService: health);
+        OverviewSnapshot fleet = await service.ReadAsync(
+            new(Auth(), null, At.AddHours(-1), At, true), CancellationToken.None);
+        Assert.Contains("No latest status projection; direct source reads used",
+            Assert.Single(fleet.Evidence).Gaps);
+        OverviewSnapshot result = await service.ReadAsync(new(Auth(),
+            target.Target.TargetId.Value, At.AddHours(-1), At, true), CancellationToken.None);
+        Assert.Equal(2, healthReads);
+        Assert.Contains("No latest status projection; direct source reads used",
+            Assert.Single(result.Evidence).Gaps);
+    }
+
+    [Fact]
+    public async Task WrongTargetLatestStatusFallsBackWithoutExposingItsIssues()
+    {
+        var target = Target(1);
+        var foreign = Target(2);
+        var latest = OverviewStub.Create<IOverviewLatestStatusRepositoryPort>((_, _) =>
+            Task.FromResult<OverviewLatestStatus?>(new(
+                target.Target.TargetId.Value, 1, 1, DateTimeOffset.UtcNow,
+                "current", DateTimeOffset.UtcNow, new(1, "current", At),
+                new(0, "current", At), new Dictionary<string, OverviewLatestSource>(),
+                [new(foreign.Target.TargetId.Value, "Foreign", "Foreign alert", "Leak",
+                    "alerts", 1, At)], [], [])));
+        OverviewSnapshot result = await Service([target], latestStatus: latest)
+            .ReadAsync(new(Auth(), target.Target.TargetId.Value,
+                At.AddHours(-1), At, true), CancellationToken.None);
+
+        OverviewTargetEvidence evidence = Assert.Single(result.Evidence);
+        Assert.DoesNotContain(evidence.Issues, issue => issue.Title == "Foreign alert");
+        Assert.Contains("Latest status unavailable", evidence.Gaps);
+        Assert.Null(evidence.ActiveAlerts.Value);
     }
 
     [Fact]
@@ -89,6 +386,52 @@ public sealed class OverviewQueryServiceTests
     }
 
     [Fact]
+    public async Task FleetUsesTargetSqlHistoryForCpuAndMemoryWithoutReturningFullSeries()
+    {
+        var target = Target(1);
+        var history = OverviewStub.Create<IOverviewHistoryRepositoryPort>((method, _) =>
+            Task.FromResult<IReadOnlyList<OverviewSeries>>(method!.Name == nameof(IOverviewHistoryRepositoryPort.ReadAsync)
+                ? [
+                    new(target.Target.TargetId.Value, "", "engine.sql_scheduler_cpu_percent", "%", "observed", null,
+                        [new(At.AddMinutes(-20), 95, 1), new(At.AddMinutes(-5), 68.5, 3)]),
+                    new(target.Target.TargetId.Value, "", "engine.os_available_memory_bytes", "GiB", "observed", null,
+                        [new(At.AddMinutes(-20), 4.25, 2)])
+                  ] : []));
+
+        OverviewSnapshot result = await Service([target], history: history).ReadAsync(
+            new(Auth(), null, At.AddHours(-1), At), CancellationToken.None);
+        OverviewTargetEvidence evidence = Assert.Single(result.Evidence);
+        OverviewResource cpu = Assert.Single(evidence.Resources, item => item.Label == "SQL scheduler CPU · selected window");
+        Assert.Equal(68.5, cpu.Value);
+        Assert.Equal("observed", cpu.State);
+        Assert.Equal(At.AddMinutes(-5), cpu.ObservedAtUtc);
+        OverviewResource memory = Assert.Single(evidence.Resources, item => item.Label == "OS available memory via SQL · selected window");
+        Assert.Equal(4.25, memory.Value);
+        Assert.Equal("stale", memory.State);
+        Assert.DoesNotContain(evidence.Series, item => item.Metric is
+            "engine.sql_scheduler_cpu_percent" or "engine.os_available_memory_bytes");
+    }
+
+    [Fact]
+    public async Task FleetDoesNotReplaceMissingLatestSqlCpuBucketWithAnOlderValue()
+    {
+        var target = Target(1);
+        var history = OverviewStub.Create<IOverviewHistoryRepositoryPort>((_, _) =>
+            Task.FromResult<IReadOnlyList<OverviewSeries>>([
+                new(target.Target.TargetId.Value, "", "engine.sql_scheduler_cpu_percent", "%", "observed", null,
+                    [new(At.AddMinutes(-20), 95, 1), new(At.AddMinutes(-5), null, 0)])
+            ]));
+
+        OverviewSnapshot result = await Service([target], history: history).ReadAsync(
+            new(Auth(), null, At.AddHours(-1), At), CancellationToken.None);
+        OverviewResource cpu = Assert.Single(Assert.Single(result.Evidence).Resources,
+            item => item.Label == "SQL scheduler CPU · selected window");
+        Assert.Null(cpu.Value);
+        Assert.Equal("no_data", cpu.State);
+        Assert.Equal(At.AddMinutes(-5), cpu.ObservedAtUtc);
+    }
+
+    [Fact]
     public async Task UnauthorizedSelectionFailsAndDisabledTargetsStaySelectable()
     {
         var first=Target(1);var disabled=Target(2,ObservationTargetLifecycle.Disabled);
@@ -110,6 +453,89 @@ public sealed class OverviewQueryServiceTests
         });
         var result=await Service([target],alerts).ReadAsync(new(Auth(),null,At.AddHours(-1),At),CancellationToken.None);
         Assert.Equal(2,calls);Assert.Equal(9,Assert.Single(result.Evidence).ActiveAlerts.Value);Assert.Equal("current",result.Evidence[0].ActiveAlerts.State);
+    }
+
+    [Fact]
+    public async Task AgentJobFailureCountsDeduplicateOutcomesAndExcludeStepDiagnostics()
+    {
+        var target = Target(1);
+        Guid failedJob = Guid.NewGuid(), diagnosticOnlyJob = Guid.NewGuid();
+        SqlAgentFailureObservation firstOutcome = AgentObservation(target, failedJob, 1, 0, 0, AgentFailureKind.Failed);
+        SqlAgentFailureObservation[] observations =
+        [
+            firstOutcome,
+            firstOutcome,
+            AgentObservation(target, failedJob, 2, 0, 0, AgentFailureKind.Failed),
+            AgentObservation(target, failedJob, 3, 1, 0, AgentFailureKind.Failed),
+            AgentObservation(target, diagnosticOnlyJob, 4, 1, 0, AgentFailureKind.Failed),
+            AgentObservation(target, diagnosticOnlyJob, 5, 1, 2, AgentFailureKind.Retry),
+            AgentObservation(target, diagnosticOnlyJob, 6, 0, 3, AgentFailureKind.Cancelled),
+        ];
+
+        OverviewTargetEvidence evidence = await ReadAgentEvidenceAsync(target, observations);
+        OverviewResource failures = Assert.Single(evidence.Resources, resource => resource.Label == "SQL Agent failures");
+        Assert.Equal(2d, failures.Value);
+        OverviewIssue issue = Assert.Single(evidence.Issues, item => item.Title == "SQL Agent failures");
+        Assert.Equal("1 jobs affected in the selected window", issue.Detail);
+        Assert.Equal("operations", issue.Destination);
+    }
+
+    [Theory]
+    [InlineData(1, 0, AgentFailureKind.Failed)]
+    [InlineData(1, 2, AgentFailureKind.Retry)]
+    [InlineData(0, 3, AgentFailureKind.Cancelled)]
+    [InlineData(0, 0, AgentFailureKind.Retry)]
+    [InlineData(0, 2, AgentFailureKind.Failed)]
+    public async Task AgentJobFailureCountsDoNotPromoteDiagnosticsOrInconsistentOutcomes(int stepId, int runStatus, AgentFailureKind kind)
+    {
+        var target = Target(1);
+        SqlAgentFailureObservation observation = AgentObservation(target, Guid.NewGuid(), 1, stepId, runStatus, kind);
+
+        OverviewTargetEvidence evidence = await ReadAgentEvidenceAsync(target, [observation]);
+
+        Assert.Equal(0d, Assert.Single(evidence.Resources, resource => resource.Label == "SQL Agent failures").Value);
+        Assert.DoesNotContain(evidence.Issues, issue => issue.Title == "SQL Agent failures");
+    }
+
+    [Theory]
+    [InlineData(true, null)]
+    [InlineData(false, "more-agent-records")]
+    public async Task AgentJobFailureCountsRetainPartialCoverage(bool truncated, string? nextCursor)
+    {
+        var target = Target(1);
+        SqlAgentFailureObservation stepFailure = AgentObservation(target, Guid.NewGuid(), 1, 1, 0, AgentFailureKind.Failed);
+
+        OverviewTargetEvidence evidence = await ReadAgentEvidenceAsync(target, [stepFailure], truncated, nextCursor);
+
+        OverviewResource failures = Assert.Single(evidence.Resources, resource => resource.Label == "SQL Agent failures");
+        Assert.Equal(0d, failures.Value);
+        Assert.Equal("partial", failures.State);
+        Assert.DoesNotContain(evidence.Issues, issue => issue.Title == "SQL Agent failures");
+    }
+
+    private static SqlAgentFailureObservation AgentObservation(ObservationTargetStatusSnapshot target, Guid jobId,
+        long historyId, int stepId, int runStatus, AgentFailureKind kind) =>
+        new(target.Target.TargetId, target.Target.Revision, jobId, historyId, stepId, runStatus, kind,
+            null, null, runStatus == 2 ? 1 : 0, 3, At,
+            SqlAgentFailureIdentity.Compute(1, target.Target.TargetId, target.Target.Revision, jobId, historyId, stepId, runStatus));
+
+    private static async Task<OverviewTargetEvidence> ReadAgentEvidenceAsync(ObservationTargetStatusSnapshot target,
+        SqlAgentFailureObservation[] observations, bool truncated = false, string? nextCursor = null)
+    {
+        var snapshot = new SqlAgentFailureSnapshot(target.Target.TargetId, target.Target.Revision, new CollectorRunId(Guid.NewGuid()),
+            At, OperationalObservationState.Complete, observations, observations.Length, truncated, At.AddHours(-1), At)
+        { NextCursor = nextCursor };
+        var operations = OverviewStub.Create<IOperationalHealthQueryService>((method, _) => method!.Name switch
+        {
+            nameof(IOperationalHealthQueryService.GetAgentFailuresAsync) => ValueTask.FromResult<SqlAgentFailureSnapshot?>(snapshot),
+            nameof(IOperationalHealthQueryService.GetBackupsAsync) => ValueTask.FromResult<BackupStatusSnapshot?>(null),
+            nameof(IOperationalHealthQueryService.GetTempDbAsync) => ValueTask.FromResult<TempDbSnapshot?>(null),
+            nameof(IOperationalHealthQueryService.GetAvailabilityGroupReplicasAsync) => ValueTask.FromResult<AvailabilityGroupsSnapshot?>(null),
+            _ => throw new InvalidOperationException($"Unexpected operational health method {method.Name}")
+        });
+        OverviewSnapshot result = await Service([target], operationsService: operations)
+            .ReadAsync(new(Auth(), null, At.AddHours(-1), At), CancellationToken.None);
+        return Assert.Single(result.Evidence);
     }
 
     [Fact]

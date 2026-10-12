@@ -1,0 +1,23 @@
+  SqlObserver.Domain -> G:\Adams SQL Diagnostic Manager\src\SqlObserver.Domain\bin\Release\net10.0\SqlObserver.Domain.dll
+  SqlObserver.Collector.Abstractions -> G:\Adams SQL Diagnostic Manager\src\SqlObserver.Collector.Abstractions\bin\Release\net10.0\SqlObserver.Collector.Abstractions.dll
+  SqlObserver.Reporting -> G:\Adams SQL Diagnostic Manager\src\SqlObserver.Reporting\bin\Release\net10.0\SqlObserver.Reporting.dll
+  SqlObserver.Application -> G:\Adams SQL Diagnostic Manager\src\SqlObserver.Application\bin\Release\net10.0\SqlObserver.Application.dll
+  SqlObserver.Security -> G:\Adams SQL Diagnostic Manager\src\SqlObserver.Security\bin\Release\net10.0\SqlObserver.Security.dll
+  SqlObserver.Collectors -> G:\Adams SQL Diagnostic Manager\src\SqlObserver.Collectors\bin\Release\net10.0\SqlObserver.Collectors.dll
+  SqlObserver.Analytics -> G:\Adams SQL Diagnostic Manager\src\SqlObserver.Analytics\bin\Release\net10.0\SqlObserver.Analytics.dll
+  SqlObserver.Audit -> G:\Adams SQL Diagnostic Manager\src\SqlObserver.Audit\bin\Release\net10.0\SqlObserver.Audit.dll
+  SqlObserver.Alerting -> G:\Adams SQL Diagnostic Manager\src\SqlObserver.Alerting\bin\Release\net10.0\SqlObserver.Alerting.dll
+  SqlObserver.Infrastructure.Windows -> G:\Adams SQL Diagnostic Manager\src\SqlObserver.Infrastructure.Windows\bin\Release\net10.0\SqlObserver.Infrastructure.Windows.dll
+  SqlObserver.Observability -> G:\Adams SQL Diagnostic Manager\src\SqlObserver.Observability\bin\Release\net10.0\SqlObserver.Observability.dll
+  SqlObserver.Infrastructure.SqlServer -> G:\Adams SQL Diagnostic Manager\src\SqlObserver.Infrastructure.SqlServer\bin\Release\net10.0\SqlObserver.Infrastructure.SqlServer.dll
+  SqlObserver.Mcp -> G:\Adams SQL Diagnostic Manager\src\SqlObserver.Mcp\bin\Release\net10.0\SqlObserver.Mcp.dll
+  SqlObserver.Infrastructure.PostgreSql -> G:\Adams SQL Diagnostic Manager\src\SqlObserver.Infrastructure.PostgreSql\bin\Release\net10.0\SqlObserver.Infrastructure.PostgreSql.dll
+  SqlObserver.Collector -> G:\Adams SQL Diagnostic Manager\src\SqlObserver.Collector\bin\Release\net10.0\SqlObserver.Collector.dll
+  SqlObserver.Server -> G:\Adams SQL Diagnostic Manager\src\SqlObserver.Server\bin\Release\net10.0\SqlObserver.Server.dll
+  SqlObserver.IntegrationTests.PostgreSql -> G:\Adams SQL Diagnostic Manager\tests\SqlObserver.IntegrationTests.PostgreSql\bin\Release\net10.0\SqlObserver.IntegrationTests.PostgreSql.dll
+
+Build succeeded.
+    0 Warning(s)
+    0 Error(s)
+
+Time Elapsed 00:00:08.95

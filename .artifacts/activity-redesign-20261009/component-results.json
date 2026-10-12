@@ -1,0 +1,2044 @@
+{
+  "config": {
+    "argv": [
+      "C:\\Program Files\\nodejs\\node.exe",
+      "G:\\Adams SQL Diagnostic Manager\\web\\node_modules\\.pnpm\\@playwright+test@1.63.0\\node_modules\\@playwright\\test\\cli.js",
+      "test",
+      "--config",
+      "playwright.activity-components.config.mjs"
+    ],
+    "configFile": "G:\\Adams SQL Diagnostic Manager\\web\\playwright.activity-components.config.mjs",
+    "rootDir": "G:/Adams SQL Diagnostic Manager/web/component-tests",
+    "failOnFlakyTests": false,
+    "forbidOnly": false,
+    "fullyParallel": false,
+    "globalSetup": null,
+    "globalTeardown": null,
+    "globalTimeout": 0,
+    "grep": {},
+    "grepInvert": null,
+    "maxFailures": 0,
+    "metadata": {
+      "actualWorkers": 1
+    },
+    "preserveOutput": "always",
+    "projects": [
+      {
+        "outputDir": "G:/Adams SQL Diagnostic Manager/.artifacts/activity-redesign-20261009/components",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "actualWorkers": 1
+        },
+        "id": "chromium",
+        "name": "chromium",
+        "testDir": "G:/Adams SQL Diagnostic Manager/web/component-tests",
+        "testIgnore": [],
+        "testMatch": [
+          "LiveSessionsAccess.spec.mjs",
+          "ActivityPanel.spec.mjs",
+          "IndependentBlocking.spec.mjs",
+          "HeadBlocker.spec.mjs"
+        ],
+        "timeout": 30000
+      }
+    ],
+    "quiet": false,
+    "reporter": [
+      [
+        "list",
+        null
+      ],
+      [
+        "json",
+        {
+          "outputFile": "../.artifacts/activity-redesign-20261009/component-results.json"
+        }
+      ]
+    ],
+    "reportSlowTests": {
+      "max": 5,
+      "threshold": 300000
+    },
+    "shard": null,
+    "tags": [],
+    "updateSnapshots": "missing",
+    "updateSourceMethod": "patch",
+    "version": "1.63.0",
+    "workers": 1,
+    "webServer": {
+      "command": "node node_modules/vite/bin/vite.js --host 127.0.0.1 --port 4328 --strictPort",
+      "url": "http://127.0.0.1:4328/component-tests/index.html",
+      "reuseExistingServer": false,
+      "timeout": 20000
+    }
+  },
+  "suites": [
+    {
+      "title": "ActivityPanel.spec.mjs",
+      "file": "ActivityPanel.spec.mjs",
+      "column": 0,
+      "line": 0,
+      "specs": [
+        {
+          "title": "renders historical edge, per-row freshness and partial evidence as inert text with real time formatting",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 938,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-10-09T17:37:55.407Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "d962030c7b4eaaadb9d3-7ff2f10bf5445a1241c1",
+          "file": "ActivityPanel.spec.mjs",
+          "line": 87,
+          "column": 1
+        },
+        {
+          "title": "keeps reset and missing-baseline totals while excluding their deltas from the wait chart and disclosing loss",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 693,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-10-09T17:37:56.667Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "d962030c7b4eaaadb9d3-e3cefff29eacf56bed33",
+          "file": "ActivityPanel.spec.mjs",
+          "line": 106,
+          "column": 1
+        },
+        {
+          "title": "pages blocking and wait histories within the selected native window and restores their first pages",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 854,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-10-09T17:37:57.371Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "d962030c7b4eaaadb9d3-bb6e387930485a452fbd",
+          "file": "ActivityPanel.spec.mjs",
+          "line": 132,
+          "column": 1
+        },
+        {
+          "title": "shows bounded loading, isolates a sanitized failed section, and recovers through refresh",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 656,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-10-09T17:37:58.236Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "d962030c7b4eaaadb9d3-2cc905da6d262f19207c",
+          "file": "ActivityPanel.spec.mjs",
+          "line": 163,
+          "column": 1
+        },
+        {
+          "title": "retains each history page on sanitized paging failure and allows retry",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 812,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-10-09T17:37:58.901Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "d962030c7b4eaaadb9d3-38a42a272f43ed2b7416",
+          "file": "ActivityPanel.spec.mjs",
+          "line": 190,
+          "column": 1
+        },
+        {
+          "title": "aborts the previous target snapshot and prevents late evidence from replacing the new target",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 557,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-10-09T17:37:59.722Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "d962030c7b4eaaadb9d3-b40ce50edada1562e632",
+          "file": "ActivityPanel.spec.mjs",
+          "line": 218,
+          "column": 1
+        },
+        {
+          "title": "aborts an old history navigation when the window changes and resets paging to the new window",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 599,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-10-09T17:38:00.289Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "d962030c7b4eaaadb9d3-12fef68341e3ccc731f5",
+          "file": "ActivityPanel.spec.mjs",
+          "line": 235,
+          "column": 1
+        },
+        {
+          "title": "declines an overlong history window while keeping current bounded supporting evidence available",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 529,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-10-09T17:38:00.897Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "d962030c7b4eaaadb9d3-1f1a47b63180fd775c70",
+          "file": "ActivityPanel.spec.mjs",
+          "line": 257,
+          "column": 1
+        },
+        {
+          "title": "blocking/history retains loaded pages and original cursor across refresh until explicit latest",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 655,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-10-09T17:38:01.433Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "d962030c7b4eaaadb9d3-079abc391a61c6f20d3e",
+          "file": "ActivityPanel.spec.mjs",
+          "line": 287,
+          "column": 3
+        },
+        {
+          "title": "blocking/history refresh preserves held navigation while latest cancels and fences late history",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 687,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-10-09T17:38:02.096Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "d962030c7b4eaaadb9d3-7c342649ca6e19ec20df",
+          "file": "ActivityPanel.spec.mjs",
+          "line": 317,
+          "column": 3
+        },
+        {
+          "title": "waits/history retains loaded pages and original cursor across refresh until explicit latest",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 717,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-10-09T17:38:02.790Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "d962030c7b4eaaadb9d3-6f2178db7f8c9226e071",
+          "file": "ActivityPanel.spec.mjs",
+          "line": 287,
+          "column": 3
+        },
+        {
+          "title": "waits/history refresh preserves held navigation while latest cancels and fences late history",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 673,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-10-09T17:38:03.514Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "d962030c7b4eaaadb9d3-2c492310a4d5f89c9301",
+          "file": "ActivityPanel.spec.mjs",
+          "line": 317,
+          "column": 3
+        },
+        {
+          "title": "a delayed supporting aggregate cannot replace explicit latest history, while a subsequent poll can advance it",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 731,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-10-09T17:38:04.193Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "d962030c7b4eaaadb9d3-573207cdfa84fd1bc57a",
+          "file": "ActivityPanel.spec.mjs",
+          "line": 340,
+          "column": 1
+        },
+        {
+          "title": "retained activity histories expose keyboard latest recovery and dark layout at 320px",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 1434,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-10-09T17:38:04.932Z",
+                  "annotations": [],
+                  "attachments": [
+                    {
+                      "name": "activity-retained-history-320-axe",
+                      "contentType": "application/json",
+                      "body": "W10="
+                    },
+                    {
+                      "name": "activity-retained-history-320",
+                      "contentType": "image/png",
+                      "path": "G:\\Adams SQL Diagnostic Manager\\.artifacts\\activity-redesign-20261009\\components\\ActivityPanel-retained-act-93638-ry-and-dark-layout-at-320px-chromium\\attachments\\activity-retained-history-320-40fbdab714d1b79bff14f520444a70cf4dfb4001.png"
+                    }
+                  ]
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "d962030c7b4eaaadb9d3-6c274b670a36147f1900",
+          "file": "ActivityPanel.spec.mjs",
+          "line": 382,
+          "column": 45
+        },
+        {
+          "title": "retained activity histories expose keyboard latest recovery and dark layout at 768px",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 1382,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-10-09T17:38:06.374Z",
+                  "annotations": [],
+                  "attachments": [
+                    {
+                      "name": "activity-retained-history-768-axe",
+                      "contentType": "application/json",
+                      "body": "W10="
+                    },
+                    {
+                      "name": "activity-retained-history-768",
+                      "contentType": "image/png",
+                      "path": "G:\\Adams SQL Diagnostic Manager\\.artifacts\\activity-redesign-20261009\\components\\ActivityPanel-retained-act-9a108-ry-and-dark-layout-at-768px-chromium\\attachments\\activity-retained-history-768-419cf2cc79cec9aa15c96381108357020ce5ae9a.png"
+                    }
+                  ]
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "d962030c7b4eaaadb9d3-d3bb988c37a20015f995",
+          "file": "ActivityPanel.spec.mjs",
+          "line": 382,
+          "column": 45
+        },
+        {
+          "title": "retained activity histories expose keyboard latest recovery and dark layout at 1024px",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 1392,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-10-09T17:38:07.763Z",
+                  "annotations": [],
+                  "attachments": [
+                    {
+                      "name": "activity-retained-history-1024-axe",
+                      "contentType": "application/json",
+                      "body": "W10="
+                    },
+                    {
+                      "name": "activity-retained-history-1024",
+                      "contentType": "image/png",
+                      "path": "G:\\Adams SQL Diagnostic Manager\\.artifacts\\activity-redesign-20261009\\components\\ActivityPanel-retained-act-36eb0-y-and-dark-layout-at-1024px-chromium\\attachments\\activity-retained-history-1024-50a33d6d26d6ee05ef0ccfc6e74095e71420d3ab.png"
+                    }
+                  ]
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "d962030c7b4eaaadb9d3-2c564fa2eb33bcabc455",
+          "file": "ActivityPanel.spec.mjs",
+          "line": 382,
+          "column": 45
+        },
+        {
+          "title": "retained activity histories expose keyboard latest recovery and dark layout at 1440px",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 1355,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-10-09T17:38:09.163Z",
+                  "annotations": [],
+                  "attachments": [
+                    {
+                      "name": "activity-retained-history-1440-axe",
+                      "contentType": "application/json",
+                      "body": "W10="
+                    },
+                    {
+                      "name": "activity-retained-history-1440",
+                      "contentType": "image/png",
+                      "path": "G:\\Adams SQL Diagnostic Manager\\.artifacts\\activity-redesign-20261009\\components\\ActivityPanel-retained-act-211dc-y-and-dark-layout-at-1440px-chromium\\attachments\\activity-retained-history-1440-a95bd738b062185681a15492e9a6b56e46a1dea5.png"
+                    }
+                  ]
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "d962030c7b4eaaadb9d3-95c6d64e9797d7461142",
+          "file": "ActivityPanel.spec.mjs",
+          "line": 382,
+          "column": 45
+        },
+        {
+          "title": "keeps activity history accessible and locally scrollable at 320 and 1440 pixels",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 1677,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-10-09T17:38:10.525Z",
+                  "annotations": [],
+                  "attachments": [
+                    {
+                      "name": "activity-panel-320-axe",
+                      "contentType": "application/json",
+                      "body": "W10="
+                    },
+                    {
+                      "name": "activity-panel-320",
+                      "contentType": "image/png",
+                      "path": "G:\\Adams SQL Diagnostic Manager\\.artifacts\\activity-redesign-20261009\\components\\ActivityPanel-keeps-activi-7725a-able-at-320-and-1440-pixels-chromium\\attachments\\activity-panel-320-ab6ff6293cbb14f7d9a1cab7c15528ce9672edfc.png"
+                    },
+                    {
+                      "name": "activity-panel-1440-axe",
+                      "contentType": "application/json",
+                      "body": "W10="
+                    },
+                    {
+                      "name": "activity-panel-1440",
+                      "contentType": "image/png",
+                      "path": "G:\\Adams SQL Diagnostic Manager\\.artifacts\\activity-redesign-20261009\\components\\ActivityPanel-keeps-activi-7725a-able-at-320-and-1440-pixels-chromium\\attachments\\activity-panel-1440-4565db8d3fee45ab8883b5fb5d5be8daab3fdc09.png"
+                    }
+                  ]
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "d962030c7b4eaaadb9d3-966e331affd3f96c9c32",
+          "file": "ActivityPanel.spec.mjs",
+          "line": 426,
+          "column": 1
+        }
+      ]
+    },
+    {
+      "title": "HeadBlocker.spec.mjs",
+      "file": "HeadBlocker.spec.mjs",
+      "column": 0,
+      "line": 0,
+      "specs": [
+        {
+          "title": "one native graph feeds direct root and keyboard inspection without changing rewind context",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 380,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-10-09T17:38:12.230Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "48939d55eef12d51ce11-e5035b46f29e77a61487",
+          "file": "HeadBlocker.spec.mjs",
+          "line": 40,
+          "column": 1
+        },
+        {
+          "title": "same-target pending and failed refresh disclose retained graph; forbidden drops it",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 538,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-10-09T17:38:12.618Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "48939d55eef12d51ce11-01d37d76eed924ae786b",
+          "file": "HeadBlocker.spec.mjs",
+          "line": 50,
+          "column": 1
+        },
+        {
+          "title": "target changes fence old graph and ignore a delayed previous response",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 389,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-10-09T17:38:13.163Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "48939d55eef12d51ce11-f1551991ee4d74e81b26",
+          "file": "HeadBlocker.spec.mjs",
+          "line": 63,
+          "column": 1
+        },
+        {
+          "title": "revision, cycles and partial pages do not promote an unconfirmed all-clear",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 445,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-10-09T17:38:13.560Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "48939d55eef12d51ce11-0d72cb697d0a135190e8",
+          "file": "HeadBlocker.spec.mjs",
+          "line": 72,
+          "column": 1
+        },
+        {
+          "title": "dark head blocker is keyboard accessible and responsive at 320",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 752,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-10-09T17:38:14.013Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "48939d55eef12d51ce11-38b0497279be8bea8e77",
+          "file": "HeadBlocker.spec.mjs",
+          "line": 79,
+          "column": 44
+        },
+        {
+          "title": "dark head blocker is keyboard accessible and responsive at 390",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 762,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-10-09T17:38:14.772Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "48939d55eef12d51ce11-9cdc223ee021c97f8246",
+          "file": "HeadBlocker.spec.mjs",
+          "line": 79,
+          "column": 44
+        },
+        {
+          "title": "dark head blocker is keyboard accessible and responsive at 768",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 813,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-10-09T17:38:15.543Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "48939d55eef12d51ce11-9e39dd6708d0cf089c49",
+          "file": "HeadBlocker.spec.mjs",
+          "line": 79,
+          "column": 44
+        },
+        {
+          "title": "dark head blocker is keyboard accessible and responsive at 1440",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 888,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-10-09T17:38:16.365Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "48939d55eef12d51ce11-52ca13afdf56926d4c54",
+          "file": "HeadBlocker.spec.mjs",
+          "line": 79,
+          "column": 44
+        },
+        {
+          "title": "never-collected blocking labels repository check time without inventing a completed collection",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 345,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-10-09T17:38:17.261Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "48939d55eef12d51ce11-86556f42d72cdc4ab9dd",
+          "file": "HeadBlocker.spec.mjs",
+          "line": 94,
+          "column": 1
+        }
+      ]
+    },
+    {
+      "title": "IndependentBlocking.spec.mjs",
+      "file": "IndependentBlocking.spec.mjs",
+      "column": 0,
+      "line": 0,
+      "specs": [
+        {
+          "title": "current blocking survives 503 analytics without fabricating historical charts",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 632,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-10-09T17:38:17.624Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "6544100179e40c164d86-5b600e0527917102f1dd",
+          "file": "IndependentBlocking.spec.mjs",
+          "line": 70,
+          "column": 51
+        },
+        {
+          "title": "current blocking survives malformed analytics without fabricating historical charts",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 606,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-10-09T17:38:18.263Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "6544100179e40c164d86-fb6db392f1c40c7345e3",
+          "file": "IndependentBlocking.spec.mjs",
+          "line": 70,
+          "column": 51
+        },
+        {
+          "title": "current blocking survives empty analytics without fabricating historical charts",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 593,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-10-09T17:38:18.877Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "6544100179e40c164d86-4afc0658a14accb5e80b",
+          "file": "IndependentBlocking.spec.mjs",
+          "line": 70,
+          "column": 51
+        },
+        {
+          "title": "pending and failed current refresh retain disclosed evidence and explicit retry recovers independently",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 748,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-10-09T17:38:19.478Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "6544100179e40c164d86-0d5e537376e02180fe19",
+          "file": "IndependentBlocking.spec.mjs",
+          "line": 89,
+          "column": 1
+        },
+        {
+          "title": "typed 401 purges current blocking and holds the source until explicit access retry",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 804,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-10-09T17:38:20.235Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "6544100179e40c164d86-e3f689c2c959b9d8da6c",
+          "file": "IndependentBlocking.spec.mjs",
+          "line": 104,
+          "column": 34
+        },
+        {
+          "title": "typed 403 purges current blocking and holds the source until explicit access retry",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 805,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-10-09T17:38:21.047Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "6544100179e40c164d86-426b7126d49a74b8f66a",
+          "file": "IndependentBlocking.spec.mjs",
+          "line": 104,
+          "column": 34
+        },
+        {
+          "title": "an aborted previous-target forbidden response cannot notify or deny the current health parent",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 560,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-10-09T17:38:21.861Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "6544100179e40c164d86-29fb789bf0082966a30e",
+          "file": "IndependentBlocking.spec.mjs",
+          "line": 125,
+          "column": 1
+        },
+        {
+          "title": "a pending previous target is aborted and cannot publish into the current target",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 574,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-10-09T17:38:22.429Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "6544100179e40c164d86-d152dfcec29aa3cb7448",
+          "file": "IndependentBlocking.spec.mjs",
+          "line": 143,
+          "column": 1
+        },
+        {
+          "title": "inactive generation aborts old current read and reactivation reads fresh evidence",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 624,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-10-09T17:38:23.011Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "6544100179e40c164d86-be4bae228fe5f42e6d92",
+          "file": "IndependentBlocking.spec.mjs",
+          "line": 154,
+          "column": 1
+        },
+        {
+          "title": "caller revision fences unconfirmed graph roots and a fresh matching receipt restores inspection",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 593,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-10-09T17:38:23.643Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "6544100179e40c164d86-3ea69e5e108262b3b92d",
+          "file": "IndependentBlocking.spec.mjs",
+          "line": 165,
+          "column": 1
+        },
+        {
+          "title": "an absent native collection receipt stays unknown while analytics is unavailable",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 460,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-10-09T17:38:24.244Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "6544100179e40c164d86-08797fb349a7c01c7bba",
+          "file": "IndependentBlocking.spec.mjs",
+          "line": 174,
+          "column": 1
+        },
+        {
+          "title": "independent current blocking is accessible in dark mode at 320",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 1337,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-10-09T17:38:24.710Z",
+                  "annotations": [],
+                  "attachments": [
+                    {
+                      "name": "independent-blocking-axe",
+                      "contentType": "application/json",
+                      "body": "W10="
+                    }
+                  ]
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "6544100179e40c164d86-317be743b7e8be8cb14d",
+          "file": "IndependentBlocking.spec.mjs",
+          "line": 185,
+          "column": 44
+        },
+        {
+          "title": "independent current blocking is accessible in dark mode at 390",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 1408,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-10-09T17:38:26.054Z",
+                  "annotations": [],
+                  "attachments": [
+                    {
+                      "name": "independent-blocking-axe",
+                      "contentType": "application/json",
+                      "body": "W10="
+                    }
+                  ]
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "6544100179e40c164d86-b8264df1aa777c29e926",
+          "file": "IndependentBlocking.spec.mjs",
+          "line": 185,
+          "column": 44
+        },
+        {
+          "title": "independent current blocking is accessible in dark mode at 768",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 1333,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-10-09T17:38:27.471Z",
+                  "annotations": [],
+                  "attachments": [
+                    {
+                      "name": "independent-blocking-axe",
+                      "contentType": "application/json",
+                      "body": "W10="
+                    }
+                  ]
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "6544100179e40c164d86-699b9485386a6146abe3",
+          "file": "IndependentBlocking.spec.mjs",
+          "line": 185,
+          "column": 44
+        },
+        {
+          "title": "independent current blocking is accessible in dark mode at 1440",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 1381,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-10-09T17:38:28.811Z",
+                  "annotations": [],
+                  "attachments": [
+                    {
+                      "name": "independent-blocking-axe",
+                      "contentType": "application/json",
+                      "body": "W10="
+                    }
+                  ]
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "6544100179e40c164d86-601e05facd34908c6bf9",
+          "file": "IndependentBlocking.spec.mjs",
+          "line": 185,
+          "column": 44
+        }
+      ]
+    },
+    {
+      "title": "LiveSessionsAccess.spec.mjs",
+      "file": "LiveSessionsAccess.spec.mjs",
+      "column": 0,
+      "line": 0,
+      "specs": [
+        {
+          "title": "activity/live HTTP401 removes retained metadata, SQL and supporting siblings until explicit recovery",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 923,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-10-09T17:38:30.218Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "cdf90f54a4e7be97c56a-6a25fe09f278c5abacc8",
+          "file": "LiveSessionsAccess.spec.mjs",
+          "line": 54,
+          "column": 3
+        },
+        {
+          "title": "activity/live/history HTTP401 removes retained metadata, SQL and supporting siblings until explicit recovery",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 937,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-10-09T17:38:31.150Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "cdf90f54a4e7be97c56a-df5ebb24752c868385ff",
+          "file": "LiveSessionsAccess.spec.mjs",
+          "line": 54,
+          "column": 3
+        },
+        {
+          "title": "activity/live HTTP403 removes retained metadata, SQL and supporting siblings until explicit recovery",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 890,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-10-09T17:38:32.095Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "cdf90f54a4e7be97c56a-50e609309a196848dcf3",
+          "file": "LiveSessionsAccess.spec.mjs",
+          "line": 54,
+          "column": 3
+        },
+        {
+          "title": "activity/live/history HTTP403 removes retained metadata, SQL and supporting siblings until explicit recovery",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 928,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-10-09T17:38:32.992Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "cdf90f54a4e7be97c56a-3f805b77e9ef3dd2903f",
+          "file": "LiveSessionsAccess.spec.mjs",
+          "line": 54,
+          "column": 3
+        },
+        {
+          "title": "live metadata denial aborts a held supporting success that cannot republish evidence",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 777,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-10-09T17:38:33.926Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "cdf90f54a4e7be97c56a-8b2100379d59e27f66bb",
+          "file": "LiveSessionsAccess.spec.mjs",
+          "line": 68,
+          "column": 1
+        },
+        {
+          "title": "protected SQL-only403 retains authorized metadata and supporting evidence",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 693,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-10-09T17:38:34.711Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "cdf90f54a4e7be97c56a-eba17a877c24a07b83c0",
+          "file": "LiveSessionsAccess.spec.mjs",
+          "line": 76,
+          "column": 1
+        },
+        {
+          "title": "captured SQL authentication401 clears the whole activity boundary",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 681,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-10-09T17:38:35.410Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "cdf90f54a4e7be97c56a-08fa32c978e5a82d9366",
+          "file": "LiveSessionsAccess.spec.mjs",
+          "line": 83,
+          "column": 1
+        },
+        {
+          "title": "QueryTextReader revocation immediately clears protected text; restoration requires a new deliberate load",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 835,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-10-09T17:38:36.099Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "cdf90f54a4e7be97c56a-1ba91228afa2de04ce8e",
+          "file": "LiveSessionsAccess.spec.mjs",
+          "line": 88,
+          "column": 1
+        },
+        {
+          "title": "missing linked deadlock never automatically substitutes another event capture from the same minute",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 642,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-10-09T17:38:36.942Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "cdf90f54a4e7be97c56a-20703ddfe527d60b7100",
+          "file": "LiveSessionsAccess.spec.mjs",
+          "line": 99,
+          "column": 1
+        },
+        {
+          "title": "historical metadata failure requires an explicit retry of the same captured snapshot",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 896,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-10-09T17:38:37.592Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "cdf90f54a4e7be97c56a-b71ba91f9a2dd0f0b0f1",
+          "file": "LiveSessionsAccess.spec.mjs",
+          "line": 107,
+          "column": 1
+        },
+        {
+          "title": "live failure discloses backoff only while polling is active and paused recovery stays explicit",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 893,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-10-09T17:38:38.494Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "cdf90f54a4e7be97c56a-46ae977823babaed6a6f",
+          "file": "LiveSessionsAccess.spec.mjs",
+          "line": 128,
+          "column": 1
+        },
+        {
+          "title": "inclusive metadata loads system database zero across every pinned page; filters are local",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 593,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-10-09T17:38:39.394Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "cdf90f54a4e7be97c56a-36ee35ba79e66a452e45",
+          "file": "LiveSessionsAccess.spec.mjs",
+          "line": 148,
+          "column": 1
+        }
+      ]
+    }
+  ],
+  "errors": [],
+  "stats": {
+    "startTime": "2026-10-09T17:37:54.220Z",
+    "duration": 47932.701,
+    "expected": 54,
+    "skipped": 0,
+    "unexpected": 0,
+    "flaky": 0
+  }
+}

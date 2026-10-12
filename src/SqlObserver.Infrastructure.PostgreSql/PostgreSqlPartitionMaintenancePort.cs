@@ -5,8 +5,8 @@ using SqlObserver.Domain.Repository;
 
 namespace SqlObserver.Infrastructure.PostgreSql;
 
-/// <summary>Allowlisted UTC partition creation and read-only retention previews.</summary>
-public sealed class PostgreSqlPartitionMaintenancePort : IPartitionMaintenancePort
+/// <summary>Allowlisted UTC partition care, fenced system retention, and retention previews.</summary>
+public sealed class PostgreSqlPartitionMaintenancePort : IPartitionMaintenancePort, IRetentionMaintenancePort
 {
     private const string AssertLeaseSql = """
         SELECT control.assert_worker_lease(@work_key, @owner_execution_id, @fencing_token);
@@ -26,7 +26,13 @@ public sealed class PostgreSqlPartitionMaintenancePort : IPartitionMaintenancePo
         SELECT (control.ensure_m9_daily_partitions(@partition_date, 3) > 0), clock_timestamp();
         """;
     private const string EnsureM10PartitionSetSql = """
-        SELECT control.ensure_m10_partition_set(CURRENT_DATE);
+        SELECT control.ensure_m10_partition_set(CURRENT_DATE)
+             + control.ensure_sql_volume_partitions(CURRENT_DATE)
+             + control.ensure_query_store_group_partitions(CURRENT_DATE)
+             + control.ensure_query_observation_v3_partitions(CURRENT_DATE)
+             + control.ensure_collection_run_v2_partitions(CURRENT_DATE)
+             + control.ensure_availability_evidence_partition_set(@owner_execution_id,@fencing_token)
+             + control.ensure_backup_v2_evidence_partition_set(@owner_execution_id,@fencing_token);
         """;
     private const string PreviewM9DailySql = """
         SELECT
@@ -80,12 +86,201 @@ public sealed class PostgreSqlPartitionMaintenancePort : IPartitionMaintenancePo
         LIMIT @max_entries;
         """;
     private const string RepositoryClockSql = "SELECT clock_timestamp();";
+    private const string RunSystemRetentionStepSql = "SELECT system.run_m10_retention_step_safe(@owner_execution_id,@fencing_token);";
+    private const string RunQueryRunRetentionStepSql = "SELECT system.run_query_run_retention_step(@owner_execution_id,@fencing_token);";
+    private const string RunOriginalCopyRetentionStepSql = "SELECT system.run_collection_run_original_copy_retention_step(@owner_execution_id,@fencing_token);";
+    private const string PruneOrphanQueryTextSql = "SELECT system.prune_orphan_query_text_payloads(@owner_execution_id,@fencing_token,32);";
+    private const string PruneOrphanQueryPlanSql = "SELECT system.prune_orphan_query_plan_payloads(@owner_execution_id,@fencing_token,32);";
 
     private readonly NpgsqlDataSource _dataSource;
 
     public PostgreSqlPartitionMaintenancePort(NpgsqlDataSource dataSource)
     {
         _dataSource = dataSource ?? throw new ArgumentNullException(nameof(dataSource));
+    }
+
+    /// <summary>Executes at most one repository-selected retention action under a dedicated fenced lease.</summary>
+    public async ValueTask<SystemRetentionStepOutcome> RunSystemRetentionStepAsync(
+        WorkerLeaseIdentity lease,
+        RepositoryCallTimeout timeout,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(lease);
+        ArgumentNullException.ThrowIfNull(timeout);
+        if (lease.Key.Value != "retention/maintenance")
+            throw new ArgumentException("The dedicated retention lease is required.", nameof(lease));
+        using CancellationTokenSource deadline = PostgreSqlRuntimeSupport.CreateTimeoutScope(timeout, cancellationToken);
+        await using NpgsqlConnection connection = await _dataSource.OpenConnectionAsync(deadline.Token).ConfigureAwait(false);
+        await using NpgsqlTransaction transaction = await connection.BeginTransactionAsync(deadline.Token).ConfigureAwait(false);
+        try
+        {
+            await PostgreSqlRuntimeSupport.ConfigureTransactionAsync(connection, transaction, timeout, deadline.Token).ConfigureAwait(false);
+            await AssertLeaseAsync(connection, transaction, lease, timeout, deadline.Token).ConfigureAwait(false);
+            await using var command = new NpgsqlCommand(RunSystemRetentionStepSql, connection, transaction)
+            {
+                CommandTimeout = PostgreSqlRuntimeSupport.GetCommandTimeoutSeconds(timeout),
+            };
+            command.Parameters.AddWithValue("owner_execution_id", lease.Owner.Value);
+            command.Parameters.AddWithValue("fencing_token", lease.FencingToken.Value);
+            object? result = await command.ExecuteScalarAsync(deadline.Token).ConfigureAwait(false);
+            SystemRetentionStepOutcome outcome = result switch
+            {
+                "idle" => SystemRetentionStepOutcome.Idle,
+                "detached" => SystemRetentionStepOutcome.Detached,
+                "dropped" => SystemRetentionStepOutcome.Dropped,
+                "reattached" => SystemRetentionStepOutcome.Reattached,
+                "grace_started" => SystemRetentionStepOutcome.GraceStarted,
+                "cancelled" => SystemRetentionStepOutcome.Cancelled,
+                "retry" => SystemRetentionStepOutcome.Retry,
+                "failed" => SystemRetentionStepOutcome.Failed,
+                _ => throw new InvalidDataException("System retention returned an invalid outcome."),
+            };
+            await AssertLeaseAsync(connection, transaction, lease, timeout, deadline.Token).ConfigureAwait(false);
+            await transaction.CommitAsync(deadline.Token).ConfigureAwait(false);
+            return outcome;
+        }
+        catch
+        {
+            await RollbackWithoutMaskingAsync(transaction).ConfigureAwait(false);
+            throw;
+        }
+    }
+
+    /// <summary>Scans a bounded target slice and retires at most one eligible M7 run graph.</summary>
+    public async ValueTask<QueryRunRetentionStepOutcome> RunQueryRunRetentionStepAsync(
+        WorkerLeaseIdentity lease,
+        RepositoryCallTimeout timeout,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(lease);
+        ArgumentNullException.ThrowIfNull(timeout);
+        if (lease.Key.Value != "retention/maintenance")
+            throw new ArgumentException("The dedicated retention lease is required.", nameof(lease));
+        using CancellationTokenSource deadline = PostgreSqlRuntimeSupport.CreateTimeoutScope(timeout, cancellationToken);
+        await using NpgsqlConnection connection = await _dataSource.OpenConnectionAsync(deadline.Token).ConfigureAwait(false);
+        await using NpgsqlTransaction transaction = await connection.BeginTransactionAsync(deadline.Token).ConfigureAwait(false);
+        try
+        {
+            await PostgreSqlRuntimeSupport.ConfigureTransactionAsync(connection, transaction, timeout, deadline.Token).ConfigureAwait(false);
+            await AssertLeaseAsync(connection, transaction, lease, timeout, deadline.Token).ConfigureAwait(false);
+            await using var command = new NpgsqlCommand(RunQueryRunRetentionStepSql, connection, transaction)
+            {
+                CommandTimeout = PostgreSqlRuntimeSupport.GetCommandTimeoutSeconds(timeout),
+            };
+            command.Parameters.AddWithValue("owner_execution_id", lease.Owner.Value);
+            command.Parameters.AddWithValue("fencing_token", lease.FencingToken.Value);
+            object? result = await command.ExecuteScalarAsync(deadline.Token).ConfigureAwait(false);
+            QueryRunRetentionStepOutcome outcome = result switch
+            {
+                "idle" => QueryRunRetentionStepOutcome.Idle,
+                "scanned" => QueryRunRetentionStepOutcome.Scanned,
+                "held" => QueryRunRetentionStepOutcome.Held,
+                "oversize" => QueryRunRetentionStepOutcome.Oversize,
+                "retired" => QueryRunRetentionStepOutcome.Retired,
+                "missing" => QueryRunRetentionStepOutcome.Missing,
+                _ => throw new InvalidDataException("M7 run retention returned an invalid outcome."),
+            };
+            await AssertLeaseAsync(connection, transaction, lease, timeout, deadline.Token).ConfigureAwait(false);
+            await transaction.CommitAsync(deadline.Token).ConfigureAwait(false);
+            return outcome;
+        }
+        catch
+        {
+            await RollbackWithoutMaskingAsync(transaction).ConfigureAwait(false);
+            throw;
+        }
+    }
+
+    /// <summary>Scans a bounded target slice and retires at most 100 sealed original run copies.</summary>
+    public async ValueTask<OriginalCopyRetentionStepOutcome> RunOriginalCopyRetentionStepAsync(
+        WorkerLeaseIdentity lease,
+        RepositoryCallTimeout timeout,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(lease);
+        ArgumentNullException.ThrowIfNull(timeout);
+        if (lease.Key.Value != "retention/maintenance")
+            throw new ArgumentException("The dedicated retention lease is required.", nameof(lease));
+        using CancellationTokenSource deadline = PostgreSqlRuntimeSupport.CreateTimeoutScope(timeout, cancellationToken);
+        await using NpgsqlConnection connection = await _dataSource.OpenConnectionAsync(deadline.Token).ConfigureAwait(false);
+        await using NpgsqlTransaction transaction = await connection.BeginTransactionAsync(deadline.Token).ConfigureAwait(false);
+        try
+        {
+            await PostgreSqlRuntimeSupport.ConfigureTransactionAsync(connection, transaction, timeout, deadline.Token).ConfigureAwait(false);
+            await AssertLeaseAsync(connection, transaction, lease, timeout, deadline.Token).ConfigureAwait(false);
+            await using var command = new NpgsqlCommand(RunOriginalCopyRetentionStepSql, connection, transaction)
+            {
+                CommandTimeout = PostgreSqlRuntimeSupport.GetCommandTimeoutSeconds(timeout),
+            };
+            command.Parameters.AddWithValue("owner_execution_id", lease.Owner.Value);
+            command.Parameters.AddWithValue("fencing_token", lease.FencingToken.Value);
+            object? result = await command.ExecuteScalarAsync(deadline.Token).ConfigureAwait(false);
+            OriginalCopyRetentionStepOutcome outcome = result switch
+            {
+                "idle" => OriginalCopyRetentionStepOutcome.Idle,
+                "scanned" => OriginalCopyRetentionStepOutcome.Scanned,
+                "retired" => OriginalCopyRetentionStepOutcome.Retired,
+                "blocked" => OriginalCopyRetentionStepOutcome.Blocked,
+                _ => throw new InvalidDataException("Original-copy retention returned an invalid outcome."),
+            };
+            await AssertLeaseAsync(connection, transaction, lease, timeout, deadline.Token).ConfigureAwait(false);
+            await transaction.CommitAsync(deadline.Token).ConfigureAwait(false);
+            return outcome;
+        }
+        catch
+        {
+            await RollbackWithoutMaskingAsync(transaction).ConfigureAwait(false);
+            throw;
+        }
+    }
+
+    /// <summary>Removes at most 32 old unreferenced query-text ciphertexts under the retention lease.</summary>
+    public ValueTask<int> PruneOrphanQueryTextPayloadsAsync(
+        WorkerLeaseIdentity lease,
+        RepositoryCallTimeout timeout,
+        CancellationToken cancellationToken) =>
+        PruneOrphanPayloadsAsync(PruneOrphanQueryTextSql, lease, timeout, cancellationToken);
+
+    /// <summary>Removes at most 32 old unreferenced plan ciphertexts under the retention lease.</summary>
+    public ValueTask<int> PruneOrphanQueryPlanPayloadsAsync(
+        WorkerLeaseIdentity lease,
+        RepositoryCallTimeout timeout,
+        CancellationToken cancellationToken) =>
+        PruneOrphanPayloadsAsync(PruneOrphanQueryPlanSql, lease, timeout, cancellationToken);
+
+    private async ValueTask<int> PruneOrphanPayloadsAsync(
+        string sql, WorkerLeaseIdentity lease,
+        RepositoryCallTimeout timeout, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(lease);
+        ArgumentNullException.ThrowIfNull(timeout);
+        if (lease.Key.Value != "retention/maintenance")
+            throw new ArgumentException("The dedicated retention lease is required.", nameof(lease));
+        using CancellationTokenSource deadline = PostgreSqlRuntimeSupport.CreateTimeoutScope(timeout, cancellationToken);
+        await using NpgsqlConnection connection = await _dataSource.OpenConnectionAsync(deadline.Token).ConfigureAwait(false);
+        await using NpgsqlTransaction transaction = await connection.BeginTransactionAsync(deadline.Token).ConfigureAwait(false);
+        try
+        {
+            await PostgreSqlRuntimeSupport.ConfigureTransactionAsync(connection, transaction, timeout, deadline.Token).ConfigureAwait(false);
+            await AssertLeaseAsync(connection, transaction, lease, timeout, deadline.Token).ConfigureAwait(false);
+            await using var command = new NpgsqlCommand(sql, connection, transaction)
+            {
+                CommandTimeout = PostgreSqlRuntimeSupport.GetCommandTimeoutSeconds(timeout),
+            };
+            command.Parameters.AddWithValue("owner_execution_id", lease.Owner.Value);
+            command.Parameters.AddWithValue("fencing_token", lease.FencingToken.Value);
+            object? result = await command.ExecuteScalarAsync(deadline.Token).ConfigureAwait(false);
+            if (result is not int deleted || deleted is < 0 or > 32)
+                throw new InvalidDataException("Orphan payload cleanup returned an invalid count.");
+            await AssertLeaseAsync(connection, transaction, lease, timeout, deadline.Token).ConfigureAwait(false);
+            await transaction.CommitAsync(deadline.Token).ConfigureAwait(false);
+            return deleted;
+        }
+        catch
+        {
+            await RollbackWithoutMaskingAsync(transaction).ConfigureAwait(false);
+            throw;
+        }
     }
 
     /// <summary>Rolls M9 occurrence/scan partitions through UTC D-1/D/D+1 under the catalog lease.</summary>
@@ -138,6 +333,8 @@ public sealed class PostgreSqlPartitionMaintenancePort : IPartitionMaintenancePo
             {
                 CommandTimeout = PostgreSqlRuntimeSupport.GetCommandTimeoutSeconds(timeout),
             };
+            command.Parameters.AddWithValue("owner_execution_id", lease.Owner.Value);
+            command.Parameters.AddWithValue("fencing_token", lease.FencingToken.Value);
             object? result = await command.ExecuteScalarAsync(timeoutScope.Token).ConfigureAwait(false);
             int checkedCount = result is int count && count >= 0
                 ? count

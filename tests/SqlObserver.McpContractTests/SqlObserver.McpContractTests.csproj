@@ -6,6 +6,7 @@
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
     <PackageReference Include="Microsoft.AspNetCore.TestHost" />
+    <PackageReference Include="JsonSchema.Net" />
     <PackageReference Include="ModelContextProtocol" />
     <ProjectReference Include="../../src/SqlObserver.Mcp/SqlObserver.Mcp.csproj" />
     <ProjectReference Include="../../src/SqlObserver.McpStdio/SqlObserver.McpStdio.csproj" />

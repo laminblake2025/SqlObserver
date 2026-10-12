@@ -5,6 +5,7 @@ using Npgsql;
 using NpgsqlTypes;
 using SqlObserver.Application.Ports;
 using SqlObserver.Collector.Abstractions;
+using SqlObserver.Domain.Backups;
 using SqlObserver.Domain.Capabilities;
 using SqlObserver.Domain.Collection;
 using SqlObserver.Domain.Coordination;
@@ -12,11 +13,12 @@ using SqlObserver.Domain.Hosts;
 using SqlObserver.Domain.Targets;
 using SqlObserver.Domain.Telemetry;
 using SqlObserver.Domain.Security;
+using SqlObserver.Domain.SensitiveData;
 
 namespace SqlObserver.Infrastructure.PostgreSql;
 
 /// <summary>Repository-clock, fenced PostgreSQL persistence for the fixed M4 collector runtime.</summary>
-public sealed class PostgreSqlCollectorRuntimeRepositoryPort : ICollectorRuntimeRepositoryPort
+public sealed partial class PostgreSqlCollectorRuntimeRepositoryPort : ICollectorRuntimeRepositoryPort, IDeadlockReadRepositoryPort
 {
     private static readonly JsonSerializerOptions M9JsonOptions = new(JsonSerializerDefaults.Web);
     private const string CatalogReconciliationLeaseKey = "collector/catalog/reconcile";
@@ -35,7 +37,19 @@ public sealed class PostgreSqlCollectorRuntimeRepositoryPort : ICollectorRuntime
     private static readonly string ReconcileM6Sql = ReconcileSql.Replace("control.reconcile_collector_catalog(", "control.reconcile_collector_catalog_m6(", StringComparison.Ordinal);
     private static readonly string ReconcileM9Sql = ReconcileSql.Replace("control.reconcile_collector_catalog(", "control.reconcile_collector_catalog_m9(", StringComparison.Ordinal);
     private static readonly string ReconcileM10Sql = ReconcileSql.Replace("control.reconcile_collector_catalog(", "control.reconcile_collector_catalog_m10(", StringComparison.Ordinal);
+    private static readonly string ReconcileM11Sql = ReconcileSql.Replace("control.reconcile_collector_catalog(", "control.reconcile_collector_catalog_m11(", StringComparison.Ordinal);
+    private static readonly string ReconcileM12Sql = ReconcileSql.Replace("control.reconcile_collector_catalog(", "control.reconcile_collector_catalog_m12(", StringComparison.Ordinal);
+    private static readonly string ReconcileM13Sql = ReconcileSql.Replace("control.reconcile_collector_catalog(", "control.reconcile_collector_catalog_m13(", StringComparison.Ordinal);
+    private static readonly string ReconcileM14Sql = ReconcileSql.Replace("control.reconcile_collector_catalog(", "control.reconcile_collector_catalog_m14(", StringComparison.Ordinal);
+    private static readonly string ReconcileM15Sql = ReconcileSql.Replace("control.reconcile_collector_catalog(", "control.reconcile_collector_catalog_m15(", StringComparison.Ordinal);
+    private static readonly string ReconcileSqlAgentActivityObservationsSql = ReconcileSql.Replace("control.reconcile_collector_catalog(", "control.reconcile_collector_catalog_sql_agent_activity_observations(", StringComparison.Ordinal);
+    private static readonly string ReconcileServerLifecycleSql = ReconcileSql.Replace("control.reconcile_collector_catalog(", "control.reconcile_collector_catalog_server_lifecycle(", StringComparison.Ordinal);
+    private static readonly string ReconcileCpuComponentsSql = ReconcileSql.Replace("control.reconcile_collector_catalog(", "control.reconcile_collector_catalog_cpu_components(", StringComparison.Ordinal);
+    private static readonly string ReconcileDeadlocksV2Sql = ReconcileSql.Replace("control.reconcile_collector_catalog(", "control.reconcile_collector_catalog_deadlocks_v2(", StringComparison.Ordinal);
+    private static readonly string ReconcileAgV2Sql = ReconcileSql.Replace("control.reconcile_collector_catalog(", "control.reconcile_collector_catalog_ag_v2(", StringComparison.Ordinal);
+    private static readonly string ReconcileBackupsV2Sql = ReconcileSql.Replace("control.reconcile_collector_catalog(", "control.reconcile_collector_catalog_backups_v2(", StringComparison.Ordinal);
     private const string ListDueSql = "SELECT * FROM control.list_due_collector_work(@max_items);";
+    private const string ClaimDueSql = "SELECT * FROM control.claim_due_collector_work(@owner_execution_id,@ttl);";
     private const string BeginSql = """
         SELECT result_status, started_at, repository_time
         FROM control.begin_collection_run(
@@ -53,6 +67,88 @@ public sealed class PostgreSqlCollectorRuntimeRepositoryPort : ICollectorRuntime
             @request_digest);
         """;
     private const string CommitCoreSql = """
+        SELECT result_status, inserted_count, duplicate_count, rejected_count,
+               persisted_bytes, committed_at
+        FROM control.commit_collection_run_v2(
+            @run_id,
+            @instance_id,
+            @target_revision,
+            @collector_id,
+            @collector_version,
+            @output_schema_version,
+            @schedule_revision,
+            @scheduled_at,
+            @work_key,
+            @owner_execution_id,
+            @fencing_token,
+            @request_digest,
+            @outcome,
+            @reason_code,
+            @duration_ms,
+            @attempt_count,
+            @source_row_count,
+            @output_item_count,
+            @response_bytes,
+            @output_bytes,
+            @loss_kind,
+            @minimum_lost_items,
+            @loss_count_is_exact,
+            @minimum_lost_bytes,
+            @next_circuit_state,
+            @next_consecutive_failures,
+            @metric_observed_ats,
+            @metric_sample_ids,
+            @metric_keys,
+            @metric_values,
+            @metric_dimensions,
+            @metric_sizes,
+            @database_observed_ats,
+            @database_ids,
+            @database_names,
+            @database_states,
+            @database_recovery_models,
+            @database_user_access,
+            @database_is_read_only,
+            @database_compatibility_levels,
+            @database_sizes,
+            @file_observed_ats,
+            @file_database_ids,
+            @file_ids,
+            @file_logical_names,
+            @file_types,
+            @file_states,
+            @file_size_bytes,
+            @file_maximum_size_bytes,
+            @file_growth_bytes,
+            @file_growth_percents,
+            @file_read_counts,
+            @file_write_counts,
+            @file_bytes_read,
+            @file_bytes_written,
+            @file_io_stall_ms,
+            @file_sizes,
+            @file_read_stall_ms,
+            @file_write_stall_ms);
+        """;
+    private static readonly string CommitDatabaseInventoryV2Sql = BuildDatabaseInventoryV2Sql();
+    private static string BuildDatabaseInventoryV2Sql()
+    {
+        const string oldFunction = "control.commit_collection_run_v2(";
+        const string compatibilityArgument = "@database_compatibility_levels,";
+        if (CommitCoreSql.Split(oldFunction, StringSplitOptions.None).Length != 2 ||
+            CommitCoreSql.Split(compatibilityArgument, StringSplitOptions.None).Length != 2)
+            throw new InvalidDataException("The version-2 inventory commit template is invalid.");
+        return CommitCoreSql
+            .Replace(oldFunction, "control.commit_database_inventory_v2(", StringComparison.Ordinal)
+            .Replace(compatibilityArgument,
+                compatibilityArgument + "\n            @database_log_reuse_wait_desc,",
+                StringComparison.Ordinal);
+    }
+    // The legacy core function was upgraded in migration 0035 to accept the
+    // startup marker. The v2 function introduced for directional file stalls
+    // retained the earlier eight-metric rule, so engine.core must keep using
+    // its nine-metric commit path until that separate contract is upgraded.
+    private const string CommitEngineCoreSql = """
         SELECT result_status, inserted_count, duplicate_count, rejected_count,
                persisted_bytes, committed_at
         FROM control.commit_collection_run(
@@ -130,7 +226,20 @@ public sealed class PostgreSqlCollectorRuntimeRepositoryPort : ICollectorRuntime
     private static readonly string CommitAgentM9Sql = CommitM9Sql.Replace("control.commit_m9_collection_run(", "control.commit_sql_agent_failures(", StringComparison.Ordinal).Replace("@target_revision,@collector_id,@collector_version", "@target_revision,@collector_version", StringComparison.Ordinal);
     private static readonly string CommitTempDbM9Sql = CommitM9Sql.Replace("control.commit_m9_collection_run(", "control.commit_tempdb_health(", StringComparison.Ordinal).Replace("@target_revision,@collector_id,@collector_version", "@target_revision,@collector_version", StringComparison.Ordinal);
     private static readonly string CommitAgM9Sql = CommitM9Sql.Replace("control.commit_m9_collection_run(", "control.commit_availability_groups_health(", StringComparison.Ordinal).Replace("@target_revision,@collector_id,@collector_version", "@target_revision,@collector_version", StringComparison.Ordinal);
+    private static readonly string CommitAgV2Sql = CommitM9Sql
+        .Replace("control.commit_m9_collection_run(", "control.commit_availability_groups_v2_collection_run(", StringComparison.Ordinal)
+        .Replace("@completion_digest", "sha256(convert_to(CAST(@m9_payload AS jsonb)::text,'UTF8'))", StringComparison.Ordinal);
+    private static readonly string CommitServerLifecycleSql = CommitM9Sql
+        .Replace("control.commit_m9_collection_run(", "control.commit_server_lifecycle_collection_run(", StringComparison.Ordinal)
+        .Replace("@completion_digest", "sha256(convert_to(CAST(@m9_payload AS jsonb)::text,'UTF8'))", StringComparison.Ordinal);
+    private static readonly string CommitBackupsV2Sql = CommitM9Sql
+        .Replace("control.commit_m9_collection_run(", "control.commit_backups_v2_collection_run(", StringComparison.Ordinal)
+        .Replace("@completion_digest", "sha256(convert_to(CAST(@m9_payload AS jsonb)::text,'UTF8'))", StringComparison.Ordinal);
     private static readonly string CommitM10Sql = CommitM9Sql.Replace("control.commit_m9_collection_run(", "control.commit_m10_collection_run(", StringComparison.Ordinal).Replace("@m9_payload", "@m10_payload", StringComparison.Ordinal);
+    private static readonly string CommitSqlVolumeSql = CommitM9Sql.Replace("control.commit_m9_collection_run(", "control.commit_sql_volume_collection_run(", StringComparison.Ordinal).Replace("@m9_payload", "@m10_payload", StringComparison.Ordinal);
+    private static readonly string CommitBufferNodePleSql = CommitM9Sql.Replace("control.commit_m9_collection_run(", "control.commit_buffer_node_ple_collection_run(", StringComparison.Ordinal).Replace("@m9_payload", "@m10_payload", StringComparison.Ordinal);
+    private static readonly string CommitServerConfigurationSql = CommitM9Sql.Replace("control.commit_m9_collection_run(", "control.commit_server_configuration_collection_run(", StringComparison.Ordinal).Replace("@m9_payload", "@m10_payload", StringComparison.Ordinal);
+    private static readonly string CommitQueryStoreGroupSql = CommitM9Sql.Replace("control.commit_m9_collection_run(", "control.commit_query_store_group_collection_run(", StringComparison.Ordinal).Replace("@m9_payload", "@group_payload", StringComparison.Ordinal);
 
     private const string CommitActivitySql = """
         SELECT result_status, inserted_count, duplicate_count, rejected_count,
@@ -229,14 +338,19 @@ public sealed class PostgreSqlCollectorRuntimeRepositoryPort : ICollectorRuntime
 
     private const string CommitQueryPerformanceCanonicalSql = """
         SELECT result_status, inserted_count, duplicate_count, rejected_count, persisted_bytes, committed_at
-        FROM control.commit_query_performance_collection_run_canonical(
+        FROM control.commit_query_performance_with_content(
           @run_id,@instance_id,@target_revision,@collector_version,@output_schema_version,
           @schedule_revision,@scheduled_at,@work_key,@owner_execution_id,@fencing_token,
           @request_digest,@outcome,@reason_code,@duration_ms,@attempt_count,@source_row_count,
           @output_item_count,@response_bytes,@output_bytes,@loss_kind,@minimum_lost_items,
           @loss_count_is_exact,@minimum_lost_bytes,@next_circuit_state,@next_consecutive_failures,
           @completion_digest,@window_start,@window_end,@query_source::events.query_performance_source,
-          @query_source_state,@query_coverage,@query_freshness,@query_truncated,@query_payload);
+          @query_source_state,@query_coverage,@query_freshness,@query_truncated,
+          @query_payload,@links,@plan_links);
+        """;
+    private const string CommitQueryWaitSnapshotsSql = """
+        SELECT control.commit_query_plan_wait_snapshots(
+            @run_id,@instance_id,@fencing_token,@snapshots);
         """;
 
     private static readonly string[] RequiredCollectorIds =
@@ -256,6 +370,13 @@ public sealed class PostgreSqlCollectorRuntimeRepositoryPort : ICollectorRuntime
         "availability-groups.health",
         "host.metrics",
         "replication.health",
+        "storage.volume",
+        "queries.performance-groups",
+        "engine.buffer-nodes",
+        "engine.configurations",
+        "cpu.components",
+        "server.lifecycle",
+        "sql-agent.activity-observations",
     ];
 
     private static readonly string[] RequiredManifestDigests =
@@ -268,32 +389,46 @@ public sealed class PostgreSqlCollectorRuntimeRepositoryPort : ICollectorRuntime
         "aeae9d3d2a2f373b9b66b0e68a0c2d51dcc548dad3fc175a118ba3a5cd007da9",
         "2470cbe3d16e3825a8c30ed0fde6d84e0eced0124f93ef8ff268f93b4523c59b",
         "59cfabc2a63efa7236e61170f6ad1e3afee79e5dd79e4367ed90e49fb18214b8",
-        "d3504950a8fc6b10b2da9f786cc7881098e2f360200330e71ee0e353561d3e69",
-        "065e9f16747d10316ce420feeb350b097e8e86e9faa2d6f5b1d9c33ae1e29cff",
+        "bb6b9a0deba84a50a5a86c996569f01260edf0d99502876914ff5bda1bfe3e33",
+        "7b33dfe41e9e5dbdd8dec1afe5504e34add138f56181f039d838b3e0f854e6e9",
         "3803245b86c5f6b8a52fe13751717a670f2dbf96779596ba40bcaa75dbe248ee",
         "e71c0bf83c1285c3b63467448bd36c26bba8373c2a5a8ffb8785dbd764eecf57",
         "a560579657eb62da6e2a887169ccd4468a5ba7299de3ba61ca375e5e87e4c306",
         "ea1cdd808a9d9245db30012beafe40ec09b148a430016281993f31a1046e8b35",
         "1cc5d831d59222c75555791fbf1a3045b486158195dbed42384ab43d0e4a9509",
+        "1aa2087ea8ac53aefdc04fa2d7e87345de3d0de072690b26bc084d61c43ca5c2",
+        "2a026abedbde62a7c8ad101ef1716c15a31f82b576c2610ef03e60552803e7f9",
+        "2051ddb3e18434a0839e346a3b6361c2e371ce83072ea28e65956c3b6a442451",
+        "0e2091d6e4e8246154aeacb7c7fe1578a9264623aae883e0ec7088b9ca266aeb",
+        "12efdd346d5f9309c3938c4f13cc58e5a5e6a6622ae8b8b4e46e1f18b16932c3",
+        "61d1fc88832caa1b98121e80f757c810ec9e2798914389550b4f52699ad6bbd6",
+        "c7e82d6b77087a0ef2ab7aec7551d5f4cb2be335129afbf6391bbf503afba15d",
     ];
 
     private static readonly string[] RequiredBundleDigests =
     [
-        "34214cef39c56f1d984bee1da82fd40ac410552eca04f6bd64420b001bd3114c",
-        "34214cef39c56f1d984bee1da82fd40ac410552eca04f6bd64420b001bd3114c",
-        "34214cef39c56f1d984bee1da82fd40ac410552eca04f6bd64420b001bd3114c",
-        "86b049c90409e157c06612ebd48c36435213122636c9a84637e1d79029cc959e",
-        "86b049c90409e157c06612ebd48c36435213122636c9a84637e1d79029cc959e",
-        "86b049c90409e157c06612ebd48c36435213122636c9a84637e1d79029cc959e",
-        "86b049c90409e157c06612ebd48c36435213122636c9a84637e1d79029cc959e",
-        "57fa05f859d8f1e355786b84cc0ea6c05810ace0088fe176120b6ba019a654de",
-        "ba28508f8b9e2c3074b3605856de963d1663a884fce8356e1f2485040aa6c78f",
-        "5697aaf35aee3f30f339de5fd973041978b6a0d767759e30cd223eb829e74484",
-        "5697aaf35aee3f30f339de5fd973041978b6a0d767759e30cd223eb829e74484",
-        "5697aaf35aee3f30f339de5fd973041978b6a0d767759e30cd223eb829e74484",
-        "5697aaf35aee3f30f339de5fd973041978b6a0d767759e30cd223eb829e74484",
+        "10ef6cb84001d6a3f34889cb8c2d96d51c247289582ef3fa25c3f63862399a17",
+        "10ef6cb84001d6a3f34889cb8c2d96d51c247289582ef3fa25c3f63862399a17",
+        "10ef6cb84001d6a3f34889cb8c2d96d51c247289582ef3fa25c3f63862399a17",
+        "d233698a8b350ebdf805cbb65b085b0a93b64fc66f57f8f21d354c3445ee00c8",
+        "d233698a8b350ebdf805cbb65b085b0a93b64fc66f57f8f21d354c3445ee00c8",
+        "d233698a8b350ebdf805cbb65b085b0a93b64fc66f57f8f21d354c3445ee00c8",
+        "d233698a8b350ebdf805cbb65b085b0a93b64fc66f57f8f21d354c3445ee00c8",
+        "21c5911e826f945833b74b128ae499464f494cf5f0be4a59ba042d451e1ebd8d",
+        "5b9289da31b8051dfca4a9bfb7a0b16755253b1122897a2464e797c40a465c96",
+        "ce5cf58bf6442b561426b7e72b7825c3e08093e80e5277f2ec6a93ddece6ba87",
+        "ce5cf58bf6442b561426b7e72b7825c3e08093e80e5277f2ec6a93ddece6ba87",
+        "ce5cf58bf6442b561426b7e72b7825c3e08093e80e5277f2ec6a93ddece6ba87",
+        "ce5cf58bf6442b561426b7e72b7825c3e08093e80e5277f2ec6a93ddece6ba87",
         "cf629310626827ea9b91baab7ef21427d20c230adfaeff472ddfd26d1ebfee26",
-        "8fa9d8d4c8f3a8fdfb17ffe675f7642220ada826719136d5b7338372866c2b9a",
+        "e9d52f49d1c728ed6968867a1caee11d6a5f288c5326da585b68a9bed0060f36",
+        "a7628baac6bb1c84a409e17ac39d702de1b22f72b80a64b619cc25c63e35c648",
+        "4d6c86e95950d0a60c72d7876283c505058b96ee25a102cf967aa8ffa220aa8a",
+        "043d739a50b552e9f1859059ce067baa234d28edf669f9566e78cc7f01a0042e",
+        "0eb242b28bd428bbcb5bc3ea146c6fa8739226fbc779da470e431832a156a4c9",
+        "650fdd81cc50ed82c5d9e3db2f1685a276556b4d416e61f2c2359c9bb5f70116",
+        "fc783bea8bc4f56f76a9f8c7b84e46f2205c1f20b852275ef8676fc90ef658d2",
+        "d60bbdffe9b547c0fff27b7de0fff8457f7b6e42d34f55a9a21f68c995ef06a4",
     ];
     private static readonly string ReconcileM7Sql = ReconcileSql.Replace("control.reconcile_collector_catalog(", "control.reconcile_collector_catalog_m7(", StringComparison.Ordinal);
 
@@ -338,7 +473,26 @@ public sealed class PostgreSqlCollectorRuntimeRepositoryPort : ICollectorRuntime
             await using NpgsqlConnection connection = await _dataSource
                 .OpenConnectionAsync(timeout.Token)
                 .ConfigureAwait(false);
-            await using var command = new NpgsqlCommand(request.Entries.Count switch { 15 => ReconcileM10Sql, 13 => ReconcileM9Sql, 9 => ReconcileM7Sql, 8 => ReconcileM6Sql, _ => ReconcileSql }, connection)
+            string reconcileSql = request.Entries.Count switch
+            {
+                22 => ReconcileSqlAgentActivityObservationsSql,
+                21 => ReconcileServerLifecycleSql,
+                20 => ReconcileCpuComponentsSql,
+                19 when request.Entries[7].Manifest.ManifestVersion.Value == 2 => ReconcileDeadlocksV2Sql,
+                19 when request.Entries[9].Manifest.ManifestVersion.Value == 2 => ReconcileBackupsV2Sql,
+                19 when request.Entries[12].Manifest.ManifestVersion.Value == 2 => ReconcileAgV2Sql,
+                19 when request.Entries[1].Manifest.ManifestVersion.Value == 2 => ReconcileM15Sql,
+                19 => ReconcileM14Sql,
+                18 => ReconcileM13Sql,
+                17 => ReconcileM12Sql,
+                16 => ReconcileM11Sql,
+                15 => ReconcileM10Sql,
+                13 => ReconcileM9Sql,
+                9 => ReconcileM7Sql,
+                8 => ReconcileM6Sql,
+                _ => ReconcileSql,
+            };
+            await using var command = new NpgsqlCommand(reconcileSql, connection)
             {
                 CommandTimeout = PostgreSqlRuntimeSupport.GetCommandTimeoutSeconds(request.Timeout),
             };
@@ -478,6 +632,70 @@ public sealed class PostgreSqlCollectorRuntimeRepositoryPort : ICollectorRuntime
         }
     }
 
+    public async ValueTask<CollectorClaimedWork?> ClaimDueAsync(
+        ClaimDueCollectorWorkRequest request,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        ArgumentNullException.ThrowIfNull(request.Owner);
+        ArgumentNullException.ThrowIfNull(request.LeaseDuration);
+        ArgumentNullException.ThrowIfNull(request.Timeout);
+        using CancellationTokenSource timeout = PostgreSqlRuntimeSupport.CreateTimeoutScope(request.Timeout, cancellationToken);
+        WorkerLeaseIdentity? identity = null;
+        try
+        {
+            DueRow row;
+            WorkerLease lease;
+            DateTimeOffset leaseRepositoryTime;
+            await using (NpgsqlConnection connection = await _dataSource.OpenConnectionAsync(timeout.Token).ConfigureAwait(false))
+            await using (var command = new NpgsqlCommand(ClaimDueSql, connection)
+            {
+                CommandTimeout = PostgreSqlRuntimeSupport.GetCommandTimeoutSeconds(request.Timeout),
+            })
+            {
+                command.Parameters.AddWithValue("owner_execution_id", request.Owner.Value);
+                command.Parameters.AddWithValue("ttl", request.LeaseDuration.Value);
+                await using NpgsqlDataReader reader = await command.ExecuteReaderAsync(timeout.Token).ConfigureAwait(false);
+                if (!await reader.ReadAsync(timeout.Token).ConfigureAwait(false)) return null;
+                identity = new WorkerLeaseIdentity(
+                    new WorkerLeaseKey("collector/run/" + reader.GetString(9) + "/" + reader.GetGuid(0).ToString("N")),
+                    request.Owner, new FencingToken(reader.GetInt64(19)));
+                row = ReadDueRow(reader);
+                lease = new WorkerLease(identity,
+                    PostgreSqlRuntimeSupport.ReadUtcTimestamp(reader, 20),
+                    PostgreSqlRuntimeSupport.ReadUtcTimestamp(reader, 21),
+                    PostgreSqlRuntimeSupport.ReadUtcTimestamp(reader, 22));
+                leaseRepositoryTime = PostgreSqlRuntimeSupport.ReadUtcTimestamp(reader, 23);
+            }
+
+            CapabilityProfileBatch profiles = await _capabilityProfiles.GetLatestForTargetsAsync(
+                new GetLatestCapabilityProfilesRequest([row.TargetId], request.Timeout), timeout.Token).ConfigureAwait(false);
+            CapabilityProfile? profile = profiles.Profiles.SingleOrDefault();
+            if (profile is not null && profile.TargetRevision != row.TargetRevision) profile = null;
+            var work = new CollectorDueWorkItem(row.TargetId, row.TargetRevision, row.ConnectionPolicy,
+                row.CollectorId, row.CollectorVersion, row.OutputSchemaVersion, row.ScheduleRevision,
+                row.ScheduledAtUtc, row.RepositoryTimeUtc, row.Circuit, profile);
+            return new CollectorClaimedWork(work, lease, leaseRepositoryTime);
+        }
+        catch
+        {
+            if (identity is not null)
+            {
+                try
+                {
+                    await using var release = _dataSource.CreateCommand("SELECT control.release_worker_lease(@key,@owner,@fence)");
+                    release.CommandTimeout = 5;
+                    release.Parameters.AddWithValue("key", identity.Key.Value);
+                    release.Parameters.AddWithValue("owner", identity.Owner.Value);
+                    release.Parameters.AddWithValue("fence", identity.FencingToken.Value);
+                    await release.ExecuteScalarAsync(CancellationToken.None).ConfigureAwait(false);
+                }
+                catch { /* The bounded lease expiry remains the recovery path. */ }
+            }
+            throw;
+        }
+    }
+
     public async ValueTask<CollectorRunStartResult> BeginRunAsync(
         BeginCollectorRunRequest request,
         CancellationToken cancellationToken)
@@ -539,6 +757,8 @@ public sealed class PostgreSqlCollectorRuntimeRepositoryPort : ICollectorRuntime
     {
         ArgumentNullException.ThrowIfNull(request);
         ValidateCommit(request);
+        if (request.Work.CollectorId.Value == "deadlocks.system-health" && request.Work.CollectorManifestVersion != 1)
+            throw new ArgumentException("Incremental deadlocks require the atomic source-proof commit path.", nameof(request));
         byte[] requestDigest = CreateRequestDigest(request.Work, request.Summary.RunId, request.Lease);
         using CancellationTokenSource timeout = PostgreSqlRuntimeSupport.CreateTimeoutScope(
             request.Timeout,
@@ -549,27 +769,53 @@ public sealed class PostgreSqlCollectorRuntimeRepositoryPort : ICollectorRuntime
             await using NpgsqlConnection connection = await _dataSource
                 .OpenConnectionAsync(timeout.Token)
                 .ConfigureAwait(false);
+            if (request.Work.CollectorId.Value == "sql-agent.activity-observations")
+                return await CommitSqlAgentActivityAsync(connection, request, requestDigest, timeout.Token).ConfigureAwait(false);
+            if (request.Work.CollectorId.Value == "cpu.components")
+                return await CommitCpuComponentsAsync(connection, request, requestDigest, timeout.Token).ConfigureAwait(false);
+            if (request.Work.CollectorId.Value == "cpu.paired-capture")
+                return await CommitCpuPairedCaptureAsync(connection, request, requestDigest, timeout.Token).ConfigureAwait(false);
             bool activityCollector = IsActivityCollector(request.Work.CollectorId);
             bool deadlockCollector = request.Work.CollectorId.Value == "deadlocks.system-health";
+            bool databaseInventoryV2 = request.Work.CollectorId.Value == "database.inventory" &&
+                request.Work.CollectorManifestVersion == 2;
             bool queryPerformanceCollector = request.Work.CollectorId.Value == "queries.performance";
-            bool m9Collector = request.Work.CollectorId.Value is "backups.status" or "sql-agent.failures" or "tempdb.health" or "availability-groups.health";
+            bool m9Collector = request.Work.CollectorId.Value is "backups.status" or "sql-agent.failures" or "tempdb.health" or "availability-groups.health" or "server.lifecycle";
             bool m10HostCollector = request.Work.CollectorId.Value == "host.metrics";
             bool m10ReplicationCollector = request.Work.CollectorId.Value == "replication.health";
-            if (m10HostCollector || m10ReplicationCollector)
-                return await CommitM10WithCanonicalLifecycleAsync(connection, request, requestDigest, m10HostCollector, timeout.Token).ConfigureAwait(false);
+            bool sqlVolumeCollector = request.Work.CollectorId.Value == "storage.volume";
+            bool bufferNodePleCollector = request.Work.CollectorId.Value == "engine.buffer-nodes";
+            bool serverConfigurationCollector = request.Work.CollectorId.Value == "engine.configurations";
+            bool queryStoreGroupCollector = request.Work.CollectorId.Value == "queries.performance-groups";
+            if (queryStoreGroupCollector)
+                return await CommitQueryStoreGroupsAsync(connection, request, requestDigest, timeout.Token).ConfigureAwait(false);
+            if (m10HostCollector || m10ReplicationCollector || sqlVolumeCollector || bufferNodePleCollector || serverConfigurationCollector)
+                return await CommitTypedWithCanonicalLifecycleAsync(connection, request, requestDigest, m10HostCollector, sqlVolumeCollector, bufferNodePleCollector, serverConfigurationCollector, timeout.Token).ConfigureAwait(false);
             if (queryPerformanceCollector)
             {
+                if (request.Work.CollectorManifestVersion == 3 && request.Work.OutputSchemaVersion == 3)
+                    return await CommitQueryPerformanceV3Async(connection, request, requestDigest, timeout.Token).ConfigureAwait(false);
+                if (request.Work.CollectorManifestVersion == 2 && request.Work.OutputSchemaVersion == 2)
+                    return await CommitQueryPerformanceV2Async(connection, request, requestDigest, timeout.Token).ConfigureAwait(false);
                 return await CommitQueryPerformanceWithCanonicalLifecycleAsync(connection, request, requestDigest, timeout.Token).ConfigureAwait(false);
             }
-            string m9Sql = request.Work.CollectorId.Value switch { "backups.status" => CommitBackupsM9Sql, "sql-agent.failures" => CommitAgentM9Sql, "tempdb.health" => CommitTempDbM9Sql, "availability-groups.health" => CommitAgM9Sql, _ => CommitM9Sql };
+            string m9Sql = request.Work.CollectorId.Value switch
+            {
+                "backups.status" => request.Work.CollectorManifestVersion == 2 ? CommitBackupsV2Sql : CommitBackupsM9Sql,
+                "sql-agent.failures" => CommitAgentM9Sql,
+                "tempdb.health" => CommitTempDbM9Sql,
+                "availability-groups.health" => request.Work.CollectorManifestVersion == 2 ? CommitAgV2Sql : CommitAgM9Sql,
+                "server.lifecycle" => CommitServerLifecycleSql,
+                _ => CommitM9Sql,
+            };
             await using var command = new NpgsqlCommand(
-                queryPerformanceCollector ? CommitQueryPerformanceSql : deadlockCollector ? CommitDeadlockSql : activityCollector ? CommitActivitySql : m9Collector ? m9Sql : CommitCoreSql,
+                queryPerformanceCollector ? CommitQueryPerformanceSql : deadlockCollector ? CommitDeadlockSql : activityCollector ? CommitActivitySql : m9Collector ? m9Sql : request.Work.CollectorId.Value == "engine.core" ? CommitEngineCoreSql : databaseInventoryV2 ? CommitDatabaseInventoryV2Sql : CommitCoreSql,
                 connection)
             {
                 CommandTimeout = PostgreSqlRuntimeSupport.GetCommandTimeoutSeconds(request.Timeout),
             };
             AddRunIdentity(command, request.Work, request.Summary.RunId, request.Lease, requestDigest);
-            if (queryPerformanceCollector) AddQueryPerformanceCommitParameters(command, request); else if (m9Collector) AddM9CommitParameters(command, request); else AddCommitParameters(command, request, activityCollector, deadlockCollector);
+            if (queryPerformanceCollector) AddQueryPerformanceCommitParameters(command, request); else if (m9Collector) AddM9CommitParameters(command, request); else AddCommitParameters(command, request, activityCollector, deadlockCollector, databaseInventoryV2);
             await using NpgsqlDataReader reader = await command
                 .ExecuteReaderAsync(timeout.Token)
                 .ConfigureAwait(false);
@@ -615,8 +861,9 @@ public sealed class PostgreSqlCollectorRuntimeRepositoryPort : ICollectorRuntime
         }
     }
 
-    private async ValueTask<CollectorRunCommitResult> CommitM10WithCanonicalLifecycleAsync(
-        NpgsqlConnection connection, CommitCollectorRunRequest request, byte[] requestDigest, bool hostCollector, CancellationToken cancellationToken)
+    private static async ValueTask<CollectorRunCommitResult> CommitQueryStoreGroupsAsync(
+        NpgsqlConnection connection, CommitCollectorRunRequest request, byte[] requestDigest,
+        CancellationToken cancellationToken)
     {
         await using NpgsqlTransaction transaction = await connection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
         await using (var scope = new NpgsqlCommand("SELECT set_config('sqlobserver.target_scope',@scope,false);", connection, transaction))
@@ -624,9 +871,57 @@ public sealed class PostgreSqlCollectorRuntimeRepositoryPort : ICollectorRuntime
             scope.Parameters.AddWithValue("scope", request.Work.TargetId.Value.ToString());
             await scope.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
         }
-        byte[] json = JsonSerializer.SerializeToUtf8Bytes(BuildM10Payload(request, hostCollector), M9JsonOptions);
-        if (json.Length > 1_048_576) throw new InvalidDataException("M10 persistence payload exceeds the accepted response bound.");
-        await using var command = new NpgsqlCommand(CommitM10Sql, connection, transaction)
+        bool success = request.Summary.Outcome is CollectorRunOutcome.Succeeded or CollectorRunOutcome.Partial;
+        byte[] json = success
+            ? QueryStoreGroupCommitPayload.Serialize(request.Payload.QueryStoreGroups!)
+            : QueryStoreGroupCommitPayload.SerializeFailure(request.Work.TargetId,
+                request.Work.TargetRevision, MapOutcome(request.Summary.Outcome), MapReason(request.Summary.Reason));
+        await using var command = new NpgsqlCommand(CommitQueryStoreGroupSql, connection, transaction)
+        { CommandTimeout = PostgreSqlRuntimeSupport.GetCommandTimeoutSeconds(request.Timeout) };
+        AddRunIdentity(command, request.Work, request.Summary.RunId, request.Lease, requestDigest);
+        AddSummaryCommitParameters(command, request);
+        command.Parameters.AddWithValue("group_payload", NpgsqlDbType.Jsonb, Encoding.UTF8.GetString(json));
+        command.Parameters.AddWithValue("completion_digest", NpgsqlDbType.Bytea, SHA256.HashData(json));
+        CollectorRunCommitResult commit;
+        await using (NpgsqlDataReader reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false))
+        {
+            if (!await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+                throw new InvalidDataException("PostgreSQL Query Store group commit returned no result row.");
+            CollectorRunCommitStatus status = reader.GetString(0) switch
+            {
+                "committed" => CollectorRunCommitStatus.Committed,
+                "replayed" => CollectorRunCommitStatus.Replayed,
+                _ => throw new InvalidDataException("PostgreSQL returned an unknown Query Store group commit status."),
+            };
+            commit = new CollectorRunCommitResult(status, reader.GetInt32(1), reader.GetInt32(2),
+                reader.GetInt32(3), reader.GetInt32(4), reader.IsDBNull(5) ? null :
+                    PostgreSqlRuntimeSupport.ReadUtcTimestamp(reader, 5));
+            if (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+                throw new InvalidDataException("PostgreSQL Query Store group commit returned multiple result rows.");
+        }
+        if (commit.Status is CollectorRunCommitStatus.Committed or CollectorRunCommitStatus.Replayed)
+            await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+        else
+            await transaction.RollbackAsync(cancellationToken).ConfigureAwait(false);
+        return commit;
+    }
+
+    private async ValueTask<CollectorRunCommitResult> CommitTypedWithCanonicalLifecycleAsync(
+        NpgsqlConnection connection, CommitCollectorRunRequest request, byte[] requestDigest,
+        bool hostCollector, bool sqlVolumeCollector, bool bufferNodePleCollector,
+        bool serverConfigurationCollector,
+        CancellationToken cancellationToken)
+    {
+        await using NpgsqlTransaction transaction = await connection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
+        await using (var scope = new NpgsqlCommand("SELECT set_config('sqlobserver.target_scope',@scope,false);", connection, transaction))
+        {
+            scope.Parameters.AddWithValue("scope", request.Work.TargetId.Value.ToString());
+            await scope.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+        }
+        byte[] json = JsonSerializer.SerializeToUtf8Bytes(BuildTypedPayload(request, hostCollector, sqlVolumeCollector, bufferNodePleCollector, serverConfigurationCollector), M9JsonOptions);
+        if (json.Length > (bufferNodePleCollector ? 65_536 : serverConfigurationCollector ? 131_072 : 1_048_576))
+            throw new InvalidDataException("Typed persistence payload exceeds the accepted response bound.");
+        await using var command = new NpgsqlCommand(serverConfigurationCollector ? CommitServerConfigurationSql : bufferNodePleCollector ? CommitBufferNodePleSql : sqlVolumeCollector ? CommitSqlVolumeSql : CommitM10Sql, connection, transaction)
         { CommandTimeout = PostgreSqlRuntimeSupport.GetCommandTimeoutSeconds(request.Timeout) };
         AddRunIdentity(command, request.Work, request.Summary.RunId, request.Lease, requestDigest);
         AddSummaryCommitParameters(command, request);
@@ -649,10 +944,67 @@ public sealed class PostgreSqlCollectorRuntimeRepositoryPort : ICollectorRuntime
         return result;
     }
 
-    private object BuildM10Payload(CommitCollectorRunRequest request, bool hostCollector)
+    private object BuildTypedPayload(CommitCollectorRunRequest request, bool hostCollector, bool sqlVolumeCollector,
+        bool bufferNodePleCollector, bool serverConfigurationCollector)
     {
         if (request.Summary.Outcome is not (CollectorRunOutcome.Succeeded or CollectorRunOutcome.Partial))
             return new { schemaVersion = 1, targetId = request.Work.TargetId.Value, targetRevision = request.Work.TargetRevision.Value, outcome = MapOutcome(request.Summary.Outcome), reason = MapReason(request.Summary.Reason), items = Array.Empty<object>() };
+        if (serverConfigurationCollector)
+            return new
+            {
+                schemaVersion = 1,
+                targetId = request.Work.TargetId.Value,
+                targetRevision = request.Work.TargetRevision.Value,
+                serverMajorVersion = request.Payload.ServerConfigurations.Items.Count == 0
+                    ? (int?)null : request.Payload.ServerConfigurations.Items[0].ServerMajorVersion,
+                items = request.Payload.ServerConfigurations.Items.Select(static item => new
+                {
+                    configurationId = item.ConfigurationId,
+                    name = item.Name,
+                    sourceType = item.SourceType,
+                    configuredValue = item.ConfiguredValue,
+                    inUseValue = item.InUseValue,
+                    isDynamic = item.IsDynamic,
+                    isAdvanced = item.IsAdvanced,
+                    observedAtUtc = item.ObservedAtUtc,
+                }).ToArray(),
+            };
+        if (bufferNodePleCollector)
+            return new
+            {
+                schemaVersion = 1,
+                targetId = request.Work.TargetId.Value,
+                targetRevision = request.Work.TargetRevision.Value,
+                items = request.Payload.Metrics.Select(static item => new
+                {
+                    observedAtUtc = item.ObservedAtUtc,
+                    sampleId = item.SampleId.Value,
+                    nodeId = int.Parse(item.Dimensions[0].Value, System.Globalization.CultureInfo.InvariantCulture),
+                    seconds = item.Value,
+                }).ToArray(),
+            };
+        if (sqlVolumeCollector)
+            return new
+            {
+                schemaVersion = 1,
+                targetId = request.Work.TargetId.Value,
+                targetRevision = request.Work.TargetRevision.Value,
+                items = request.Payload.SqlVolumes.Items.Select(static item => new
+                {
+                    volumeKey = item.VolumeKey,
+                    identityKind = item.IdentityKind switch
+                    {
+                        SqlVolumeIdentityKind.VolumeId => "volume_id",
+                        SqlVolumeIdentityKind.MountPoint => "mount_point",
+                        SqlVolumeIdentityKind.FileScopedUnknown => "file_scoped_unknown",
+                        _ => throw new InvalidDataException("Unknown SQL volume identity kind."),
+                    },
+                    mappedFileCount = item.MappedFileCount,
+                    totalBytes = item.TotalBytes?.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                    availableBytes = item.AvailableBytes?.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                    observedAtUtc = item.ObservedAtUtc,
+                }).ToArray(),
+            };
         if (hostCollector)
         {
             HostMetricsPayloadContext? hostMetrics = request.Payload.HostMetricsContext;
@@ -683,8 +1035,7 @@ public sealed class PostgreSqlCollectorRuntimeRepositoryPort : ICollectorRuntime
             items = snapshot?.Items.Select(item => new
             {
                 observedAtUtc = snapshot.ObservedAtUtc,
-                topologyFingerprint = item.PublicationFingerprint ?? item.SubscriptionFingerprint ?? item.VisibilityGapFingerprint ??
-                    ReplicationIdentityFingerprint.Gap(item.TargetId.Value, item.TargetRevision.Value, (int)item.Topology, (int)item.Role, 0, _fingerprintKey ?? throw new InvalidOperationException("Replication persistence requires the configured identity fingerprint key.")),
+                topologyFingerprint = ReplicationRowFingerprint(item, _fingerprintKey ?? throw new InvalidOperationException("Replication persistence requires the configured identity fingerprint key.")),
                 databaseFingerprint = item.SubscriptionFingerprint,
                 role = item.Role.ToString().ToLowerInvariant(),
                 synchronizationState = item.Status.ToString().ToLowerInvariant(),
@@ -702,6 +1053,22 @@ public sealed class PostgreSqlCollectorRuntimeRepositoryPort : ICollectorRuntime
                     : null,
             }).ToArray() ?? Array.Empty<object>(),
         };
+    }
+
+    // A publication can have several subscriptions. The stored row key must
+    // bind both opaque identities instead of collapsing every subscription
+    // into the publication key. Existing retained keys remain opaque legacy
+    // identities; this versioned key makes no continuity claim across versions.
+    private static string ReplicationRowFingerprint(ReplicationObservation item, IdentityFingerprintKey key)
+    {
+        if (item.PublicationFingerprint is null && item.SubscriptionFingerprint is null)
+            return item.VisibilityGapFingerprint ?? ReplicationIdentityFingerprint.Gap(item.TargetId.Value,
+                item.TargetRevision.Value, (int)item.Topology, (int)item.Role, 0, key);
+        string input = "sqlobserver-replication-row-v2\0" +
+            ((int)item.Topology).ToString(System.Globalization.CultureInfo.InvariantCulture) + "\0" +
+            ((int)item.Role).ToString(System.Globalization.CultureInfo.InvariantCulture) + "\0" +
+            (item.PublicationFingerprint ?? "") + "\0" + (item.SubscriptionFingerprint ?? "");
+        return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(input))).ToLowerInvariant();
     }
 
     private static async ValueTask<CollectorRunCommitResult> CommitQueryPerformanceWithCanonicalLifecycleAsync(
@@ -745,6 +1112,35 @@ public sealed class PostgreSqlCollectorRuntimeRepositoryPort : ICollectorRuntime
         {
             await transaction.RollbackAsync(cancellationToken).ConfigureAwait(false);
             return commit;
+        }
+        if (commit.Status == CollectorRunCommitStatus.Committed)
+        {
+            QueryWaitSnapshotLink[] snapshots = BuildQueryWaitSnapshots(request.Payload.QueryPerformance.Items);
+            if (snapshots.Length > 0)
+            {
+                await using var waits = new NpgsqlCommand(CommitQueryWaitSnapshotsSql, connection, transaction)
+                {
+                    CommandTimeout = PostgreSqlRuntimeSupport.GetCommandTimeoutSeconds(request.Timeout),
+                };
+                waits.Parameters.AddWithValue("run_id", request.Summary.RunId.Value);
+                waits.Parameters.AddWithValue("instance_id", request.Work.TargetId.Value);
+                waits.Parameters.AddWithValue("fencing_token", request.Lease.FencingToken.Value);
+                waits.Parameters.AddWithValue("snapshots", NpgsqlDbType.Jsonb,
+                    JsonSerializer.Serialize(snapshots.Select(static snapshot => new
+                    {
+                        database_id = snapshot.DatabaseId,
+                        query_fingerprint = snapshot.QueryFingerprint,
+                        plan_fingerprint = snapshot.PlanFingerprint,
+                        categories = snapshot.Categories.Select(static category => new
+                        {
+                            category = category.Category,
+                            waitMilliseconds = category.WaitMilliseconds,
+                        }),
+                    })));
+                object? written = await waits.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
+                if (written is not int count || count != snapshots.Length)
+                    throw new InvalidDataException("Query wait snapshot commit did not persist every plan.");
+            }
         }
         await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
         return commit;
@@ -846,7 +1242,8 @@ public sealed class PostgreSqlCollectorRuntimeRepositoryPort : ICollectorRuntime
         NpgsqlCommand command,
         CommitCollectorRunRequest request,
         bool activityCollector,
-        bool deadlockCollector)
+        bool deadlockCollector,
+        bool databaseInventoryV2)
     {
         CollectorRunSummary summary = request.Summary;
         CollectorPayload payload = request.Payload;
@@ -894,6 +1291,9 @@ public sealed class PostgreSqlCollectorRuntimeRepositoryPort : ICollectorRuntime
         AddArray(command, "database_user_access", NpgsqlDbType.Text, databases.Select(static item => MapUserAccess(item.UserAccess)).ToArray());
         AddArray(command, "database_is_read_only", NpgsqlDbType.Boolean, databases.Select(static item => item.IsReadOnly).ToArray());
         AddArray(command, "database_compatibility_levels", NpgsqlDbType.Integer, databases.Select(static item => item.CompatibilityLevel).ToArray());
+        if (databaseInventoryV2)
+            AddArray(command, "database_log_reuse_wait_desc", NpgsqlDbType.Text,
+                databases.Select(static item => item.LogReuseWaitDescription).ToArray());
         AddArray(command, "database_sizes", NpgsqlDbType.Integer, databases.Select(static item => item.EstimatedSizeBytes).ToArray());
 
         DatabaseFileObservation[] files = payload.DatabaseFiles.Items.ToArray();
@@ -912,6 +1312,8 @@ public sealed class PostgreSqlCollectorRuntimeRepositoryPort : ICollectorRuntime
         AddArray(command, "file_bytes_read", NpgsqlDbType.Bigint, files.Select(static item => item.BytesRead).ToArray());
         AddArray(command, "file_bytes_written", NpgsqlDbType.Bigint, files.Select(static item => item.BytesWritten).ToArray());
         AddArray(command, "file_io_stall_ms", NpgsqlDbType.Bigint, files.Select(static item => item.IoStallMilliseconds).ToArray());
+        AddArray(command, "file_read_stall_ms", NpgsqlDbType.Bigint, files.Select(static item => item.ReadStallMilliseconds).ToArray());
+        AddArray(command, "file_write_stall_ms", NpgsqlDbType.Bigint, files.Select(static item => item.WriteStallMilliseconds).ToArray());
         AddArray(command, "file_sizes", NpgsqlDbType.Integer, files.Select(static item => item.EstimatedSizeBytes).ToArray());
     }
 
@@ -938,12 +1340,22 @@ public sealed class PostgreSqlCollectorRuntimeRepositoryPort : ICollectorRuntime
     {
         AddSummaryCommitParameters(command, request);
         CollectorRunSummary summary = request.Summary;
-        object payload = BuildM9Payload(request.Payload.OperationalHealth?.Snapshot, request.Work.TargetId, request.Work.TargetRevision, request.Summary.Outcome, request.Summary.Reason, summary.Accounting, summary.Loss);
+        bool availabilityV2 = request.Work.CollectorId.Value == "availability-groups.health" && request.Work.CollectorManifestVersion == 2;
+        bool backupsV2 = request.Work.CollectorId.Value == "backups.status" && request.Work.CollectorManifestVersion == 2;
+        bool serverLifecycle = request.Work.CollectorId.Value == "server.lifecycle";
+        object payload = serverLifecycle
+            ? ServerLifecyclePersistencePayload.Build(request, MapOutcome(summary.Outcome), MapReason(summary.Reason))
+            : backupsV2
+            ? BackupV2PersistencePayload.Build(request, MapOutcome(summary.Outcome), MapReason(summary.Reason))
+            : availabilityV2
+                ? AvailabilityGroupV2PersistencePayload.Build(request, MapOutcome(summary.Outcome), MapReason(summary.Reason))
+                : BuildM9Payload(request.Payload.OperationalHealth?.Snapshot, request.Work.TargetId, request.Work.TargetRevision, request.Summary.Outcome, request.Summary.Reason, summary.Accounting, summary.Loss);
         byte[] json = JsonSerializer.SerializeToUtf8Bytes(payload, M9JsonOptions);
-        int storageCap = request.Work.CollectorId.Value == "availability-groups.health" ? 2_097_152 : 1_048_576;
+        int storageCap = backupsV2 ? 4_194_304 : request.Work.CollectorId.Value == "availability-groups.health" ? 2_097_152 : 1_048_576;
         if (json.Length > storageCap) throw new InvalidDataException("M9 persistence payload exceeds the accepted response bound.");
         command.Parameters.AddWithValue("m9_payload", NpgsqlDbType.Jsonb, Encoding.UTF8.GetString(json));
-        command.Parameters.AddWithValue("completion_digest", NpgsqlDbType.Bytea, System.Security.Cryptography.SHA256.HashData(json));
+        if (!availabilityV2 && !backupsV2 && !serverLifecycle)
+            command.Parameters.AddWithValue("completion_digest", NpgsqlDbType.Bytea, System.Security.Cryptography.SHA256.HashData(json));
     }
 
     private static object BuildM9Payload(object? snapshot, MonitoredInstanceId target, ObservationTargetRevision revision, CollectorRunOutcome outcome, CollectorRunReason reason, CollectorRunAccounting accounting, CollectorLossEvidence loss)
@@ -953,12 +1365,35 @@ public sealed class PostgreSqlCollectorRuntimeRepositoryPort : ICollectorRuntime
         if (snapshot is BackupStatusSnapshot backups)
             return new { kind = "backups_status", observedAtUtc = backups.ObservedAtUtc, state = (int)backups.State, sourceRowsRead = backups.SourceRowsRead, truncated = backups.Truncated, items = backups.Items.Select(x => new { x.DatabaseFingerprint, kind = (int)x.Kind, x.LastFinishUtc, x.SourceLocalFinish, x.SourceTimeUnknown, x.SizeBytes, x.CopyOnly, x.HasChecksum, x.IsDamaged, coverage = (int)x.Coverage, x.BackupSetId }) };
         if (snapshot is SqlAgentFailureSnapshot agent)
-            return new { kind = "sql_agent_failures", observedAtUtc = agent.ObservedAtUtc, state = (int)agent.State, sourceRowsRead = agent.SourceRowsRead, truncated = agent.Truncated, coverageFromUtc = (DateTimeOffset?)null, coverageToUtc = (DateTimeOffset?)null, items = agent.Items.Select(x => new { x.JobId, x.HistoryInstanceId, x.StepId, x.RunStatus, failureKind = (int)x.FailureKind, x.MessageId, x.Severity, x.RetryAttempt, x.DurationSeconds, x.FirstObservedAtUtc, x.FailureFingerprint }) };
+            return new { kind = "sql_agent_failures", observedAtUtc = agent.ObservedAtUtc, state = (int)agent.State, sourceRowsRead = agent.SourceRowsRead, truncated = agent.Truncated, coverageFromUtc = (DateTimeOffset?)null, coverageToUtc = (DateTimeOffset?)null, items = agent.Items.Select(BuildAgentFailurePayload) };
         if (snapshot is TempDbSnapshot tempdb)
             return new { kind = "tempdb_health", observedAtUtc = tempdb.ObservedAtUtc, state = (int)tempdb.State, tempdb.TotalBytes, tempdb.UsedBytes, tempdb.LogTotalBytes, tempdb.LogUsedBytes, tempdb.Truncated, files = tempdb.Files.Select(x => new { x.FileId, x.SizeBytes, x.UsedBytes, x.FreeBytes, state = (int)x.State }) };
         if (snapshot is AvailabilityGroupsSnapshot groups)
             return new { kind = "availability_groups_health", observedAtUtc = groups.ObservedAtUtc, state = (int)groups.State, visibilityScope = (int)groups.VisibilityScope, groups.Truncated, replicas = groups.Replicas.Select(x => new { x.GroupFingerprint, x.ReplicaFingerprint, x.Role, x.OperationalState, x.ConnectedState, visibilityScope = (int)x.VisibilityScope, x.StateAvailable }), databases = groups.Databases.Select(x => new { x.GroupFingerprint, x.DatabaseFingerprint, x.SynchronizationState, x.DatabaseState, visibilityScope = (int)x.VisibilityScope, x.StateAvailable }) };
         return new { observedAtUtc = DateTimeOffset.UtcNow, state = (int)OperationalObservationState.NoData, sourceRowsRead = 0, truncated = false, items = Array.Empty<object>() };
+    }
+
+    private static object BuildAgentFailurePayload(SqlAgentFailureObservation item)
+    {
+        // Preserve the exact legacy shape and property order for immutable
+        // completion digests when this source field was not collected.
+        if (item.SourceLocalStart is not { } local)
+            return new { item.JobId, item.HistoryInstanceId, item.StepId, item.RunStatus, failureKind = (int)item.FailureKind, item.MessageId, item.Severity, item.RetryAttempt, item.DurationSeconds, item.FirstObservedAtUtc, item.FailureFingerprint };
+        return new
+        {
+            item.JobId,
+            item.HistoryInstanceId,
+            item.StepId,
+            item.RunStatus,
+            failureKind = (int)item.FailureKind,
+            item.MessageId,
+            item.Severity,
+            item.RetryAttempt,
+            item.DurationSeconds,
+            item.FirstObservedAtUtc,
+            item.FailureFingerprint,
+            sourceLocalStart = local.ToString("yyyy-MM-dd'T'HH:mm:ss", System.Globalization.CultureInfo.InvariantCulture)
+        };
     }
 
     private static void AddQueryPerformanceCommitParameters(NpgsqlCommand command, CommitCollectorRunRequest request)
@@ -984,11 +1419,23 @@ public sealed class PostgreSqlCollectorRuntimeRepositoryPort : ICollectorRuntime
         bool truncated = observations.Any(x => x.truncated) || payload.QueryPerformanceStatuses.Any(x => x.Truncated) || summaryLoss;
         var statuses = payload.QueryPerformanceStatuses.Select(x => new { databaseId = x.DatabaseId, status = MapQueryReadStatus(x.Status), sourceState = MapQueryStoreState(x.SourceState ?? StatusSourceState(x.Status)), reason = x.Reason, fallbackAttempted = x.FallbackAttempted, truncated = x.Truncated, lossKind = MapLoss(x.LossKind), sourceRowsRead = x.SourceRowsRead, responseBytes = x.ResponseBytes, minimumLostItems = x.MinimumLostItems, lossCountIsExact = x.LossCountIsExact, minimumLostBytes = x.MinimumLostBytes }).ToArray();
         var targetStatusJson = targetStatus is null ? null : new { status = targetStatus.Status, reason = targetStatus.Reason };
-        byte[] persistenceJson = QueryPerformancePersistencePayload.Serialize(payload.QueryPerformance.Items, payload.QueryPerformanceStatuses, targetStatus);
+        QueryTextLink[] queryTextLinks = BuildQueryTextLinks(payload.QueryPerformance.Items);
+        QueryPlanLink[] queryPlanLinks = BuildQueryPlanLinks(payload.QueryPerformance.Items);
+        QueryWaitSnapshotLink[] waitSnapshots = BuildQueryWaitSnapshots(payload.QueryPerformance.Items);
+        byte[] persistenceJson = QueryPerformancePersistencePayload.Serialize(
+            payload.QueryPerformance.Items, payload.QueryPerformanceStatuses, targetStatus,
+            contentLinksCommittedWithRun: true);
         if (persistenceJson.Length > QueryPerformancePersistencePayload.MaximumSerializedBytes) throw new InvalidDataException("Query performance persistence payload exceeds the accepted response bound.");
         var json = new { observations, databaseStatuses = statuses, targetStatus = targetStatusJson };
         var digestEnvelope = new { runId = request.Summary.RunId.Value, targetId = request.Work.TargetId.Value, targetRevision = request.Work.TargetRevision.Value, windowStartUtc = windowStart, windowEndUtc = windowEnd, source, sourceState, coverage, fresh, truncated, targetStatus = targetStatusJson, outcome = MapOutcome(request.Summary.Outcome), reason = MapReason(request.Summary.Reason), durationMs = request.Summary.Duration.TotalMilliseconds, attemptCount = request.Summary.AttemptCount, sourceRows = request.Summary.Accounting.SourceRowsRead, outputItems = request.Summary.Accounting.OutputItemsProduced, responseBytes = request.Summary.Accounting.ResponseBytes, outputBytes = request.Summary.Accounting.OutputBytes, lossKind = MapLoss(request.Summary.Loss.Kind), minimumLostItems = request.Summary.Loss.MinimumLostItems, lossCountIsExact = request.Summary.Loss.CountIsExact, minimumLostBytes = request.Summary.Loss.MinimumLostBytes, nextCircuitState = MapCircuit(request.NextCircuit.State), nextConsecutiveFailures = request.NextCircuit.ConsecutiveFailures, observations, databaseStatuses = statuses };
-        command.Parameters.AddWithValue("completion_digest", NpgsqlDbType.Bytea, SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(digestEnvelope)));
+        byte[] completionDigest = waitSnapshots.Length > 0
+            ? SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(new { digestEnvelope, queryTextLinks, queryPlanLinks, waitSnapshots }))
+            : queryPlanLinks.Length > 0
+            ? SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(new { digestEnvelope, queryTextLinks, queryPlanLinks }))
+            : queryTextLinks.Length == 0
+                ? SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(digestEnvelope))
+                : SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(new { digestEnvelope, queryTextLinks }));
+        command.Parameters.AddWithValue("completion_digest", NpgsqlDbType.Bytea, completionDigest);
         command.Parameters.AddWithValue("window_start", windowStart);
         command.Parameters.AddWithValue("window_end", windowEnd);
         command.Parameters.AddWithValue("query_source", source);
@@ -998,6 +1445,112 @@ public sealed class PostgreSqlCollectorRuntimeRepositoryPort : ICollectorRuntime
         command.Parameters.AddWithValue("query_truncated", truncated);
         command.Parameters.AddWithValue("fencing_token", request.Lease.FencingToken.Value);
         command.Parameters.AddWithValue("query_payload", NpgsqlDbType.Jsonb, Encoding.UTF8.GetString(persistenceJson));
+        command.Parameters.AddWithValue("links", NpgsqlDbType.Jsonb,
+            JsonSerializer.Serialize(queryTextLinks.Select(static link => new
+            {
+                database_id = link.DatabaseId,
+                query_fingerprint = link.QueryFingerprint,
+                payload_id = link.PayloadId,
+                fingerprint = link.PayloadFingerprint,
+            })));
+        command.Parameters.AddWithValue("plan_links", NpgsqlDbType.Jsonb,
+            JsonSerializer.Serialize(queryPlanLinks.Select(static link => new
+            {
+                database_id = link.DatabaseId,
+                query_fingerprint = link.QueryFingerprint,
+                plan_fingerprint = link.PlanFingerprint,
+                payload_id = link.PayloadId,
+                fingerprint = link.PayloadFingerprint,
+            })));
+    }
+
+    private sealed record QueryTextLink(
+        int DatabaseId, string QueryFingerprint, Guid PayloadId, string PayloadFingerprint);
+
+    private static QueryTextLink[] BuildQueryTextLinks(IReadOnlyList<QueryPerformanceObservation> observations)
+    {
+        var byQuery = new Dictionary<(int DatabaseId, string QueryFingerprint), QueryTextLink>();
+        foreach (QueryPerformanceObservation observation in observations)
+        {
+            if (observation.ProtectedContent is not null)
+                throw new InvalidDataException("Protected query text must be written under the lease before the M7 run commit.");
+            SensitivePayloadReference? reference = observation.ContentReference;
+            if (reference is null) continue;
+            if (reference.Kind != SensitivePayloadKind.QueryText)
+                throw new InvalidDataException("Execution-plan content requires a plan-bound link contract.");
+            var link = new QueryTextLink(observation.Query.DatabaseId,
+                observation.Query.QueryFingerprint, reference.PayloadId.Value,
+                reference.Fingerprint.ToHexString().ToLowerInvariant());
+            var key = (link.DatabaseId, link.QueryFingerprint);
+            if (byQuery.TryGetValue(key, out QueryTextLink? existing) && existing != link)
+                throw new InvalidDataException("One query identity cannot carry conflicting protected text references.");
+            byQuery[key] = link;
+        }
+        return byQuery.Values.OrderBy(static link => link.DatabaseId)
+            .ThenBy(static link => link.QueryFingerprint, StringComparer.Ordinal).ToArray();
+    }
+
+    private sealed record QueryPlanLink(int DatabaseId, string QueryFingerprint,
+        string PlanFingerprint, Guid PayloadId, string PayloadFingerprint);
+
+    private sealed record QueryWaitSnapshotLink(int DatabaseId, string QueryFingerprint,
+        string PlanFingerprint, IReadOnlyList<QueryWaitCategory> Categories);
+
+    private static QueryWaitSnapshotLink[] BuildQueryWaitSnapshots(
+        IReadOnlyList<QueryPerformanceObservation> observations)
+    {
+        var byPlan = new Dictionary<(int DatabaseId, string QueryFingerprint,
+            string PlanFingerprint), QueryWaitSnapshotLink>();
+        foreach (QueryPerformanceObservation observation in observations)
+        {
+            QueryStoreWaitSnapshot? snapshot = observation.WaitSnapshot;
+            if (snapshot is null) continue;
+            if (observation.Source != QueryPerformanceSource.QueryStore ||
+                observation.Plan is not { } plan)
+                throw new InvalidDataException("Query Store wait totals require a plan identity.");
+            var link = new QueryWaitSnapshotLink(observation.Query.DatabaseId,
+                observation.Query.QueryFingerprint, plan.PlanFingerprint,
+                snapshot.Categories);
+            var key = (link.DatabaseId, link.QueryFingerprint, link.PlanFingerprint);
+            if (byPlan.TryGetValue(key, out QueryWaitSnapshotLink? existing) &&
+                !existing.Categories.SequenceEqual(link.Categories))
+                throw new InvalidDataException("One plan identity cannot carry conflicting wait totals.");
+            byPlan[key] = link;
+        }
+        if (byPlan.Count > 8)
+            throw new InvalidDataException("Query Store wait snapshots exceed the per-run bound.");
+        return byPlan.Values.OrderBy(static link => link.DatabaseId)
+            .ThenBy(static link => link.QueryFingerprint, StringComparer.Ordinal)
+            .ThenBy(static link => link.PlanFingerprint, StringComparer.Ordinal).ToArray();
+    }
+
+    private static QueryPlanLink[] BuildQueryPlanLinks(
+        IReadOnlyList<QueryPerformanceObservation> observations)
+    {
+        var byPlan = new Dictionary<(int DatabaseId, string QueryFingerprint,
+            string PlanFingerprint), QueryPlanLink>();
+        foreach (QueryPerformanceObservation observation in observations)
+        {
+            if (observation.ProtectedPlanContent is not null)
+                throw new InvalidDataException("Protected plan XML must be written under the lease before the M7 run commit.");
+            SensitivePayloadReference? reference = observation.PlanContentReference;
+            if (reference is null) continue;
+            if (observation.Source != QueryPerformanceSource.QueryStore ||
+                observation.Plan is not { } plan ||
+                reference.Kind != SensitivePayloadKind.ExecutionPlan)
+                throw new InvalidDataException("Execution-plan content requires a Query Store plan-bound link.");
+            var link = new QueryPlanLink(observation.Query.DatabaseId,
+                observation.Query.QueryFingerprint, plan.PlanFingerprint,
+                reference.PayloadId.Value,
+                reference.Fingerprint.ToHexString().ToLowerInvariant());
+            var key = (link.DatabaseId, link.QueryFingerprint, link.PlanFingerprint);
+            if (byPlan.TryGetValue(key, out QueryPlanLink? existing) && existing != link)
+                throw new InvalidDataException("One plan identity cannot carry conflicting protected plan references.");
+            byPlan[key] = link;
+        }
+        return byPlan.Values.OrderBy(static link => link.DatabaseId)
+            .ThenBy(static link => link.QueryFingerprint, StringComparer.Ordinal)
+            .ThenBy(static link => link.PlanFingerprint, StringComparer.Ordinal).ToArray();
     }
 
     private static string MapQuerySource(QueryPerformanceSource value) => value switch { QueryPerformanceSource.QueryStore => "query_store", QueryPerformanceSource.PlanCache => "plan_cache", _ => throw new InvalidDataException("Mixed is a run summary only.") };
@@ -1117,22 +1670,46 @@ public sealed class PostgreSqlCollectorRuntimeRepositoryPort : ICollectorRuntime
 
     private static void ValidateCatalog(IReadOnlyList<CollectorCatalogEntry> entries)
     {
-        if (entries.Count is not (3 or 7 or 8 or 9 or 13 or 15))
+        if (entries.Count is not (3 or 7 or 8 or 9 or 13 or 15 or 16 or 17 or 18 or 19 or 20 or 21 or 22))
         {
-                throw new InvalidDataException("PostgreSQL accepts only an exact reviewed M4-M7 collector catalog.");
+            throw new InvalidDataException("PostgreSQL accepts only an exact reviewed collector catalog.");
         }
 
         for (int index = 0; index < entries.Count; index++)
         {
             CollectorCatalogEntry entry = entries[index];
+            bool inventoryV2 = entries.Count >= 19 && index == 1 &&
+                entry.Manifest.ManifestVersion.Value == 2 &&
+                entry.Manifest.OutputSchemaVersion.Value == 2 &&
+                entry.ManifestDigest.Value ==
+                    "5536227e577cd6f2c3d8bdab685fcd7c10eb915d0d1f2273c3733eebd43b4f21" &&
+                entry.AssetBundleDigest.Value ==
+                    "e48082564bda4f8f0a06c545640832b13dd99b01db1755ec3a2a8d0b794a7311";
+            bool deadlocksV2 = entries.Count >= 19 && index == 7 &&
+                entries[9].Manifest.ManifestVersion.Value == 1 && entries[12].Manifest.ManifestVersion.Value == 1 &&
+                entries[1].Manifest.ManifestVersion.Value == 2 &&
+                entry.Manifest.ManifestVersion.Value == 2 && entry.Manifest.OutputSchemaVersion.Value == 2 &&
+                entry.ManifestDigest.Value == "1530586d171d1b0300a83b8451c60a1f4a5ae25df7279f3815b7d43702b03c1b" &&
+                entry.AssetBundleDigest.Value == "efcd15c53d0a75b30277446730f774dc40ffe6fa4ff78c1435967de56bc954fa";
+            bool backupsV2 = entries.Count >= 19 && index == 9 &&
+                entries[1].Manifest.ManifestVersion.Value == 2 &&
+                entry.Manifest.ManifestVersion.Value == 2 && entry.Manifest.OutputSchemaVersion.Value == 2 &&
+                entry.ManifestDigest.Value == "976ca433c0fa71b658ddf69e50528e02e638e8ae72332ad67d7c3398d28d0cc0" &&
+                entry.AssetBundleDigest.Value == "b567ab905ded0118ee10c6f22f77189f8e7979f738e79f5c8ab3362cb76bbcf7";
+            bool availabilityV2 = entries.Count >= 19 && index == 12 &&
+                entries[1].Manifest.ManifestVersion.Value == 2 &&
+                entry.Manifest.ManifestVersion.Value == 2 && entry.Manifest.OutputSchemaVersion.Value == 2 &&
+                entry.ManifestDigest.Value == "a53b435b88a7beb14dfecc759530ec0d666fd92a069130bf175a1f947b84e009" &&
+                entry.AssetBundleDigest.Value == "8fe71e27b59e2d9dc0ae79786a5680853835c2f7530c85dd1fdc7af3b035d208";
             if (entry.ExecutionOrder != index + 1 ||
                 entry.Manifest.Id.Value != RequiredCollectorIds[index] ||
-                entry.Manifest.ManifestVersion.Value != 1 ||
-                entry.Manifest.OutputSchemaVersion.Value != 1 ||
-                entry.ManifestDigest.Value != RequiredManifestDigests[index] ||
-                entry.AssetBundleDigest.Value != RequiredBundleDigests[index])
+                (!inventoryV2 && !deadlocksV2 && !backupsV2 && !availabilityV2 &&
+                    (entry.Manifest.ManifestVersion.Value != 1 ||
+                     entry.Manifest.OutputSchemaVersion.Value != 1 ||
+                     entry.ManifestDigest.Value != RequiredManifestDigests[index] ||
+                     entry.AssetBundleDigest.Value != RequiredBundleDigests[index])))
             {
-                throw new InvalidDataException("PostgreSQL catalog reconciliation requires exact ordered and checksum-pinned contracts.");
+                throw new InvalidDataException($"PostgreSQL catalog reconciliation requires an exact ordered and checksum-pinned contract at execution order {index + 1}.");
             }
         }
     }
@@ -1152,6 +1729,65 @@ public sealed class PostgreSqlCollectorRuntimeRepositoryPort : ICollectorRuntime
 
     private static void ValidateCommit(CommitCollectorRunRequest request)
     {
+        if (request.Work.CollectorId.Value == "sql-agent.activity-observations")
+        {
+            if (request.Work.CollectorManifestVersion != 1 || request.Work.OutputSchemaVersion != 1)
+                throw new InvalidDataException("Agent observations require their exact version and schema.");
+            SqlAgentActivityObservationsOutputValidation.Validate(request.Payload, request.Work.TargetId,
+                request.Work.TargetRevision, request.Summary.RunId, request.Summary.Outcome,
+                request.Summary.Accounting, request.Summary.Loss);
+        }
+        else if (request.Payload.SqlAgentModuleCapture is not null)
+            throw new InvalidDataException("Agent observations require their declared collector.");
+        if (request.Work.CollectorId.Value == "cpu.components")
+        {
+            if (request.Work.CollectorManifestVersion != 1 || request.Work.OutputSchemaVersion != 1)
+                throw new InvalidDataException("CPU components require their exact version and schema.");
+            CpuComponentsOutputValidation.Validate(request.Payload, request.Work.TargetId,
+                request.Work.TargetRevision, request.Summary.RunId, request.Summary.Outcome,
+                request.Summary.Accounting, request.Summary.Loss);
+        }
+        else if (request.Payload.CpuComponents is not null)
+            throw new InvalidDataException("CPU components require their declared collector.");
+        if (request.Work.CollectorId.Value == "cpu.paired-capture")
+        {
+            if (request.Work.CollectorManifestVersion != 1 || request.Work.OutputSchemaVersion != 1)
+                throw new InvalidDataException("CPU capture requires its exact staged version and output schema.");
+            CpuPairedCaptureOutputValidation.Validate(request.Payload, request.Work.TargetId,
+                request.Work.TargetRevision, request.Summary.RunId, request.Summary.Outcome,
+                request.Summary.Accounting, request.Summary.Loss);
+        }
+        else if (request.Payload.CpuPairedCapture is not null)
+            throw new InvalidDataException("CPU capture requires its declared collector.");
+        if (request.Work.CollectorId.Value == "queries.performance" &&
+            (request.Work.CollectorManifestVersion is not (1 or 2 or 3) ||
+             request.Work.OutputSchemaVersion != request.Work.CollectorManifestVersion))
+            throw new InvalidDataException("Query performance requires a supported matching version and output schema.");
+        bool queryPerformanceV2 = request.Work.CollectorId.Value == "queries.performance" &&
+            request.Work.CollectorManifestVersion == 2 && request.Work.OutputSchemaVersion == 2;
+        bool queryPerformanceV3 = request.Work.CollectorId.Value == "queries.performance" &&
+            request.Work.CollectorManifestVersion == 3 && request.Work.OutputSchemaVersion == 3;
+        if (request.Payload.PlanCacheContent is not null && !queryPerformanceV3)
+            throw new InvalidDataException("Cache content requires the exact query performance v3 collector.");
+        if (request.Payload.PlanCacheContent?.Items.Any(static item =>
+                item.Text.ProtectedContent is not null || item.Plan.ProtectedContent is not null) == true)
+            throw new InvalidDataException("Cache content must have leased repository references before canonical commit.");
+        if (queryPerformanceV3)
+            QueryPerformanceV3OutputValidation.Validate(request.Payload, request.Work.TargetId,
+                request.Work.TargetRevision, request.Summary.Outcome, request.Summary.Accounting, request.Summary.Loss);
+        if (request.Payload.PlanCacheRuntime is not null && !queryPerformanceV2 && !queryPerformanceV3)
+            throw new InvalidDataException("Selected cache tuples require the exact query performance v2 collector.");
+        if (queryPerformanceV2)
+            QueryPerformanceV2OutputValidation.Validate(request.Payload, request.Work.TargetId,
+                request.Work.TargetRevision, request.Summary.Outcome, request.Summary.Accounting, request.Summary.Loss);
+        if (request.Payload.QueryStoreGroups is not null &&
+            request.Work.CollectorId.Value != "queries.performance-groups")
+            throw new InvalidDataException("Query Store groups require their exact versioned collector.");
+        if (request.Payload.SqlVolumes.Items.Count != 0 && request.Work.CollectorId.Value != "storage.volume")
+            throw new InvalidDataException("SQL volume observations require the exact storage.volume collector.");
+        if (request.Payload.ServerConfigurations.Items.Count != 0 &&
+            request.Work.CollectorId.Value != "engine.configurations")
+            throw new InvalidDataException("Server configuration observations require their exact collector.");
         ValidateLeaseKey(request.Work, request.Lease);
         if (request.NextCircuit.RepositoryTimeUtc != request.Work.RepositoryTimeUtc)
         {
@@ -1183,7 +1819,13 @@ public sealed class PostgreSqlCollectorRuntimeRepositoryPort : ICollectorRuntime
             request.Payload.Deadlocks.Items.Any(item =>
                 item.TargetId != request.Work.TargetId || item.TargetRevision != request.Work.TargetRevision) ||
             request.Payload.QueryPerformance.Items.Any(item =>
-                item.TargetId != request.Work.TargetId || item.TargetRevision != request.Work.TargetRevision))
+                item.TargetId != request.Work.TargetId || item.TargetRevision != request.Work.TargetRevision) ||
+            request.Payload.SqlVolumes.Items.Any(item =>
+                item.TargetId != request.Work.TargetId || item.TargetRevision != request.Work.TargetRevision) ||
+            request.Payload.ServerConfigurations.Items.Any(item =>
+                item.TargetId != request.Work.TargetId ||
+                item.TargetRevision != request.Work.TargetRevision ||
+                item.ServerMajorVersion != request.Work.CapabilityProfile?.ServerIdentity?.Version.Major))
         {
             throw new InvalidDataException("Collector snapshot payload identities do not match the exact due-work target revision.");
         }
@@ -1198,6 +1840,59 @@ public sealed class PostgreSqlCollectorRuntimeRepositoryPort : ICollectorRuntime
         int deadlockCount = request.Payload.Deadlocks.Items.Count;
         int queryPerformanceCount = request.Payload.QueryPerformance.Items.Count;
         int queryPerformanceStatusCount = request.Payload.QueryPerformanceStatuses.Count;
+        int sqlVolumeCount = request.Payload.SqlVolumes.Items.Count;
+        int groupCount = request.Payload.QueryStoreGroups?.Items.Count ?? 0;
+        int configurationCount = request.Payload.ServerConfigurations.Items.Count;
+        if (request.Work.CollectorId.Value == "engine.configurations" &&
+            (request.Summary.Accounting.SourceRowsRead > 513 ||
+             request.Summary.Accounting.ResponseBytes > 65_536 ||
+             request.Summary.Accounting.OutputBytes > 65_536 ||
+             (request.Summary.Outcome == CollectorRunOutcome.Succeeded &&
+                (configurationCount == 0 || configurationCount > 512 ||
+                 configurationCount != request.Summary.Accounting.SourceRowsRead ||
+                 configurationCount != request.Summary.Accounting.OutputItemsProduced)) ||
+             (request.Summary.Outcome != CollectorRunOutcome.Succeeded &&
+                configurationCount != 0)))
+            throw new InvalidDataException("Server configuration run accounting is incomplete.");
+        if (request.Work.CollectorId.Value == "engine.buffer-nodes")
+        {
+            if (metricCount > 128 || request.Summary.Accounting.SourceRowsRead > 129 ||
+                request.Summary.Accounting.ResponseBytes > 65_536 ||
+                request.Summary.Accounting.OutputBytes > 65_536 ||
+                request.Payload.Metrics.Select(static metric => metric.ObservedAtUtc).Distinct().Count() > 1 ||
+                request.Payload.Metrics.Any(static metric =>
+                    metric.MetricId.Value != "engine.buffer_node_page_life_expectancy_seconds" ||
+                    metric.Dimensions.Count != 1 || metric.Dimensions[0].Key != "node_id" ||
+                    !int.TryParse(metric.Dimensions[0].Value,
+                        System.Globalization.NumberStyles.None,
+                        System.Globalization.CultureInfo.InvariantCulture, out int nodeId) ||
+                    nodeId is < 0 or > 1023 ||
+                    metric.Dimensions[0].Value != nodeId.ToString(System.Globalization.CultureInfo.InvariantCulture) ||
+                    metric.Value is < 0 or > 9_007_199_254_740_991d || metric.Value != Math.Truncate(metric.Value)) ||
+                request.Payload.Metrics.Select(static metric => metric.Dimensions[0].Value).Distinct(StringComparer.Ordinal).Count() != metricCount ||
+                (request.Summary.Outcome == CollectorRunOutcome.Partial && metricCount != 0))
+                throw new InvalidDataException("Buffer Node PLE output violates its bounded node metric contract.");
+        }
+        if (request.Work.CollectorId.Value == "queries.performance-groups")
+        {
+            bool success = request.Summary.Outcome is CollectorRunOutcome.Succeeded or CollectorRunOutcome.Partial;
+            QueryStoreGroupOutputBatch? groups = request.Payload.QueryStoreGroups;
+            if (request.Summary.Accounting.SourceRowsRead > 4_259 ||
+                (success && (groups is null || groups.TargetId != request.Work.TargetId ||
+                    groups.TargetRevision != request.Work.TargetRevision ||
+                    request.Summary.Accounting.OutputItemsProduced != groupCount ||
+                    !groups.RuntimeComplete && (groupCount != 0 ||
+                        request.Summary.Outcome != CollectorRunOutcome.Partial) ||
+                    groups.WaitCoverage == QueryStoreGroupWaitCoverage.Truncated &&
+                        request.Summary.Outcome != CollectorRunOutcome.Partial)) ||
+                (!success && groups is not null))
+                throw new InvalidDataException("Query Store group output and source coverage do not match the run.");
+        }
+        if (request.Work.CollectorId.Value == "storage.volume" &&
+            (request.Summary.Outcome is CollectorRunOutcome.Succeeded or CollectorRunOutcome.Partial
+                ? request.Summary.Accounting.OutputItemsProduced != sqlVolumeCount || request.Summary.Accounting.SourceRowsRead > 1_000
+                : sqlVolumeCount != 0))
+            throw new InvalidDataException("SQL volume run accounting must match its bounded evidence payload.");
         if (request.Payload.QueryPerformance.Items.Any(item =>
                 item.Source == QueryPerformanceSource.Mixed ||
                 item.Query.DatabaseId <= 0 ||
@@ -1206,6 +1901,7 @@ public sealed class PostgreSqlCollectorRuntimeRepositoryPort : ICollectorRuntime
         {
             throw new InvalidDataException("Query performance observations must carry a concrete source and bounded interval.");
         }
+        _ = BuildQueryTextLinks(request.Payload.QueryPerformance.Items);
         if (request.Payload.QueryPerformanceStatuses.Any(status => status.DatabaseId <= 0 || status.DatabaseId > 32767))
         {
             throw new InvalidDataException("Query performance database statuses must match the due-work target and database bounds.");
@@ -1231,8 +1927,15 @@ public sealed class PostgreSqlCollectorRuntimeRepositoryPort : ICollectorRuntime
         ValidateM10Payload(request);
         bool exactKind = request.Work.CollectorId.Value switch
         {
+            "sql-agent.activity-observations" => request.Payload.ItemCount == (request.Payload.SqlAgentModuleCapture is null ? 0 : 1),
+            "cpu.components" => request.Payload.ItemCount == (request.Payload.CpuComponents is null ? 0 : 1),
+            "cpu.paired-capture" => request.Payload.ItemCount == (request.Payload.CpuPairedCapture is null ? 0 : 1),
             "host.metrics" => databaseCount + fileCount + sessionCount + requestCount + waitCount + blockingCount + deadlockCount + queryPerformanceCount + queryPerformanceStatusCount == 0 && request.Payload.OperationalHealth is null,
             "replication.health" => metricCount + databaseCount + fileCount + sessionCount + requestCount + waitCount + blockingCount + deadlockCount + queryPerformanceCount + queryPerformanceStatusCount == 0,
+            "storage.volume" => metricCount + databaseCount + fileCount + sessionCount + requestCount + waitCount + blockingCount + deadlockCount + queryPerformanceCount + queryPerformanceStatusCount == 0 && request.Payload.OperationalHealth is null && request.Payload.HostMetricsContext is null,
+            "engine.buffer-nodes" => databaseCount + fileCount + sqlVolumeCount + sessionCount + requestCount + waitCount + blockingCount + deadlockCount + queryPerformanceCount + queryPerformanceStatusCount == 0 && request.Payload.OperationalHealth is null && request.Payload.HostMetricsContext is null && groupCount == 0,
+            "queries.performance-groups" => metricCount + databaseCount + fileCount + sqlVolumeCount + sessionCount + requestCount + waitCount + blockingCount + deadlockCount + queryPerformanceCount + queryPerformanceStatusCount == 0 && request.Payload.OperationalHealth is null && request.Payload.HostMetricsContext is null,
+            "engine.configurations" => metricCount + databaseCount + fileCount + sqlVolumeCount + sessionCount + requestCount + waitCount + blockingCount + deadlockCount + queryPerformanceCount + queryPerformanceStatusCount + groupCount == 0 && request.Payload.OperationalHealth is null && request.Payload.HostMetricsContext is null,
             "engine.core" => databaseCount + fileCount + sessionCount + requestCount + waitCount + blockingCount + deadlockCount + queryPerformanceCount == 0,
             "database.inventory" => metricCount + fileCount + sessionCount + requestCount + waitCount + blockingCount + deadlockCount + queryPerformanceCount == 0,
             "database.files" => metricCount + databaseCount + sessionCount + requestCount + waitCount + blockingCount + deadlockCount + queryPerformanceCount == 0,
@@ -1242,6 +1945,7 @@ public sealed class PostgreSqlCollectorRuntimeRepositoryPort : ICollectorRuntime
             "blocking.current" => metricCount + databaseCount + fileCount + sessionCount + requestCount + waitCount + deadlockCount + queryPerformanceCount == 0,
             "deadlocks.system-health" => metricCount + databaseCount + fileCount + sessionCount + requestCount + waitCount + blockingCount + queryPerformanceCount == 0,
             "queries.performance" => metricCount + databaseCount + fileCount + sessionCount + requestCount + waitCount + blockingCount + deadlockCount == 0,
+            "server.lifecycle" => metricCount + databaseCount + fileCount + sqlVolumeCount + sessionCount + requestCount + waitCount + blockingCount + deadlockCount + queryPerformanceCount + queryPerformanceStatusCount + groupCount == 0 && request.Payload.HostMetricsContext is null,
             "backups.status" or "sql-agent.failures" or "tempdb.health" or "availability-groups.health" =>
                 metricCount + databaseCount + fileCount + sessionCount + requestCount + waitCount + blockingCount + deadlockCount + queryPerformanceCount + queryPerformanceStatusCount == 0,
             _ => false,
@@ -1259,7 +1963,7 @@ public sealed class PostgreSqlCollectorRuntimeRepositoryPort : ICollectorRuntime
     private static void ValidateM9Payload(CommitCollectorRunRequest request)
     {
         string id = request.Work.CollectorId.Value;
-        if (id is not ("backups.status" or "sql-agent.failures" or "tempdb.health" or "availability-groups.health"))
+        if (id is not ("backups.status" or "sql-agent.failures" or "tempdb.health" or "availability-groups.health" or "server.lifecycle"))
         {
             if (id != "replication.health" && request.Payload.OperationalHealth is not null) throw new InvalidDataException("Operational-health payload is only valid for M9 or replication collectors.");
             return;
@@ -1280,16 +1984,38 @@ public sealed class PostgreSqlCollectorRuntimeRepositoryPort : ICollectorRuntime
             return;
         }
         if (envelope is null) throw new InvalidDataException("M9 successful commits require a typed operational-health payload.");
-        if (envelope.EstimatedSizeBytes > (id == "availability-groups.health" ? 2_097_152 : id == "sql-agent.failures" ? 524_288 : id == "backups.status" ? 1_048_576 : 262_144)) throw new InvalidDataException("M9 payload exceeds its collector byte bound.");
+        if (envelope.EstimatedSizeBytes > (id == "availability-groups.health" ? 2_097_152 : id == "server.lifecycle" ? 1_048_576 : id == "sql-agent.failures" ? 524_288 : id == "backups.status" ? (request.Work.CollectorManifestVersion == 2 ? 4_194_304 : 1_048_576) : 262_144)) throw new InvalidDataException("M9 payload exceeds its collector byte bound.");
         switch (id, envelope.Snapshot)
         {
-            case ("backups.status", BackupStatusSnapshot value) when value.TargetId == request.Work.TargetId && value.TargetRevision == request.Work.TargetRevision && value.Items.Count <= OperationalHealthBounds.BackupMaximumRows:
+            case ("server.lifecycle", ServerLifecycleSnapshot value) when
+                request.Work.CollectorManifestVersion == 1 && request.Work.OutputSchemaVersion == 1 &&
+                value.SourceSchemaVersion == 1 && value.TargetId == request.Work.TargetId &&
+                value.TargetRevision == request.Work.TargetRevision && value.RunId == request.Summary.RunId &&
+                value.SourceRowsRead == request.Summary.Accounting.SourceRowsRead && value.SourceRowsRead <= 1025 &&
+                value.Members.Count + 1 == envelope.ItemCount && envelope.ItemCount <= 1024 &&
+                value.EstimatedSizeBytes == envelope.EstimatedSizeBytes:
+                break;
+            case ("backups.status", BackupStatusSnapshot value) when request.Work.CollectorManifestVersion == 1 && request.Work.OutputSchemaVersion == 1 && value.TargetId == request.Work.TargetId && value.TargetRevision == request.Work.TargetRevision && value.Items.Count <= OperationalHealthBounds.BackupMaximumRows:
+                break;
+            case ("backups.status", BackupV2ReadSnapshot value) when
+                request.Work.CollectorManifestVersion == 2 && request.Work.OutputSchemaVersion == 2 &&
+                value.TargetId == request.Work.TargetId && value.TargetRevision == request.Work.TargetRevision &&
+                value.RunId == request.Summary.RunId && value.SourceRowsRead == request.Summary.Accounting.SourceRowsRead &&
+                value.ItemCount == envelope.ItemCount && value.EstimatedSizeBytes == envelope.EstimatedSizeBytes:
                 break;
             case ("sql-agent.failures", SqlAgentFailureSnapshot value) when value.TargetId == request.Work.TargetId && value.TargetRevision == request.Work.TargetRevision && value.Items.Count <= OperationalHealthBounds.AgentMaximumRows && value.SourceRowsRead is >= 0 and <= OperationalHealthBounds.AgentScanRows:
                 break;
             case ("tempdb.health", TempDbSnapshot value) when value.TargetId == request.Work.TargetId && value.TargetRevision == request.Work.TargetRevision && value.Files.Count <= OperationalHealthBounds.TempDbMaximumFiles:
                 break;
-            case ("availability-groups.health", AvailabilityGroupsSnapshot value) when value.TargetId == request.Work.TargetId && value.TargetRevision == request.Work.TargetRevision && value.Replicas.Count + value.Databases.Count <= OperationalHealthBounds.AvailabilityMaximumRows:
+            case ("availability-groups.health", AvailabilityGroupsSnapshot value) when request.Work.CollectorManifestVersion == 1 && request.Work.OutputSchemaVersion == 1 && value.TargetId == request.Work.TargetId && value.TargetRevision == request.Work.TargetRevision && value.Replicas.Count + value.Databases.Count <= OperationalHealthBounds.AvailabilityMaximumRows:
+                break;
+            case ("availability-groups.health", AvailabilityGroupsV2Snapshot value) when
+                request.Work.CollectorManifestVersion == 2 && request.Work.OutputSchemaVersion == 2 &&
+                value.TargetId == request.Work.TargetId && value.TargetRevision == request.Work.TargetRevision &&
+                value.RunId == request.Summary.RunId &&
+                value.SourceRowsRead == request.Summary.Accounting.SourceRowsRead &&
+                value.Replicas.Count + value.Databases.Count == envelope.ItemCount &&
+                value.EstimatedSizeBytes == envelope.EstimatedSizeBytes:
                 break;
             default: throw new InvalidDataException("M9 payload kind, target revision, or row bound is invalid.");
         }

@@ -8,7 +8,7 @@ using SqlObserver.Infrastructure.Windows;
 namespace SqlObserver.Server;
 
 /// <summary>Server-owned destination catalog/preflight. Database callers never provide approval metadata.</summary>
-public sealed class ConfiguredAlertDestinationApproval(IConfiguration configuration, IAlertDnsResolver dnsResolver, IEventLogAlertWriter eventLogSourceChecker) : IAlertDestinationApprovalPort
+public sealed class ConfiguredAlertDestinationApproval(IConfiguration configuration, IAlertDnsResolver dnsResolver, IEventLogAlertWriter eventLogSourceChecker, IWebhookSigningKeyProvider? signingKeys = null) : IAlertDestinationApprovalPort
 {
     private readonly IConfiguration _configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
     private readonly IAlertDnsResolver _dnsResolver = dnsResolver ?? throw new ArgumentNullException(nameof(dnsResolver));
@@ -36,11 +36,13 @@ public sealed class ConfiguredAlertDestinationApproval(IConfiguration configurat
         }
         else
         {
-            Uri uri;
-            try { uri = new ConfigurationAlertDestinationResolver(Read).ResolveHttps(reference); }
+            AlertWebhookConfiguration webhook;
+            try { webhook = new ConfigurationAlertDestinationResolver(Read, signingKeys).ResolveWebhook(reference); }
             catch (AlertDestinationValidationException) { throw; }
             catch (Exception ex) when (ex is ArgumentException or InvalidOperationException) { throw new AlertDestinationValidationException("Destination configuration is invalid."); }
             catch (Exception) { throw new AlertDestinationValidationException("Destination configuration provider is unavailable.", 503); }
+            using var signingSnapshot = webhook;
+            Uri uri = webhook.Uri;
             IReadOnlyList<IPAddress> addresses;
             try
             {
@@ -58,11 +60,11 @@ public sealed class ConfiguredAlertDestinationApproval(IConfiguration configurat
             }
             // The allowlist is mandatory: every resolved address must pass the
             // configured network policy before a destination can be approved.
-            string allowlist = Read($"AlertDestinations:{reference}:Allowlist") ?? string.Empty;
+            string allowlist = webhook.Allowlist;
             Func<IPAddress, bool> configuredAllowlist;
             try { configuredAllowlist = AlertNetworkPolicy.ParseAllowlist(allowlist); AlertNetworkPolicy.ValidateAll(addresses, configuredAllowlist); }
             catch (Exception ex) when (ex is ArgumentException or InvalidOperationException) { throw new AlertDestinationValidationException("Resolved destination addresses are not permitted."); }
-            configurationCanonical = $"kind=https-webhook|uri={uri.AbsoluteUri}|host={uri.Host}|port={uri.Port}|path={uri.AbsolutePath}|allowlist={allowlist}|proxy=false|redirect=false|tls=https";
+            configurationCanonical = webhook.ConfigurationCanonical;
         }
         string revisionText = Read($"AlertDestinations:{reference}:Revision") ?? "1";
         if (!long.TryParse(revisionText, out long revision) || revision <= 0) throw new AlertDestinationValidationException("Destination configuration revision is invalid.");

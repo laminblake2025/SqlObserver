@@ -1,0 +1,3 @@
+.alert-assignment-controls { min-width: 0; overflow-wrap: anywhere; }
+.alert-assignment-controls h4 { margin-block: 20px 8px; }
+.alert-assignment-controls .table-scroll:focus-visible { outline: 3px solid var(--focus); outline-offset: 3px; }

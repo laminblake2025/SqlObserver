@@ -1,9 +1,14 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "catalogId": "sqlobserver.m8.alerts",
-  "contractVersion": 1,
+  "contractVersion": 5,
   "rules": [
-    { "name": "metric.threshold", "kind": "metric_threshold", "metric": "engine.user_connections", "sourceCollector": "engine.core", "sourceSchemaVersion": 1, "unit": "count", "comparison": "greater_than_or_equal", "threshold": 1, "hysteresis": 0, "confirmationCount": 1, "confirmationWindowSeconds": 0, "evaluationIntervalSeconds": 15, "enabled": true },
-    { "name": "collector.health", "kind": "collector_health", "metric": null, "sourceCollector": "engine.core", "sourceSchemaVersion": 1, "unit": "count", "comparison": "less_than", "threshold": 1, "hysteresis": 0, "confirmationCount": 2, "confirmationWindowSeconds": 300, "evaluationIntervalSeconds": 30, "enabled": true }
+    { "name": "metric.threshold", "kind": "metric_threshold", "metric": "engine.user_connections", "sourceCollector": "engine.core", "sourceSchemaVersion": 1, "unit": "count", "comparison": "greater_than_or_equal", "threshold": 1, "hysteresis": 0, "clearConfirmationCount": 2, "confirmationCount": 1, "confirmationWindowSeconds": 0, "evaluationIntervalSeconds": 15, "enabled": true },
+    { "name": "collector.health", "kind": "collector_health", "metric": null, "sourceCollector": "engine.core", "sourceSchemaVersion": 1, "unit": "count", "comparison": "less_than", "threshold": 1, "hysteresis": 0, "clearConfirmationCount": 2, "confirmationCount": 2, "confirmationWindowSeconds": 300, "evaluationIntervalSeconds": 30, "enabled": true },
+    { "name": "backup.full_policy", "kind": "backup_full_policy_v2", "metric": null, "sourceCollector": "backups.status", "sourceSchemaVersion": 2, "unit": "affected databases", "comparison": "greater_than", "threshold": 0, "hysteresis": 0, "clearConfirmationCount": 2, "confirmationCount": 2, "confirmationWindowSeconds": 300, "evaluationIntervalSeconds": 30, "enabled": true },
+    { "name": "backup.log_policy", "kind": "backup_log_policy_v2", "metric": null, "sourceCollector": "backups.status", "sourceSchemaVersion": 2, "unit": "affected databases", "comparison": "greater_than", "threshold": 0, "hysteresis": 0, "clearConfirmationCount": 2, "confirmationCount": 2, "confirmationWindowSeconds": 300, "evaluationIntervalSeconds": 30, "enabled": true },
+    { "name": "backup.observed_faults", "kind": "backup_observed_faults_v2", "metric": null, "sourceCollector": "backups.status", "sourceSchemaVersion": 2, "unit": "affected databases", "comparison": "greater_than", "threshold": 0, "hysteresis": 0, "clearConfirmationCount": 2, "confirmationCount": 2, "confirmationWindowSeconds": 300, "evaluationIntervalSeconds": 30, "enabled": true },
+    { "name": "blocking.duration", "kind": "blocking_duration_v1", "metric": null, "sourceCollector": "blocking.current", "sourceSchemaVersion": 1, "unit": "seconds", "comparison": "greater_than_or_equal", "threshold": 60, "hysteresis": 10, "clearConfirmationCount": 2, "confirmationCount": 2, "confirmationWindowSeconds": 300, "evaluationIntervalSeconds": 15, "enabled": true },
+    { "name": "deadlocks.count", "kind": "deadlock_count_v1", "metric": null, "sourceCollector": "deadlocks.system-health", "sourceSchemaVersion": 1, "unit": "count", "comparison": "greater_than", "threshold": 0, "hysteresis": 0, "clearConfirmationCount": 2, "confirmationCount": 2, "confirmationWindowSeconds": 300, "evaluationIntervalSeconds": 15, "enabled": true }
   ]
 }

@@ -41,10 +41,11 @@ public sealed class CollectorCompositionEndToEndTests
             ["engine.core", "database.inventory", "database.files", "activity.sessions",
                 "activity.requests", "waits.server", "blocking.current", "deadlocks.system-health", "queries.performance",
                 "backups.status", "sql-agent.failures", "tempdb.health", "availability-groups.health",
-                "host.metrics", "replication.health"],
+                "host.metrics", "replication.health", "storage.volume", "queries.performance-groups",
+                "engine.buffer-nodes", "engine.configurations", "cpu.components", "server.lifecycle", "sql-agent.activity-observations"],
             registry.Registrations
                 .Select(static registration => registration.Manifest.Id.Value));
-        Assert.Equal(1, registry
+        Assert.Equal(2, registry
             .Registrations.Single(static registration => registration.Manifest.Id.Value == "deadlocks.system-health")
             .Manifest.ManifestVersion.Value);
 
@@ -68,7 +69,7 @@ public sealed class CollectorCompositionEndToEndTests
         IHostedService[] hostedServices = provider.GetServices<IHostedService>().ToArray();
         Assert.Contains(hostedServices, static service => service is ReportExpiryWorker);
         Assert.Contains(hostedServices, static service => service is LiveActivityWorker);
-        Assert.Equal(9, hostedServices.Length);
+        Assert.Equal(11, hostedServices.Length);
         Assert.DoesNotContain(
             services,
             static descriptor => descriptor.ServiceType == typeof(PostgreSqlTargetControlPlane));

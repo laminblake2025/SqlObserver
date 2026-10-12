@@ -30,9 +30,9 @@
     "requiredPermissionsByMajor": {
       "type": "object", "additionalProperties": false, "required": ["15", "16", "17"],
       "properties": {
-        "15": { "type": "array", "items": { "enum": ["server.view-state", "server.view-performance-state", "msdb.backupset.select", "msdb.sysjobhistory.select"] }, "minItems": 1, "maxItems": 2, "uniqueItems": true },
-        "16": { "type": "array", "items": { "enum": ["server.view-state", "server.view-performance-state", "msdb.backupset.select", "msdb.sysjobhistory.select"] }, "minItems": 1, "maxItems": 2, "uniqueItems": true },
-        "17": { "type": "array", "items": { "enum": ["server.view-state", "server.view-performance-state", "msdb.backupset.select", "msdb.sysjobhistory.select"] }, "minItems": 1, "maxItems": 2, "uniqueItems": true }
+        "15": { "type": "array", "items": { "enum": ["server.view-state", "server.view-performance-state", "server.view-any-database", "msdb.backupset.select", "msdb.sysjobhistory.select"] }, "minItems": 1, "maxItems": 3, "uniqueItems": true },
+        "16": { "type": "array", "items": { "enum": ["server.view-state", "server.view-performance-state", "server.view-any-database", "msdb.backupset.select", "msdb.sysjobhistory.select"] }, "minItems": 1, "maxItems": 3, "uniqueItems": true },
+        "17": { "type": "array", "items": { "enum": ["server.view-state", "server.view-performance-state", "server.view-any-database", "msdb.backupset.select", "msdb.sysjobhistory.select"] }, "minItems": 1, "maxItems": 3, "uniqueItems": true }
       }
     },
     "cadence": {

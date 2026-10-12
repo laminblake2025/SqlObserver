@@ -1,4 +1,5 @@
 using System.Data;
+using System.Data.Common;
 using System.Diagnostics;
 using System.Security.Cryptography;
 using System.Text;
@@ -6,6 +7,7 @@ using Microsoft.Data.SqlClient;
 using SqlObserver.Collector.Abstractions;
 using SqlObserver.Domain.Collection;
 using SqlObserver.Domain.Repository;
+using SqlObserver.Domain.Targets;
 using SqlObserver.Domain.Telemetry;
 
 namespace SqlObserver.Infrastructure.SqlServer;
@@ -14,7 +16,7 @@ namespace SqlObserver.Infrastructure.SqlServer;
 public abstract class SqlServerHealthCollector : ISqlServerCollector
 {
     private readonly ISqlServerConnectionFactory _connectionFactory;
-    private readonly SqlServerCollectorAsset _asset;
+    private readonly Func<int, string> _queryForMajor;
 
     private protected SqlServerHealthCollector(
         string collectorId,
@@ -23,10 +25,20 @@ public abstract class SqlServerHealthCollector : ISqlServerCollector
     {
         ArgumentNullException.ThrowIfNull(catalog);
         _connectionFactory = connectionFactory ?? throw new ArgumentNullException(nameof(connectionFactory));
-        _asset = catalog.Get(new Domain.Capabilities.CollectorId(collectorId));
+        SqlServerCollectorAsset asset = catalog.Get(new Domain.Capabilities.CollectorId(collectorId));
+        Manifest = asset.Manifest;
+        _queryForMajor = asset.GetQuery;
     }
 
-    public CollectorManifest Manifest => _asset.Manifest;
+    private protected SqlServerHealthCollector(CollectorManifest manifest,
+        Func<int, string> queryForMajor, ISqlServerConnectionFactory connectionFactory)
+    {
+        Manifest = manifest ?? throw new ArgumentNullException(nameof(manifest));
+        _queryForMajor = queryForMajor ?? throw new ArgumentNullException(nameof(queryForMajor));
+        _connectionFactory = connectionFactory ?? throw new ArgumentNullException(nameof(connectionFactory));
+    }
+
+    public CollectorManifest Manifest { get; }
 
     public async ValueTask<CollectorExecutionResult> CollectAsync(
         CollectorExecutionRequest request,
@@ -65,7 +77,7 @@ public abstract class SqlServerHealthCollector : ISqlServerCollector
             await using SqlConnection connection = await _connectionFactory
                 .OpenConnectionAsync(request.ConnectionPolicy, deadline.Token)
                 .ConfigureAwait(false);
-            await using var command = new SqlCommand(_asset.GetQuery(majorVersion), connection)
+            await using var command = new SqlCommand(_queryForMajor(majorVersion), connection)
             {
                 CommandTimeout = Math.Max(1, checked((int)Math.Ceiling(operationBudget.TotalSeconds))),
             };
@@ -109,18 +121,18 @@ public abstract class SqlServerHealthCollector : ISqlServerCollector
         {
             return Failure(request, CollectorRunOutcome.TimedOut, CollectorRunReason.DeadlineExceeded);
         }
-        catch (SqlException exception) when (exception.Number == -2)
+        catch (SqlException exception) when (SqlServerCollectorErrorClassifier.IsCommandTimeout(exception.Number))
         {
             return Failure(request, CollectorRunOutcome.TimedOut, CollectorRunReason.DeadlineExceeded);
         }
-        catch (SqlException exception) when (IsPermissionDenied(exception.Number))
+        catch (SqlException exception) when (SqlServerCollectorErrorClassifier.IsPermissionDenied(exception.Number))
         {
             return Failure(
                 request,
                 CollectorRunOutcome.PermissionDenied,
                 CollectorRunReason.RequiredPermissionMissing);
         }
-        catch (SqlException exception) when (IsTransient(exception.Number))
+        catch (SqlException exception) when (SqlServerCollectorErrorClassifier.IsTransient(exception.Number))
         {
             return Failure(
                 request,
@@ -216,12 +228,7 @@ public abstract class SqlServerHealthCollector : ISqlServerCollector
                 : CollectorLossEvidence.None);
     }
 
-    private static bool IsPermissionDenied(int number) => number is 229 or 297 or 300;
-
-    private static bool IsTransient(int number) => number is
-        20 or 53 or 64 or 233 or 10053 or 10054 or 10060 or 10928 or 10929 or 40197 or 40501 or 40613;
-
-    private protected static DateTimeOffset ReadUtcMicrosecond(SqlDataReader reader, int ordinal)
+    private protected static DateTimeOffset ReadUtcMicrosecond(DbDataReader reader, int ordinal)
     {
         DateTime value = reader.GetDateTime(ordinal);
         long ticks = value.Ticks - (value.Ticks % TimeSpan.TicksPerMicrosecond);
@@ -352,11 +359,16 @@ public sealed class SqlServerCoreEngineCollector : SqlServerHealthCollector
             new CollectorMetricOutputContract(new MetricId("engine.page_life_expectancy_seconds"), []),
             new CollectorMetricOutputContract(new MetricId("engine.user_connections"), []),
             new CollectorMetricOutputContract(new MetricId("engine.process_physical_memory_bytes"), []),
+            new CollectorMetricOutputContract(new MetricId("engine.os_available_memory_bytes"), []),
+            new CollectorMetricOutputContract(new MetricId("engine.memory_grants_pending"), []),
+            new CollectorMetricOutputContract(new MetricId("engine.scheduler_runnable_tasks"), []),
+            new CollectorMetricOutputContract(new MetricId("engine.scheduler_cpu_milliseconds_total"), []),
+            new CollectorMetricOutputContract(new MetricId("engine.visible_scheduler_count"), []),
             new CollectorMetricOutputContract(new MetricId("engine.committed_memory_bytes"), []),
             new CollectorMetricOutputContract(new MetricId("engine.target_memory_bytes"), []),
             new CollectorMetricOutputContract(new MetricId("engine.start_time_key"), []),
         ],
-        maxMetricSamples: 9,
+        maxMetricSamples: 14,
         maxDatabaseObservations: 0,
         maxDatabaseFileObservations: 0);
 
@@ -368,6 +380,11 @@ public sealed class SqlServerCoreEngineCollector : SqlServerHealthCollector
         "engine.page_life_expectancy_seconds",
         "engine.user_connections",
         "engine.process_physical_memory_bytes",
+        "engine.os_available_memory_bytes",
+        "engine.memory_grants_pending",
+        "engine.scheduler_runnable_tasks",
+        "engine.scheduler_cpu_milliseconds_total",
+        "engine.visible_scheduler_count",
         "engine.committed_memory_bytes",
         "engine.target_memory_bytes",
         "engine.start_time_key",
@@ -463,8 +480,15 @@ public sealed class SqlServerDatabaseInventoryCollector : SqlServerHealthCollect
         maxMetricSamples: 0,
         maxDatabaseObservations: 1_000,
         maxDatabaseFileObservations: 0);
+    private static readonly CollectorOutputContract Version2RegisteredOutputContract = new(
+        new CollectorOutputSchemaVersion(2),
+        metrics: [],
+        maxMetricSamples: 0,
+        maxDatabaseObservations: 1_000,
+        maxDatabaseFileObservations: 0);
 
     public static CollectorOutputContract OutputContract => RegisteredOutputContract;
+    public static CollectorOutputContract Version2OutputContract => Version2RegisteredOutputContract;
 
     public SqlServerDatabaseInventoryCollector()
         : this(
@@ -498,6 +522,9 @@ public sealed class SqlServerDatabaseInventoryCollector : SqlServerHealthCollect
             Manifest.Limits.MaxResponseBytes);
         try
         {
+            int expectedFields = Manifest.ManifestVersion.Value >= 2 ? 9 : 8;
+            if (reader.FieldCount != expectedFields)
+                throw new InvalidDataException("Database inventory returned an unexpected column shape.");
             while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
             {
                 if (!budget.TryBeginRow())
@@ -511,8 +538,12 @@ public sealed class SqlServerDatabaseInventoryCollector : SqlServerHealthCollect
                 string state = reader.GetString(3);
                 string access = reader.GetString(4);
                 string recovery = reader.GetString(5);
+                string? logReuseWaitDescription = Manifest.ManifestVersion.Value >= 2 &&
+                    !reader.IsDBNull(8) ? reader.GetString(8) : null;
                 int rowBytes = checked(
-                    48 + Utf8Bytes(name) + Utf8Bytes(state) + Utf8Bytes(access) + Utf8Bytes(recovery));
+                    48 + Utf8Bytes(name) + Utf8Bytes(state) + Utf8Bytes(access) +
+                    Utf8Bytes(recovery) + (logReuseWaitDescription is null ? 0 :
+                        Utf8Bytes(logReuseWaitDescription)));
                 if (!budget.TryAcceptResponseBytes(rowBytes))
                 {
                     break;
@@ -528,7 +559,8 @@ public sealed class SqlServerDatabaseInventoryCollector : SqlServerHealthCollect
                     ParseUserAccess(access),
                     reader.GetBoolean(6),
                     reader.GetByte(7),
-                    observedAt));
+                    observedAt,
+                    logReuseWaitDescription));
             }
         }
         catch (Exception exception) when (exception is
@@ -630,48 +662,15 @@ public sealed class SqlServerDatabaseFilesCollector : SqlServerHealthCollector
                     break;
                 }
 
-                DateTimeOffset observedAt = ReadUtcMicrosecond(reader, 0);
-                int databaseId = reader.GetInt32(1);
-                int fileId = reader.GetInt32(2);
-                string logicalName = reader.GetString(3);
-                string type = reader.GetString(4);
-                string state = reader.GetString(5);
-                long sizeBytes = DecimalToInt64(reader.GetDecimal(6));
-                long? maximumSizeBytes = reader.IsDBNull(7)
-                    ? null
-                    : DecimalToInt64(reader.GetDecimal(7));
-                long rawGrowth = reader.GetInt32(8);
-                bool percentGrowth = reader.GetBoolean(9);
-                long readsTotal = reader.GetInt64(10);
-                long writesTotal = reader.GetInt64(11);
-                long bytesReadTotal = reader.GetInt64(12);
-                long bytesWrittenTotal = reader.GetInt64(13);
-                long readStall = reader.GetInt64(14);
-                long writeStall = reader.GetInt64(15);
-                int rowBytes = checked(160 + Utf8Bytes(logicalName) + Utf8Bytes(type) + Utf8Bytes(state));
+                // SequentialAccess permits each column to be consumed only in ordinal order.
+                DatabaseFileObservation observation = MapRow(
+                    reader, request.TargetId, request.TargetRevision, out int rowBytes);
                 if (!budget.TryAcceptResponseBytes(rowBytes))
                 {
                     break;
                 }
 
-                files.Add(new DatabaseFileObservation(
-                    request.TargetId,
-                    request.TargetRevision,
-                    databaseId,
-                    fileId,
-                    new SqlServerObjectName(logicalName),
-                    ParseFileType(type),
-                    ParseFileState(state),
-                    sizeBytes,
-                    maximumSizeBytes,
-                    percentGrowth ? 0 : checked(rawGrowth * 8192),
-                    percentGrowth ? checked((int)rawGrowth) : 0,
-                    readsTotal,
-                    writesTotal,
-                    bytesReadTotal,
-                    bytesWrittenTotal,
-                    checked(readStall + writeStall),
-                    observedAt));
+                files.Add(observation);
             }
         }
         catch (Exception exception) when (exception is
@@ -690,6 +689,38 @@ public sealed class SqlServerDatabaseFilesCollector : SqlServerHealthCollector
             budget.ResponseBytes,
             budget.ByteLimitReached,
             budget.RowLimitReached);
+    }
+
+    internal static DatabaseFileObservation MapRow(
+        DbDataReader reader,
+        MonitoredInstanceId targetId,
+        ObservationTargetRevision targetRevision,
+        out int rowBytes)
+    {
+        DateTimeOffset observedAt = ReadUtcMicrosecond(reader, 0);
+        int databaseId = reader.GetInt32(1);
+        int fileId = reader.GetInt32(2);
+        string logicalName = reader.GetString(3);
+        string type = reader.GetString(4);
+        string state = reader.GetString(5);
+        rowBytes = checked(160 + Utf8Bytes(logicalName) + Utf8Bytes(type) + Utf8Bytes(state));
+        long sizeBytes = DecimalToInt64(reader.GetDecimal(6));
+        long? maximumSizeBytes = reader.IsDBNull(7) ? null : DecimalToInt64(reader.GetDecimal(7));
+        long rawGrowth = reader.GetInt32(8);
+        bool percentGrowth = reader.GetBoolean(9);
+        long readsTotal = reader.GetInt64(10);
+        long writesTotal = reader.GetInt64(11);
+        long bytesReadTotal = reader.GetInt64(12);
+        long bytesWrittenTotal = reader.GetInt64(13);
+        long readStall = reader.GetInt64(14);
+        long writeStall = reader.GetInt64(15);
+        return new DatabaseFileObservation(
+            targetId, targetRevision, databaseId, fileId, new SqlServerObjectName(logicalName),
+            ParseFileType(type), ParseFileState(state), sizeBytes, maximumSizeBytes,
+            percentGrowth ? 0 : checked(rawGrowth * 8192), percentGrowth ? checked((int)rawGrowth) : 0,
+            readsTotal, writesTotal, bytesReadTotal, bytesWrittenTotal,
+            checked(readStall + writeStall), observedAt,
+            readStallMilliseconds: readStall, writeStallMilliseconds: writeStall);
     }
 
     private static long DecimalToInt64(decimal value)

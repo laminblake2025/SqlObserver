@@ -1,0 +1,65 @@
+.dashboard-timeline-browser {
+  min-width: 0;
+  margin-block: 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+}
+
+.dashboard-timeline-align,
+.dashboard-timeline-coverage > summary,
+.dashboard-timeline-event-evidence > a {
+  min-height: 44px;
+}
+
+.dashboard-timeline-align:focus-visible,
+.dashboard-timeline-coverage > summary:focus-visible,
+.dashboard-timeline-event-evidence > a:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: -3px;
+}
+
+.dashboard-timeline-browser > summary {
+  min-height: 44px;
+  padding: 0.75rem;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+
+.dashboard-timeline-browser > summary:focus-visible,
+.dashboard-timeline-browser-scroll:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: -3px;
+}
+
+.dashboard-timeline-browser-scroll {
+  max-height: 600px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 0.25rem 0.75rem;
+  scrollbar-gutter: stable;
+}
+
+.dashboard-timeline-selected-evidence {
+  min-width: 0;
+  padding: 0.75rem;
+  border-inline-start: 3px solid var(--teal);
+  background: var(--surface-soft);
+  overflow-wrap: anywhere;
+}
+
+.dashboard-timeline-selected-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+}
+
+.dashboard-timeline-selected-actions > a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+}
+
+@media (max-width: 600px) {
+  .dashboard-timeline-browser-scroll { max-height: 420px; }
+}

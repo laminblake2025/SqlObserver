@@ -116,15 +116,15 @@ public abstract class SqlServerActivityCollectorBase : ISqlServerCollector
         {
             return Failure(request, CollectorRunOutcome.TimedOut, CollectorRunReason.DeadlineExceeded);
         }
-        catch (SqlException exception) when (exception.Number == -2)
+        catch (SqlException exception) when (SqlServerCollectorErrorClassifier.IsCommandTimeout(exception.Number))
         {
             return Failure(request, CollectorRunOutcome.TimedOut, CollectorRunReason.DeadlineExceeded);
         }
-        catch (SqlException exception) when (IsPermissionDenied(exception.Number))
+        catch (SqlException exception) when (SqlServerCollectorErrorClassifier.IsPermissionDenied(exception.Number))
         {
             return Failure(request, CollectorRunOutcome.PermissionDenied, CollectorRunReason.RequiredPermissionMissing);
         }
-        catch (SqlException exception) when (IsTransient(exception.Number))
+        catch (SqlException exception) when (SqlServerCollectorErrorClassifier.IsTransient(exception.Number))
         {
             return Failure(request, CollectorRunOutcome.TransientFailure, CollectorRunReason.TransientTargetFailure);
         }
@@ -210,11 +210,6 @@ public abstract class SqlServerActivityCollectorBase : ISqlServerCollector
     }
 
     private protected static int Utf8Bytes(string value) => Encoding.UTF8.GetByteCount(value);
-
-    private static bool IsPermissionDenied(int number) => number is 229 or 297 or 300;
-
-    private static bool IsTransient(int number) => number is
-        20 or 53 or 64 or 233 or 10053 or 10054 or 10060 or 10928 or 10929 or 40197 or 40501 or 40613;
 
     private protected sealed record ActivityCollectorReadResult(
         CollectorPayload Payload,
@@ -724,6 +719,12 @@ internal static class BlockingChainBuilder
         foreach (BlockingSourceEdge source in sources)
         {
             ArgumentNullException.ThrowIfNull(source);
+            if (source.BlockerKind == BlockingBlockerKind.Session && source.BlockerSessionId == source.BlockedSessionId)
+            {
+                // Intra-session waits are not blocking-chain edges or graph-limit loss.
+                continue;
+            }
+
             var required = new HashSet<int> { source.BlockedSessionId };
             if (source.BlockerSessionId is { } blocker)
             {

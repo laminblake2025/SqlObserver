@@ -1,17 +1,50 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {readOverviewScope,overviewHref,overviewWindow,aggregateValue,rankedIssues,overviewEvidenceFooter,overviewResourceObservationText} from '../src/features/overview/overviewModel.ts';
+import {readOverviewScope,overviewHref,issueHref,overviewWindow,aggregateValue,rankedIssues,overviewEvidenceFooter,overviewResourceObservationText} from '../src/features/overview/overviewModel.ts';
+import {readRoute} from '../src/dashboardModel.ts';
 const now=Date.parse('2026-09-05T12:00:00Z');
+test('valid target GUID casing is canonical across direct routes and generated investigation links',()=>{
+ const target='ABCD1234-ABCD-4ABC-8DEF-ABCDEF123456';
+ const scope={target,range:'custom',from:'2026-09-01T00:00:00.123456Z',to:'2026-09-02T00:00:00.123456Z',compare:true,databaseId:7};
+ const direct=`#/resources?target=${target}&databaseId=7&range=custom&from=${scope.from}&to=${scope.to}&compare=1`;
+ assert.deepEqual(readOverviewScope(direct),{...scope,target:target.toLowerCase()});
+ assert.equal(readRoute(direct).target,target.toLowerCase());
+ const href=overviewHref(scope,'resources');
+ assert.equal(new URLSearchParams(href.split('?')[1]).get('target'),target.toLowerCase());
+ assert.deepEqual(readOverviewScope(href),{...scope,target:target.toLowerCase()});
+ // Canonicalization must not trim or repair malformed identifiers into valid targets.
+ for(const malformed of [` ${target}`,`${target}-extra`,'not-A-GUID']) {
+  assert.equal(readOverviewScope(`#/health?target=${encodeURIComponent(malformed)}`).target,malformed);
+  assert.equal(new URLSearchParams(overviewHref({...scope,target:malformed},'health').split('?')[1]).get('target'),malformed);
+ }
+});
 test('scope, comparison and fixed UTC ranges survive drill-down and URL reload',()=>{
  const scope={target:'server-one',range:'custom',from:'2026-09-01T00:00:00Z',to:'2026-09-02T00:00:00Z',compare:true};
  assert.deepEqual(readOverviewScope(overviewHref(scope,'activity')),scope);
  assert.equal(readOverviewScope(overviewHref(scope,'overview','')).target,'');
  assert.deepEqual(overviewWindow(scope,now),{fromUtc:new Date(scope.from).toISOString(),toUtc:new Date(scope.to).toISOString()});
 });
+test('fleet issue drill-down carries its own target, selected window, and observation time',()=>{
+ const scope={target:'',range:'custom',from:'2026-09-01T00:00:00Z',to:'2026-09-02T00:00:00Z',compare:true};
+ const at='2026-09-01T11:30:00Z';
+ const href=issueHref(scope,'server-two','activity',at);
+ assert.deepEqual(readOverviewScope(href),{...scope,target:'server-two'});
+ assert.deepEqual(readRoute(href),{page:'activity',target:'server-two',activityAtUtc:at});
+ const alerts=issueHref(scope,'server-two','alerts',at);
+ assert.equal(readRoute(alerts).activityAtUtc,undefined);
+});
 test('all servers defaults to 24h and windows reject invalid and future inputs',()=>{
  const scope=readOverviewScope('#/overview');assert.equal(scope.target,'');assert.equal(scope.range,'24h');
  assert.equal(overviewWindow(scope,now).fromUtc,'2026-09-04T12:00:00.000Z');
  for(const [from,to] of [['invalid','invalid'],['2026-09-06','2026-09-05'],['2026-07-01','2026-09-01'],['2026-09-05','2026-09-06']]) assert.throws(()=>overviewWindow({...scope,range:'custom',from,to},now));
+});
+test('shared custom windows retain native microseconds and reject unrepresentable or malformed UTC boundaries',()=>{
+ const from='2026-09-05T11:00:00.1234560Z',to='2026-09-05T11:00:00.1234570Z';
+ assert.deepEqual(overviewWindow({target:'server-one',range:'custom',from,to,compare:false},now),
+  {fromUtc:'2026-09-05T11:00:00.123456Z',toUtc:'2026-09-05T11:00:00.123457Z'});
+ const scope={target:'server-one',range:'custom',from:'2026-09-04T11:00:00Z',to:'2026-09-05T11:00:00Z',compare:false};
+ for(const invalid of ['2026-09-04','2026-09-04T11:00:00.1234561Z','2026-09-04T11:00:00.12345600Z','2026-09-04T11:00:00-01:00','2026-02-30T11:00:00Z'])
+  assert.throws(()=>overviewWindow({...scope,from:invalid},now),/valid UTC range/);
 });
 const evidence=(value,state='current')=>({activeAlerts:{value,state},blockedSessions:{value,state},deadlocks:{value,state}});
 test('counts cover ten servers and more than five alerts, with unknown and stale distinct from zero',()=>{

@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using SqlObserver.Domain.Coordination;
 using SqlObserver.Domain.Repository;
 using SqlObserver.Domain.SensitiveData;
+using SqlObserver.Domain.Telemetry;
 
 namespace SqlObserver.Application.Ports;
 
@@ -408,17 +409,22 @@ public interface IDiagnosticEventIngestionPort
 public sealed class SensitivePayloadGetOrAddRequest
 {
     public SensitivePayloadGetOrAddRequest(
+        MonitoredInstanceId targetId,
         ProtectedSensitivePayload payload,
         WorkerLeaseIdentity lease,
         RepositoryCallTimeout timeout)
     {
+        ArgumentNullException.ThrowIfNull(targetId);
         ArgumentNullException.ThrowIfNull(payload);
         ArgumentNullException.ThrowIfNull(lease);
         ArgumentNullException.ThrowIfNull(timeout);
+        TargetId = targetId;
         Payload = payload;
         Lease = lease;
         Timeout = timeout;
     }
+
+    public MonitoredInstanceId TargetId { get; }
 
     public ProtectedSensitivePayload Payload { get; }
 

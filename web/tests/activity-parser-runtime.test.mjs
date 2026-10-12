@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { getPage, maximumResponseBytes, parseEdge, parseHistory, parsePage, parseRequest, parseSession, parseWait, safeCursor, safeStatusMessage } from "../src/features/activity/activityParser.mjs";
+import { getPage, maximumResponseBytes, parseEdge, parseHistory, parsePage, parseRequest, parseSession, parseWait, parseWaitHistory, safeCursor, safeStatusMessage } from "../src/features/activity/activityParser.mjs";
+import { getCurrentBlockingPage } from "../src/features/activity/activityApi.ts";
 
 const target = "11111111-1111-4111-8111-111111111111";
 const at = "2026-08-23T18:00:00Z";
@@ -20,28 +21,63 @@ test("production parser accepts null evidence and preserves every DTO shape", ()
   const history = parsePage({ ...envelope([{ evidence, edge }], { fromUtc: at, toUtc: "2026-08-23T19:00:00Z", nextCursor: "x" }), evidence }, parseHistory, target);
   assert.equal(history.items[0].edge.blockedSessionId, 1);
   assert.equal(history.items[0].evidence.collectorId, "blocking.current");
+  const waitHistory = parsePage(envelope([{ evidence: { ...evidence, collectorId: "waits.server" }, baselineRunId: null, wait }], { fromUtc: at, toUtc: "2026-08-23T19:00:00Z", nextCursor: "next" }), parseWaitHistory, target);
+  assert.equal(waitHistory.items[0].wait.waitTimeMillisecondsDelta, "2");
+  assert.equal(waitHistory.items[0].baselineRunId, undefined);
 });
 
 test("production parser rejects malformed fields, oversized pages, and cross-target pages", () => {
   assert.throws(() => parsePage(envelope(Array.from({ length: 26 }, () => session)), parseSession, target));
   assert.throws(() => parsePage(envelope([{ ...session, reads: "bad" }]), parseSession, target));
   assert.throws(() => parsePage({ ...envelope([]), instanceId: "22222222-2222-4222-8222-222222222222" }, parseSession, target));
+  assert.throws(() => parsePage(envelope([{ evidence, baselineRunId: "bad", wait }]), parseWaitHistory, target));
   assert.equal(safeCursor("x".repeat(512)).length, 512);
   assert.throws(() => safeCursor("x".repeat(513)));
+});
+
+test("dashboard blocking read accepts the full bounded graph without relaxing other page limits", async () => {
+  const originalFetch = globalThis.fetch;
+  const edges = Array.from({ length: 256 }, (_, index) => ({ ...edge, blockedSessionId: index + 1 }));
+  let requestedLimit;
+  try {
+    globalThis.fetch = async url => {
+      requestedLimit = new URL(String(url), "https://lab.invalid").searchParams.get("limit");
+      return streamResponse(JSON.stringify(envelope(edges, { evidence, maximumGraphNodes: 256 })));
+    };
+    const page = await getCurrentBlockingPage(target, new AbortController().signal);
+    assert.equal(requestedLimit, "256");
+    assert.equal(page.items.length, 256);
+    assert.equal(page.items.at(-1).blockedSessionId, 256);
+
+    globalThis.fetch = async () => streamResponse(JSON.stringify(envelope([...edges, edge], { evidence, maximumGraphNodes: 256 })));
+    await assert.rejects(() => getCurrentBlockingPage(target, new AbortController().signal));
+    assert.throws(() => parsePage(envelope(edges), parseEdge, target));
+  } finally { globalThis.fetch = originalFetch; }
 });
 
 test("production HTTP reader enforces headers, streamed bytes, null bodies, and status messages", async () => {
   const originalFetch = globalThis.fetch;
   try {
     globalThis.fetch = async () => streamResponse(JSON.stringify(envelope([])));
-    assert.equal((await getPage("/activity", parseSession, target, new AbortController().signal)).instanceId, target);
+    assert.equal((await getPage("/api/v1/activity", parseSession, target, new AbortController().signal)).instanceId, target);
     globalThis.fetch = async () => streamResponse("{}", { "content-length": String(maximumResponseBytes + 1) });
-    await assert.rejects(() => getPage("/activity", parseSession, target, new AbortController().signal));
+    await assert.rejects(() => getPage("/api/v1/activity", parseSession, target, new AbortController().signal));
     globalThis.fetch = async () => new Response(null, { status: 200 });
-    await assert.rejects(() => getPage("/activity", parseSession, target, new AbortController().signal));
+    await assert.rejects(() => getPage("/api/v1/activity", parseSession, target, new AbortController().signal));
     globalThis.fetch = async () => streamResponse("x".repeat(maximumResponseBytes + 1));
-    await assert.rejects(() => getPage("/activity", parseSession, target, new AbortController().signal));
+    await assert.rejects(() => getPage("/api/v1/activity", parseSession, target, new AbortController().signal));
   } finally { globalThis.fetch = originalFetch; }
   assert.match(safeStatusMessage(403), /not authorized/u);
   assert.match(safeStatusMessage(504), /execution limit/u);
+});
+
+test("current blocking reader preserves definitive HTTP denial status without exposing provider content", async () => {
+  const originalFetch = globalThis.fetch;
+  try {
+    for (const status of [401, 403]) {
+      globalThis.fetch = async () => new Response("SECRET_PROVIDER_DETAIL", { status });
+      await assert.rejects(getCurrentBlockingPage(target, new AbortController().signal), error =>
+        error.status === status && !error.message.includes("SECRET_PROVIDER_DETAIL"));
+    }
+  } finally { globalThis.fetch = originalFetch; }
 });

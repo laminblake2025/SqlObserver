@@ -1,6 +1,5 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
 import { parseOperationalPage, readBoundedJson } from "../src/features/operations/operationsParser.mjs";
 import { getOperationalPage, OperationalApiError } from "../src/features/operations/operationsApi.ts";
 import { initialOperationsState, operationsReducer } from "../src/features/operations/operationsState.ts";
@@ -31,13 +30,36 @@ test("M9 reader enforces streamed response bytes before parser execution", async
   await assert.rejects(() => readBoundedJson(huge, "backups", target));
 });
 
-test("M9 API and panel retain six distinct routes and no response reflection", async () => {
-  const api = await readFile(new URL("../src/features/operations/operationsApi.ts", import.meta.url), "utf8");
-  const panel = await readFile(new URL("../src/features/operations/OperationsPanel.tsx", import.meta.url), "utf8");
-  for (const route of ["backups", "sql-agent/failures", "tempdb", "tempdb/files", "availability-groups/replicas", "availability-groups/databases"]) assert.match(api, new RegExp(route.replaceAll("/", "\\/")));
-  for (const label of ["Backups", "SQL Agent failures", "TempDB summary", "TempDB files", "Availability Group replicas", "Availability Group databases"]) assert.match(panel, new RegExp(label));
-  assert.match(api, /readBoundedJson/); assert.doesNotMatch(api, /response\.json\(\)/);
+test("Agent classification preserves job and step records and rejects inconsistent flags", () => {
+  const row = { jobId: "cccccccc-cccc-4ccc-8ccc-cccccccccccc", historyInstanceId: 1, stepId: 0, runStatus: 0, failureKind: "Failed", retryAttempt: 0, durationSeconds: 1, firstObservedAtUtc: "2026-08-25T12:00:00Z", failureFingerprint: "a".repeat(64), contentAvailable: false, isJobOutcome: true, countsAsJobFailure: true };
+  const steps = [row, { ...row, stepId: 1, isJobOutcome: false, countsAsJobFailure: false }, { ...row, stepId: 1, runStatus: 2, failureKind: "Retry", isJobOutcome: false, countsAsJobFailure: false }, { ...row, runStatus: 3, failureKind: "Cancelled", countsAsJobFailure: false }];
+  assert.deepEqual(parseOperationalPage({ ...base("agent"), items: steps }, "agent", target).items, steps);
+  for (const altered of [{ ...row, isJobOutcome: "true" }, { ...row, countsAsJobFailure: "false" }, { ...row, stepId: 1 }, { ...row, runStatus: 2 }, { ...row, failureKind: "Retry" }, { ...row, isJobOutcome: null }]) {
+    assert.throws(() => parseOperationalPage({ ...base("agent"), items: [altered] }, "agent", target), /agent classification/);
+  }
 });
+
+test("Agent classification remains optional for older responses", () => {
+  const row = { jobId: "cccccccc-cccc-4ccc-8ccc-cccccccccccc", historyInstanceId: 1, stepId: 1, runStatus: 0, failureKind: "Failed", retryAttempt: 0, durationSeconds: 1, firstObservedAtUtc: "2026-08-25T12:00:00Z", failureFingerprint: "a".repeat(64), contentAvailable: false };
+  assert.deepEqual(parseOperationalPage({ ...base("agent"), items: [row] }, "agent", target).items, [row]);
+});
+
+test("Agent source execution start accepts only valid offset-free server clock values", () => {
+  const row = { jobId: "cccccccc-cccc-4ccc-8ccc-cccccccccccc", historyInstanceId: 1, stepId: 1, runStatus: 0, failureKind: "Failed", retryAttempt: 0, durationSeconds: 1, firstObservedAtUtc: "2026-08-25T12:00:00Z", failureFingerprint: "a".repeat(64), contentAvailable: false };
+  const parse = item => parseOperationalPage({ ...base("agent"), items: [item] }, "agent", target).items[0];
+  for (const value of ["2026-11-01T01:30:00", "2026-03-08T02:30:00", "2024-02-29T23:59:59", "0001-01-01T00:00:00", "9999-12-31T23:59:59"])
+    assert.equal(parse({ ...row, sourceLocalStart: value }).sourceLocalStart, value);
+  assert.equal(parse({ ...row, sourceLocalStart: null }).sourceLocalStart, null);
+  assert.equal(parse(row).sourceLocalStart, undefined);
+  assert.equal(parse({ ...row, SourceLocalStart: "2026-11-01T01:30:00" }).SourceLocalStart, "2026-11-01T01:30:00");
+  for (const value of ["2026-11-01T01:30:00Z", "2026-11-01T01:30:00+01:00", "2026-11-01T01:30:00.1", "2026-02-29T01:30:00", "2026-13-01T01:30:00", "0000-01-01T00:00:00", "2026-01-01T24:00:00", "2026-01-01T00:60:00", "2026-01-01T00:00:60", 20261101])
+    assert.throws(() => parse({ ...row, sourceLocalStart: value }), /agent source local start/);
+  assert.throws(() => parse({ ...row, sourceLocalStart: null, SourceLocalStart: "2026-11-01T01:30:00" }), /agent source local start/);
+});
+
+// The six visible sources and safe error rendering are exercised through the
+// real grouped panel in component-tests/OperationsPanel.spec.mjs. Native reader
+// and production-client runtime coverage remains below and above this note.
 
 test("M9 production client replays cursors across all six surfaces", async () => {
   const originalFetch = globalThis.fetch; const seen = [];
@@ -66,14 +88,15 @@ test("M9 production client safely maps malformed/status/oversized and aborts str
   } finally { globalThis.fetch = originalFetch; }
 });
 
-test("M9 production operations reducer covers loading, complete, degraded, no-data, retry, append, and cancel reset", () => {
+test("M9 production operations reducer covers states and replaces continuations without mixing received rows", () => {
   const page = { ...base("backups"), items: [{ label: "<hostile>" }], hasMore: true, nextCursor: "next" };
   let state = initialOperationsState();
   assert.equal(state.backups.loading, true);
   state = operationsReducer(state, { type: "success", kind: "backups", page, append: false });
   assert.equal(state.backups.page.items[0].label, "<hostile>");
   state = operationsReducer(state, { type: "success", kind: "backups", page: { ...page, state: "Degraded", items: [{ label: "second" }] }, append: true });
-  assert.equal(state.backups.page.items.length, 2);
+  assert.equal(state.backups.page.items.length, 1);
+  assert.equal(state.backups.page.items[0].label, "second");
   for (const stateName of ["NoData", "Complete", "Partial"]) state = operationsReducer(state, { type: "success", kind: "backups", page: { ...page, state: stateName, items: [] }, append: false });
   state = operationsReducer(state, { type: "failure", kind: "backups", error: "retry", retryable: true });
   assert.equal(state.backups.error, "retry");
@@ -88,7 +111,7 @@ test("M9 render model maps every surface and state with safe retry, paging, and 
     let stateValue = initialOperationsState();
     stateValue = operationsReducer(stateValue, { type: "success", kind, page: { ...base(kind), state, items: [{ label: "<img onerror=alert(1)>" }], hasMore: true, nextCursor: "opaque" }, append: false });
     const card = buildOperationsRenderModel(stateValue).cards[kind];
-    assert.equal(card.status, state); assert.equal(card.canLoadMore, true); assert.equal(card.canRetry, false); assert.equal(card.inertLabels[0], "<img onerror=alert(1)>");
+    assert.equal(card.status, state); assert.equal(card.canLoadMore, kind !== "tempdb-summary"); assert.equal(card.canRetry, false); assert.equal(card.inertLabels[0], "<img onerror=alert(1)>");
   }
   let retryState = initialOperationsState();
   retryState = operationsReducer(retryState, { type: "failure", kind: "backups", error: "retry", retryable: true });

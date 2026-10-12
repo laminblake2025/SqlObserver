@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "installationPolicyVersion": 2,
+  "installationPolicy": "MetadataVerificationV2",
+  "requiredJournalSchemaVersion": 3,
+  "legacyInstallationPolicyVersion": 1,
+  "legacyJournalSchemaVersions": [1, 2],
+  "moduleUtf8Sha256": "0ac04136ac0f04b718df47eb7e7f3fe07bd66c00f94b976e175bad5fefdd8991",
+  "definitionUtf16Sha256": "447846fb7a7eaa0442b2292b17b82ee17aaf998c3b91c161cba403f7c0bf8512",
+  "explicitGrantCount": 7,
+  "grants": [
+    { "database": "master", "recipient": "SqlObserverAgentActivityCertificateLoginV1", "securable": "SERVER", "permission": "VIEW SERVER SECURITY STATE" },
+    { "database": "msdb", "recipient": "SqlObserverAgentActivityCertificateUserV1", "securable": "DATABASE", "permission": "CONNECT" },
+    { "database": "msdb", "recipient": "SqlObserverAgentActivityCertificateUserV1", "securable": "OBJECT::dbo.syssessions", "permission": "SELECT" },
+    { "database": "msdb", "recipient": "SqlObserverAgentActivityCertificateUserV1", "securable": "OBJECT::dbo.sysjobactivity", "permission": "SELECT" },
+    { "database": "master", "recipient": "enrolled_monitor", "securable": "OBJECT::sqlobserver_agent.capture_v1", "permission": "EXECUTE", "grantor": "SqlObserverAgentActivitySchemaOwnerV1" },
+    { "database": "master", "recipient": "enrolled_monitor", "securable": "OBJECT::sqlobserver_agent.capture_v1", "permission": "VIEW DEFINITION", "grantor": "SqlObserverAgentActivitySchemaOwnerV1" },
+    { "database": "master", "recipient": "enrolled_monitor", "securable": "CERTIFICATE::SqlObserverAgentActivityCertificateV1", "permission": "VIEW DEFINITION", "grantor": "dbo" }
+  ],
+  "temporaryMonitorImplicitConnect": "Preserve exactly zero or one SQL-created CONNECT grant from dbo; issue no additional CONNECT grant.",
+  "legacyPolicy": "Unchanged exact five explicit grants. Never infer or upgrade the policy from an installed inventory.",
+  "cleanup": "Require the receipt policy and exact signed or unsigned postimage; drop only owned objects, verify original baseline. No broad revoke or adoption."
+}

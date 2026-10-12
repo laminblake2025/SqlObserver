@@ -15,6 +15,13 @@ public static class AlertEvaluator
         ArgumentNullException.ThrowIfNull(rule); ArgumentNullException.ThrowIfNull(prior); ArgumentNullException.ThrowIfNull(observation);
         if (prior.RuleId != rule.RuleId || prior.TargetId.Value != observation.TargetId.Value || observation.RuleId != rule.RuleId)
             throw new ArgumentException("Rule and target identities must match.");
+        bool backup = BackupAlertRuleContract.IsBackup(rule.Kind);
+        if (backup) BackupAlertRuleContract.ValidateObservation(rule, observation);
+        bool blocking = rule.Kind == AlertRuleKind.BlockingDuration;
+        if (blocking) BlockingAlertRuleContract.ValidateObservation(rule, observation);
+        bool deadlock = rule.Kind == AlertRuleKind.DeadlockCount;
+        if (deadlock) DeadlockAlertRuleContract.ValidateObservation(rule, observation);
+        bool sourceBound = backup || blocking || deadlock;
         // A replay is a read-only operation.  A reused operation identity is only
         // valid when its evidence digest is byte-for-byte identical.
         if (prior.LastOperationId == observation.OperationId)
@@ -23,17 +30,30 @@ public static class AlertEvaluator
                 throw new AlertReplayConflictException("The operation identity was reused with divergent evidence.");
             return new AlertEvaluationResult(prior, null, prior.DeliverySuppressed, prior.Reason ?? "replayed", true);
         }
+        if (sourceBound)
+        {
+            if (prior.LastObservedUtc >= observation.ObservedAtUtc)
+                throw new ArgumentException("Source-bound alert observation time regressed.", nameof(observation));
+        }
+        if (!rule.Enabled || !sourceBound && (rule.Kind == AlertRuleKind.MetricThreshold ? observation.Value is null : observation.CollectorHealthy is null))
+            throw new ArgumentException("An enabled rule and known evidence are required.", nameof(observation));
+        if (sourceBound && observation.Value is null) return UnknownEvidence(rule, prior, observation, maintenance);
         bool matches = IsMatch(rule, observation, prior.State);
+        bool active = prior.State is AlertState.Firing or AlertState.Acknowledged;
+        bool clearGap = sourceBound && prior.LastObservedUtc is { } previous && observation.ObservedAtUtc - previous > rule.ConfirmationWindow;
+        int clears = active && !matches ? clearGap ? 1 : Math.Min(rule.ClearConfirmationCount, prior.ConsecutiveClears + 1) : 0;
+        bool partialClear = clears > 0 && clears < rule.ClearConfirmationCount;
         DateTimeOffset now = observation.ObservedAtUtc;
         bool inMaintenance = maintenance is not null && maintenance.TargetId.Value == observation.TargetId.Value && maintenance.Contains(now);
-        int count = matches ? Math.Min(rule.ConfirmationCount, prior.ConsecutiveMatches + 1) : 0;
-        DateTimeOffset? first = matches ? prior.FirstMatchUtc ?? now : null;
+        int count = matches ? Math.Min(rule.ConfirmationCount, prior.ConsecutiveMatches + 1) : partialClear ? Math.Min(rule.ConfirmationCount, prior.ConsecutiveMatches) : 0;
+        DateTimeOffset? first = matches ? prior.FirstMatchUtc ?? now : partialClear ? prior.FirstMatchUtc : null;
         if (matches && prior.State is not (AlertState.Firing or AlertState.Acknowledged) && first is not null && now - first > rule.ConfirmationWindow) { count = 1; first = now; }
         AlertState next = prior.State;
         AlertEventKind? evt = null;
         if (!matches)
         {
-            if (prior.State is AlertState.Firing or AlertState.Acknowledged)
+            if (partialClear) next = prior.State;
+            else if (active)
             { next = AlertState.Resolved; evt = AlertEventKind.Resolved; }
             else next = AlertState.Normal;
         }
@@ -71,7 +91,8 @@ public static class AlertEvaluator
             episodeStartedUtc: next is AlertState.Normal or AlertState.Pending ? null : next == AlertState.Firing && (freshEpisode || prior.EpisodeStartedUtc is null) ? now : prior.EpisodeStartedUtc,
             acknowledgedBy: freshEpisode ? null : prior.AcknowledgedBy,
             revision: prior.Revision + 1,
-            lastValue: observation.Value);
+            lastValue: observation.Value,
+            consecutiveClears: partialClear ? clears : 0);
         return new AlertEvaluationResult(state, evt, inMaintenance, inMaintenance ? "maintenance" : "evaluated");
     }
 
@@ -85,7 +106,9 @@ public static class AlertEvaluator
     public static bool IsMatch(AlertRuleDefinition rule, AlertObservation observation, AlertState state)
     {
         if (!rule.Enabled) return false;
-        double? value = rule.Kind == AlertRuleKind.MetricThreshold ? observation.Value : observation.CollectorHealthy is null ? null : observation.CollectorHealthy.Value ? 1d : 0d;
+        double? value = rule.Kind == AlertRuleKind.CollectorHealth
+            ? observation.CollectorHealthy is null ? null : observation.CollectorHealthy.Value ? 1d : 0d
+            : observation.Value;
         if (value is null) return false;
         double threshold = rule.Threshold;
         if (state is AlertState.Firing or AlertState.Acknowledged)
@@ -99,6 +122,22 @@ public static class AlertEvaluator
             AlertComparison.Equal => Math.Abs(value.Value - threshold) <= rule.Hysteresis,
             _ => false,
         };
+    }
+
+    private static AlertEvaluationResult UnknownEvidence(AlertRuleDefinition rule, AlertRuleState prior,
+        AlertObservation observation, MaintenanceWindow? maintenance)
+    {
+        bool suppressed = maintenance is not null && maintenance.TargetId == observation.TargetId && maintenance.Contains(observation.ObservedAtUtc);
+        AlertState next = prior.State == AlertState.Pending ? AlertState.Normal : prior.State;
+        // Unknown evidence interrupts both confirmation streaks. It cannot
+        // resolve/reopen an episode or allocate an alert/delivery identity.
+        var state = new AlertRuleState(rule.RuleId, observation.TargetId, next, 0, null, observation.ObservedAtUtc,
+            prior.FiredUtc, prior.AcknowledgedUtc, prior.AlertId, prior.EpisodeId,
+            observation.OperationId, observation.EvidenceDigest, observation.Reason,
+            lastReason: observation.Reason, deliverySuppressed: suppressed, resolvedUtc: prior.ResolvedUtc,
+            episodeStartedUtc: prior.EpisodeStartedUtc, acknowledgedBy: prior.AcknowledgedBy,
+            revision: prior.Revision + 1, lastValue: null, consecutiveClears: 0);
+        return new(state, null, suppressed, suppressed ? "maintenance" : "evidence_unknown");
     }
 }
 

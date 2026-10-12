@@ -1,0 +1,15 @@
+.chart-plot-viewport { min-width: 0; max-width: 100%; }
+.chart-plot-scroll { min-width: 0; max-width: 100%; overflow-x: auto; margin: 4px; }
+.chart-plot-scroll > svg.chart { display: block; width: 100%; min-width: var(--chart-plot-min-width, 650px); height: auto; }
+.chart-plot-scroll:focus-visible,
+.chart-plot-scroll-controls button:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+.chart-plot-scroll-controls { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 4px 0; }
+.chart-plot-scroll-controls button { min-width: 44px; min-height: 44px; }
+.chart-plot-scroll-hint { margin: 8px 4px; color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+@media (forced-colors: active) {
+  .chart-plot-scroll:focus-visible,
+  .chart-plot-scroll-controls button:focus-visible { outline-color: Highlight; }
+}
+
+.chart-plot-scroll > svg.chart text { font-size:inherit; }
+.time-range-editor > button { min-width:140px; }

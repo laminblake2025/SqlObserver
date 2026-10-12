@@ -1,0 +1,63 @@
+[WebServer] (node:206124) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+
+Running 19 tests using 1 worker
+
+(node:183664) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ok  1 [chromium] › component-tests\AnalyticsWorkflow.spec.mjs:197:1 › native diagnostic metadata renders inertly and unknown evidence confidence stays unavailable (728ms)
+  ok  2 [chromium] › component-tests\HealthPanel.spec.mjs:257:1 › sanitizes a denied native response and requires an explicit access retry (516ms)
+  ok  3 [chromium] › component-tests\HealthPanel.spec.mjs:278:1 › definitive denied outer Health poll drops all retained inventory and file receipts (680ms)
+  ok  4 [chromium] › component-tests\HealthPanel.spec.mjs:380:1 › embedded navigation and independent dashboard remain available when the latest health snapshot fails (709ms)
+  ok  5 [chromium] › component-tests\HealthPanel.spec.mjs:407:1 › switching sections preserves the mounted dashboard disclosure and owned source receipts (657ms)
+  ok  6 [chromium] › component-tests\HealthPanel.spec.mjs:459:34 › file HTTP401 has priority over core503 and aborts a held peer without automatic recovery (528ms)
+  ok  7 [chromium] › component-tests\HealthPanel.spec.mjs:459:34 › file HTTP403 has priority over core503 and aborts a held peer without automatic recovery (596ms)
+  ok  8 [chromium] › component-tests\HealthPanel.spec.mjs:490:1 › independent option-history denial clears all retained health siblings until explicit access recovery (588ms)
+  ok  9 [chromium] › component-tests\HealthPanel.spec.mjs:507:3 › primary analytics HTTP401 clears protected health siblings while ordinary source failures remain independent (612ms)
+  ok 10 [chromium] › component-tests\HealthPanel.spec.mjs:507:3 › primary analytics HTTP403 clears protected health siblings while ordinary source failures remain independent (650ms)
+  ok 11 [chromium] › component-tests\HealthPanel.spec.mjs:507:3 › comparison analytics HTTP401 clears protected health siblings while ordinary source failures remain independent (635ms)
+  ok 12 [chromium] › component-tests\HealthPanel.spec.mjs:507:3 › comparison analytics HTTP403 clears protected health siblings while ordinary source failures remain independent (642ms)
+  ok 13 [chromium] › component-tests\IndependentBlocking.spec.mjs:104:34 › typed 401 purges current blocking and holds the source until explicit access retry (841ms)
+  ok 14 [chromium] › component-tests\IndependentBlocking.spec.mjs:104:34 › typed 403 purges current blocking and holds the source until explicit access retry (779ms)
+  ok 15 [chromium] › component-tests\ObservationChart.spec.mjs:415:92 › overview plot keeps readable axes and full-window touch/keyboard access at 768px (1.4s)
+  ok 16 [chromium] › component-tests\ObservationChart.spec.mjs:415:92 › overview plot keeps readable axes and full-window touch/keyboard access at 1440px (1.6s)
+  x  17 [chromium] › component-tests\ReportsPanel.spec.mjs:209:44 › report controls and exports remain readable and accessible at 1440px (530ms)
+(node:208128) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ok 18 [chromium] › component-tests\SqlVolumeHistory.spec.mjs:127:39 › volume plot touch controls reach the full received window without selection or reads at 320px (1.1s)
+  ok 19 [chromium] › component-tests\SqlVolumeHistory.spec.mjs:127:39 › volume plot touch controls reach the full received window without selection or reads at 390px (711ms)
+
+
+  1) [chromium] › component-tests\ReportsPanel.spec.mjs:209:44 › report controls and exports remain readable and accessible at 1440px 
+
+    Error: expect(received).toBeGreaterThanOrEqual(expected)
+
+    Expected: >= 140
+    Received:    123
+
+      218 |   for (const [control, minimumWidth] of [[sharedRange, 140], [sharedEditorToggle, 100]]) {
+      219 |     const bounds = await control.boundingBox();
+    > 220 |     expect(bounds.width).toBeGreaterThanOrEqual(minimumWidth);
+          |                          ^
+      221 |     expect(bounds.height).toBeGreaterThanOrEqual(40);
+      222 |   }
+      223 |   await expect(panel(page).getByRole('form', { name: 'Generate server report', exact: true })).toBeVisible();
+        at G:\Adams SQL Diagnostic Manager\web\component-tests\ReportsPanel.spec.mjs:220:26
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    ..\.artifacts\ui-redesign-20261009\component-results\ReportsPanel-report-contro-96edd-le-and-accessible-at-1440px-chromium\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: ..\.artifacts\ui-redesign-20261009\component-results\ReportsPanel-report-contro-96edd-le-and-accessible-at-1440px-chromium\error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\.artifacts\ui-redesign-20261009\component-results\ReportsPanel-report-contro-96edd-le-and-accessible-at-1440px-chromium\trace.zip
+    Usage:
+
+        pnpm exec playwright show-trace ..\.artifacts\ui-redesign-20261009\component-results\ReportsPanel-report-contro-96edd-le-and-accessible-at-1440px-chromium\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  1 failed
+    [chromium] › component-tests\ReportsPanel.spec.mjs:209:44 › report controls and exports remain readable and accessible at 1440px 
+  18 passed (18.5s)

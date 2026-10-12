@@ -93,6 +93,7 @@ public sealed class DeadlockActivitySnapshotTriggerTests
         }
 
         public Task<IReadOnlyList<LiveActivityTarget>> TargetsAsync(CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<LeaseAcquisitionResult> ClaimAsync(LiveActivityTarget target,WorkerExecutionId owner,WorkerLeaseDuration duration,CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task FailedAsync(Guid targetId, WorkerLeaseIdentity lease, CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task CleanupAsync(CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task<LiveActivityPage> ReadAsync(LiveActivityRead request, CancellationToken cancellationToken) => throw new NotSupportedException();

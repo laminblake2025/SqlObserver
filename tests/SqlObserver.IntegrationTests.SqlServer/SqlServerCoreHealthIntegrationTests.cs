@@ -2,6 +2,7 @@ using System.Data;
 using System.Diagnostics;
 using Microsoft.Data.SqlClient;
 using SqlObserver.Collector.Abstractions;
+using SqlObserver.Collectors;
 using SqlObserver.Domain.Capabilities;
 using SqlObserver.Domain.Collection;
 using SqlObserver.Domain.Targets;
@@ -10,12 +11,37 @@ using SqlObserver.Infrastructure.SqlServer;
 
 namespace SqlObserver.IntegrationTests.SqlServer;
 
-public sealed class SqlServerCoreHealthIntegrationTests
+public sealed partial class SqlServerCoreHealthIntegrationTests
 {
     private static readonly MonitoredInstanceId TargetId =
         new(Guid.Parse("91919191-9191-9191-9191-919191919191"));
     private static readonly ObservationTargetRevision TargetRevision = new(7);
     private static readonly int[] SupportedMajorVersions = [15, 16, 17];
+
+    [Fact]
+    [Trait("Category", "RequiresSqlServer")]
+    public async Task LocalBufferNodeCollectorProducesDimensionedPleSamples()
+    {
+        var collector = new SqlServerBufferNodePleCollector(new LabSqlServerConnectionFactory());
+        CollectorExecutionRequest request = CreateRequest();
+
+        CollectorExecutionResult result = await collector.CollectAsync(request, CancellationToken.None);
+
+        Assert.Equal(CollectorRunOutcome.Succeeded, result.Outcome);
+        Assert.False(result.Loss.HasLoss);
+        Assert.InRange(result.Payload.Metrics.Count, 1, 128);
+        Assert.Equal(result.Payload.Metrics.Count, result.Accounting.OutputItemsProduced);
+        Assert.Equal(result.Payload.Metrics.Count, result.Payload.Metrics.Select(
+            sample => Assert.Single(sample.Dimensions).Value).Distinct(StringComparer.Ordinal).Count());
+        Assert.All(result.Payload.Metrics, sample =>
+        {
+            Assert.Equal("engine.buffer_node_page_life_expectancy_seconds", sample.MetricId.Value);
+            Assert.Equal("node_id", Assert.Single(sample.Dimensions).Key);
+            Assert.True(sample.Value >= 0);
+        });
+        new CollectorOutputValidator(SqlServerBufferNodePleCollector.OutputContract)
+            .Validate(collector.Manifest, request, result);
+    }
 
     [Fact]
     public void M4AssetsAreChecksumPinnedStrictBoundedPassiveAndOrdered()
@@ -67,20 +93,76 @@ public sealed class SqlServerCoreHealthIntegrationTests
             [
                 "engine.batch_requests_total",
                 "engine.committed_memory_bytes",
+                "engine.memory_grants_pending",
+                "engine.os_available_memory_bytes",
                 "engine.page_life_expectancy_seconds",
                 "engine.process_physical_memory_bytes",
+                "engine.scheduler_cpu_milliseconds_total",
+                "engine.scheduler_runnable_tasks",
                 "engine.sql_compilations_total",
                 "engine.sql_recompilations_total",
                 "engine.start_time_key",
                 "engine.target_memory_bytes",
                 "engine.user_connections",
+                "engine.visible_scheduler_count",
             ],
             SqlServerCoreEngineCollector.OutputContract.Metrics
                 .Select(static metric => metric.MetricId.Value)
                 .Order(StringComparer.Ordinal));
-        Assert.Equal(9, SqlServerCoreEngineCollector.OutputContract.MaxMetricSamples);
+        Assert.Equal(14, SqlServerCoreEngineCollector.OutputContract.MaxMetricSamples);
         Assert.Equal(1_000, SqlServerDatabaseInventoryCollector.OutputContract.MaxDatabaseObservations);
         Assert.Equal(1_000, SqlServerDatabaseFilesCollector.OutputContract.MaxDatabaseFileObservations);
+    }
+
+    [Fact]
+    public void Version2DatabaseInventoryBundlePreservesVersion1AndPinsNullableLogReuseSource()
+    {
+        SqlServerCollectorAssetCatalog original = SqlServerCollectorAssetCatalog.LoadEmbedded();
+        SqlServerCollectorAssetCatalog updated = SqlServerCollectorAssetCatalog.LoadVersion2Embedded();
+        SqlServerCollectorAsset inventory = updated.Get(new CollectorId("database.inventory"));
+
+        Assert.NotEqual(original.BundleChecksum, updated.BundleChecksum);
+        Assert.Equal(1, original.Get(new CollectorId("database.inventory")).Manifest.ManifestVersion.Value);
+        Assert.Equal(2, inventory.Manifest.ManifestVersion.Value);
+        Assert.Equal(2, inventory.Manifest.OutputSchemaVersion.Value);
+        Assert.Equal(2, SqlServerDatabaseInventoryCollector.Version2OutputContract.SchemaVersion.Value);
+        Assert.Equal(original.Get(new CollectorId("engine.core")).ManifestChecksum,
+            updated.Get(new CollectorId("engine.core")).ManifestChecksum);
+        Assert.Equal(original.Get(new CollectorId("database.files")).ManifestChecksum,
+            updated.Get(new CollectorId("database.files")).ManifestChecksum);
+        foreach (int major in SupportedMajorVersions)
+        {
+            string sql = inventory.GetQuery(major);
+            Assert.Contains("databases.log_reuse_wait_desc", sql, StringComparison.Ordinal);
+            Assert.Contains("FROM sys.databases AS databases", sql, StringComparison.Ordinal);
+            AssertPassiveSql(sql);
+        }
+    }
+
+    [Fact]
+    [Trait("Category", "RequiresSqlServer")]
+    public async Task LocalVersion2DatabaseInventoryReadsLogReuseEvidenceWithinBounds()
+    {
+        var connectionFactory = new LabSqlServerConnectionFactory();
+        var collector = new SqlServerDatabaseInventoryCollector(
+            SqlServerCollectorAssetCatalog.LoadVersion2Embedded(), connectionFactory);
+        CollectorExecutionRequest request = CreateRequest();
+        TargetStateSnapshot before = await CaptureTargetStateAsync(connectionFactory);
+
+        CollectorExecutionResult result = await collector.CollectAsync(request, CancellationToken.None);
+
+        TargetStateSnapshot after = await CaptureTargetStateAsync(connectionFactory);
+        Assert.Equal(before, after);
+        Assert.Equal(2, collector.Manifest.ManifestVersion.Value);
+        Assert.Equal(2, collector.Manifest.OutputSchemaVersion.Value);
+        Assert.Equal(CollectorRunOutcome.Succeeded, result.Outcome);
+        Assert.False(result.Loss.HasLoss);
+        Assert.InRange(result.Accounting.SourceRowsRead, 1, collector.Manifest.Limits.MaxRows - 1);
+        Assert.InRange(result.Accounting.ResponseBytes, 1, collector.Manifest.Limits.MaxResponseBytes);
+        Assert.Contains(result.Payload.Databases.Items,
+            static database => database.LogReuseWaitDescription is not null);
+        new CollectorOutputValidator(SqlServerDatabaseInventoryCollector.Version2OutputContract)
+            .Validate(collector.Manifest, request, result);
     }
 
     [Fact]
@@ -115,7 +197,9 @@ public sealed class SqlServerCoreHealthIntegrationTests
         Assert.Equal(before, after);
 
         CollectorExecutionResult core = results[0];
-        Assert.Equal(9, core.Payload.Metrics.Count);
+        Assert.Equal(14, core.Payload.Metrics.Count);
+        Assert.True(core.Payload.Metrics.Single(sample => sample.MetricId.Value == "engine.visible_scheduler_count").Value > 0);
+        Assert.True(core.Payload.Metrics.Single(sample => sample.MetricId.Value == "engine.scheduler_cpu_milliseconds_total").Value >= 0);
         Assert.Equal(
             SqlServerCoreEngineCollector.OutputContract.Metrics
                 .Select(static metric => metric.MetricId.Value)
@@ -252,7 +336,8 @@ public sealed class SqlServerCoreHealthIntegrationTests
         Assert.Equal(24, exception.Accounting.OutputBytes);
     }
 
-    private static CollectorExecutionRequest CreateRequest(TimeSpan? timeout = null)
+    private static CollectorExecutionRequest CreateRequest(TimeSpan? timeout = null, int majorVersion = 16,
+        SqlServerEngineEdition edition = SqlServerEngineEdition.Express)
     {
         DateTimeOffset checkedAt = new(2026, 8, 23, 17, 0, 0, TimeSpan.Zero);
         var profile = new CapabilityProfile(
@@ -262,9 +347,9 @@ public sealed class SqlServerCoreHealthIntegrationTests
             collectorManifestVersion: 1,
             outputSchemaVersion: 1,
             new SqlServerIdentity(
-                new SqlServerVersion(16, 0, 1000, 0),
+                new SqlServerVersion(majorVersion, 0, 1000, 0),
                 new SqlServerEditionName("Express Edition"),
-                SqlServerEngineEdition.Express,
+                edition,
                 SqlServerPlatform.Windows),
             CapabilityDiscoveryOutcome.Supported,
             CapabilityDiscoveryReason.Verified,

@@ -203,7 +203,7 @@ public static class ForecastV1
         var points = dailyPoints.Where(x => x.MetricKey == metricKey && x.Complete).OrderBy(x => x.ObservedAtUtc).TakeLast(90).ToArray();
         if (capacity is null || !double.IsFinite(capacity.Value) || capacity.Value <= 0 || points.Length < 8 || points[^1].ObservedAtUtc - points[0].ObservedAtUtc < TimeSpan.FromDays(7)) return result;
         var segment = new List<MetricPoint>();
-        foreach (var p in points) { if (segment.Count > 0 && (p.Reset || p.Value < segment[^1].Value * .5)) segment.Clear(); segment.Add(p); }
+        foreach (var p in points) { if (segment.Count > 0 && (p.Reset || (p.Kind == MetricKind.Counter && p.Value < segment[^1].Value * .5))) segment.Clear(); segment.Add(p); }
         if (segment.Count < 8 || segment[^1].ObservedAtUtc - segment[0].ObservedAtUtc < TimeSpan.FromDays(7)) return result;
         double origin = segment[0].ObservedAtUtc.UtcDateTime.Ticks / (double)TimeSpan.TicksPerDay; var slopes = new List<double>();
         for (int i = 0; i < segment.Count; i++) for (int j = i + 1; j < segment.Count; j++) { double dt = segment[j].ObservedAtUtc.UtcDateTime.Ticks / (double)TimeSpan.TicksPerDay - segment[i].ObservedAtUtc.UtcDateTime.Ticks / (double)TimeSpan.TicksPerDay; slopes.Add((segment[j].Value - segment[i].Value) / dt); }

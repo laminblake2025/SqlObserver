@@ -1,0 +1,87 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import { getServerWaitTrend, parseWaitTrend } from "../src/features/activity/waitTrendParser.mjs";
+import { waitTrendChartData } from "../src/features/activity/waitTrendChartModel.ts";
+
+const instanceId = "11111111-1111-4111-8111-111111111111";
+const window = { fromUtc: "2026-09-25T07:55:00Z", toUtc: "2026-09-25T08:00:00Z" };
+const labels = ["Lock", "I/O", "CPU/signal", "Memory", "Parallelism", "Log", "Other"];
+const body = () => ({ instanceId, ...window, repositoryTimeUtc: "2026-09-25T08:00:01Z",
+  points: labels.map(category => ({ bucketStartUtc: "2026-09-25T07:55:00Z", category,
+    waitMilliseconds: category === "Lock" ? "25" : "0", runCount: 1,
+    missingSummaryRuns: 0, partialRuns: 0, incomparableTypes: 0, comparableTypes: 1 })) });
+
+test("wait trend validates target, window, complete categories and gap evidence", () => {
+  assert.equal(parseWaitTrend(body(), instanceId, window).points.length, 7);
+  assert.throws(() => parseWaitTrend({ ...body(), instanceId: "22222222-2222-4222-8222-222222222222" }, instanceId, window));
+  assert.throws(() => parseWaitTrend({ ...body(), toUtc: "2026-09-25T09:00:00Z" }, instanceId, window));
+  assert.throws(() => parseWaitTrend({ ...body(), points: body().points.slice(1) }, instanceId, window));
+  const duplicated = body(); duplicated.points[1].category = "Lock";
+  assert.throws(() => parseWaitTrend(duplicated, instanceId, window));
+  const inconsistent = body(); inconsistent.points[1].runCount = 2;
+  assert.throws(() => parseWaitTrend(inconsistent, instanceId, window));
+  const incomplete = body(); incomplete.points[0].partialRuns = 1;
+  assert.throws(() => parseWaitTrend(incomplete, instanceId, window));
+  incomplete.points.forEach(point => { point.partialRuns = 1; point.waitMilliseconds = null; });
+  assert.equal(parseWaitTrend(incomplete, instanceId, window).points[0].waitMilliseconds, null);
+});
+
+test("wait trend requests only the selected target and UTC window without caching", async () => {
+  const originalFetch = globalThis.fetch;
+  let requested;
+  try {
+    globalThis.fetch = async (url, options) => {
+      requested = { url: String(url), options };
+      return new Response(JSON.stringify(body()), { headers: { "content-type": "application/json" } });
+    };
+    const result = await getServerWaitTrend(instanceId, window, new AbortController().signal);
+    assert.equal(result.points.length, 7);
+    const url = new URL(requested.url, "https://local.invalid");
+    assert.equal(url.pathname, `/api/v1/observation-targets/${instanceId}/activity/waits/trend`);
+    assert.equal(url.searchParams.get("fromUtc"), window.fromUtc);
+    assert.equal(url.searchParams.get("toUtc"), window.toUtc);
+    assert.equal(requested.options.cache, "no-store");
+    await assert.rejects(() => getServerWaitTrend(instanceId,
+      { fromUtc: window.fromUtc, toUtc: "2026-09-27T08:00:00Z" }, new AbortController().signal));
+  } finally { globalThis.fetch = originalFetch; }
+});
+
+test("dashboard and Waits share ordered, precision-safe category values and gap counts", () => {
+  const earlier = "2026-09-25T07:55:00Z", later = "2026-09-25T08:00:00Z";
+  const trend = { ...body(), toUtc: "2026-09-25T08:05:00Z",
+    points: [later, earlier].flatMap(bucketStartUtc => labels.map(category => ({
+      bucketStartUtc, category, runCount: 1,
+      waitMilliseconds: bucketStartUtc === later && category === "Lock" ? "9007199254740992"
+        : bucketStartUtc === later && category === "Memory" ? null : "25",
+    }))) };
+  const chart = waitTrendChartData(trend);
+  assert.equal(chart.totalBuckets, 2);
+  assert.equal(chart.comparableBuckets, 1);
+  assert.equal(chart.oversizedValues, 1);
+  assert.deepEqual(chart.series.find(series => series.category === "Lock").points,
+    [{ timeUtc: earlier, value: 25, samples: 1 }, { timeUtc: later, value: null, samples: 1 }]);
+  assert.equal(chart.series.find(series => series.category === "Memory").points[1].value, null);
+});
+
+test('wait trend binds native microseconds and includes the submillisecond final bucket', () => {
+  const precise = { fromUtc: '2026-09-25T07:55:00.000001Z', toUtc: '2026-09-25T08:00:00.000001Z' };
+  const value = { ...body(), ...precise, points: [...body().points, ...labels.map(category => ({ ...body().points[0], category, bucketStartUtc: '2026-09-25T08:00:00Z' }))] };
+  assert.equal(parseWaitTrend(value, instanceId, precise).points.length, 14);
+  assert.throws(() => parseWaitTrend({ ...value, fromUtc: '2026-09-25T07:55:00.000002Z' }, instanceId, precise));
+  assert.throws(() => parseWaitTrend({ ...value, toUtc: '2026-09-25T08:00:00.000002Z' }, instanceId, precise));
+  assert.equal(parseWaitTrend({ ...value, fromUtc: '2026-09-25T07:55:00.0000010+00:00' }, instanceId, precise).points.length, 14);
+  assert.throws(() => parseWaitTrend({ ...value, points: value.points.map(point => ({ ...point, bucketStartUtc: point.bucketStartUtc.replace('Z', '.000001Z') })) }, instanceId, precise));
+});
+
+test('wait trend refuses a one-microsecond cap overflow before dispatch and propagates authorization status', async () => {
+  const original = globalThis.fetch; let requests = 0;
+  try {
+    globalThis.fetch = async () => { requests++; return new Response('PROVIDER_SECRET', { status: 403 }); };
+    await assert.rejects(getServerWaitTrend(instanceId, { fromUtc: '2026-09-25T08:00:00Z', toUtc: '2026-09-26T08:00:00.000001Z' }, new AbortController().signal), { message: 'Invalid wait trend window.' });
+    assert.equal(requests, 0);
+    for (const status of [401, 403]) {
+      globalThis.fetch = async () => { requests++; return new Response('PROVIDER_SECRET', { status }); };
+      await assert.rejects(getServerWaitTrend(instanceId, window, new AbortController().signal), error => error.status === status && !error.message.includes('PROVIDER_SECRET'));
+    }
+  } finally { globalThis.fetch = original; }
+});

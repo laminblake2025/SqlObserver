@@ -1,0 +1,22 @@
+.analytics-workflow-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: .5rem 1rem;
+}
+.analytics-workflow-heading h2 { margin-bottom: .4rem; }
+.analytics-workflow-mode { color: var(--muted); font-size: .9rem; }
+.analytics-workflow-controls { display: flex; flex-wrap: wrap; gap: .5rem; margin: .7rem 0; }
+.analytics-workflow-controls button { min-height: 2.75rem; white-space: normal; overflow-wrap: anywhere; max-width: 100%; }
+.analytics-workflow-controls button:focus-visible { outline: 3px solid var(--focus); outline-offset: 3px; }
+.analytics-workflow-receipt, .analytics-workflow-scope, .analytics-workflow-note { overflow-wrap: anywhere; }
+.analytics-workflow-receipt { color: var(--text); margin-bottom: .35rem; }
+.analytics-workflow-scope, .analytics-workflow-note { color: var(--muted); font-size: .9rem; line-height: 1.5; }
+.analytics-surface { min-width: 0; }
+.analytics-surface .evidence-table-scroll { max-height: 32rem; overflow: auto; }
+.analytics-surface .evidence-table-scroll:focus-visible { outline: 3px solid var(--focus); outline-offset: 3px; }
+@media (max-width: 480px) {
+  .analytics-workflow-controls button { flex: 1 1 9rem; }
+  .analytics-workflow-heading { display: block; }
+}

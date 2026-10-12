@@ -1,0 +1,80 @@
+{
+  "schemaVersion": 1,
+  "maximumGzipBytes": 256000,
+  "gzipBytes": 157737,
+  "manifestSha256": "8a32c486197ab0f40025db2527920fe1d8d91101648a890043439975b1b9655c",
+  "assets": [
+    {
+      "file": "assets/chunk-OverviewPage-905b74d8.js",
+      "bytes": 26704,
+      "gzipBytes": 7892,
+      "sha256": "e036390ad4a2ab1d27b4afee05788521c62f8f675b8c39ff3b6b4530c5894c0f"
+    },
+    {
+      "file": "assets/chunk-alertRuntimeParser-a4c13282.js",
+      "bytes": 9165,
+      "gzipBytes": 3074,
+      "sha256": "6648c05069fa7258aae9f09d8540c414f8e69a46262c1c6add9d45a7545b88ae"
+    },
+    {
+      "file": "assets/chunk-analyticsSurfaceCatalog-c7bed43a.js",
+      "bytes": 579,
+      "gzipBytes": 299,
+      "sha256": "4d83018c60fc32a81a23280c2182970bd3b292522b9e32de928ba8d48f417137"
+    },
+    {
+      "file": "assets/chunk-availabilityEvidence-8db2fde6.js",
+      "bytes": 6971,
+      "gzipBytes": 2668,
+      "sha256": "66f7cb8df246aa818233a336d9466ae3961f7f5b511480ed3e8896efc1f2d590"
+    },
+    {
+      "file": "assets/chunk-fleetGridModel-124fdc97.js",
+      "bytes": 4656,
+      "gzipBytes": 1949,
+      "sha256": "44b2307b7d01068b2596cf1940843b8b6e02ddd212de4092e6c0a293a9ad91e1"
+    },
+    {
+      "file": "assets/chunk-overviewModel-a971f758.js",
+      "bytes": 5112,
+      "gzipBytes": 2369,
+      "sha256": "c84c38970c074e932867ba848b037f2372cd14b2c62d171e8965975ae2cd3d0e"
+    },
+    {
+      "file": "assets/chunk-sqlBaselineModel-e3255b5c.js",
+      "bytes": 4618,
+      "gzipBytes": 1735,
+      "sha256": "58a7c5933bb51ec2dabcaaa660f4c3d6f78bef26a630ba2683e9f284dec63e6d"
+    },
+    {
+      "file": "assets/chunk-useChartInspection-1c224539.js",
+      "bytes": 2995,
+      "gzipBytes": 1378,
+      "sha256": "1fccef75c54689f134743729eed739385fb469adf5d2d820b6f688ba714f8471"
+    },
+    {
+      "file": "assets/chunk-useOverviewAnalytics-732d4eb4.js",
+      "bytes": 25048,
+      "gzipBytes": 8545,
+      "sha256": "0f524ac60421e913425c7b592e50dac2742ec76e07127a46850c6773695caf73"
+    },
+    {
+      "file": "assets/chunk-useResponsiveChart-de424d35.js",
+      "bytes": 4887,
+      "gzipBytes": 2156,
+      "sha256": "a70f547cdb3b2212e2905a35f746a19c4d03d6bd065757f58a24f7748526f833"
+    },
+    {
+      "file": "assets/chunk-utcTimestamp-b0ee1028.js",
+      "bytes": 4699,
+      "gzipBytes": 2229,
+      "sha256": "25830ccb31b6c50f7ff1e0e074a80e50021bd73d9c8128fd4e2756dece875d9c"
+    },
+    {
+      "file": "assets/entry-index-1bb5358a.js",
+      "bytes": 437301,
+      "gzipBytes": 123443,
+      "sha256": "7cda5241fc29f92ad6033b0caf92596dfaff8c1f9a1f54d9352116f7edd7ede1"
+    }
+  ]
+}

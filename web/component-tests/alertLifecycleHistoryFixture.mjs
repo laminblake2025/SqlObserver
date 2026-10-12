@@ -1,0 +1,6 @@
+export * from '../tools/alert-lifecycle-history-fixture.mjs';
+import {alertLifecycleHistoryBackend,lifecycleFixtureBinding} from '../tools/alert-lifecycle-history-fixture.mjs';
+export async function installAlertLifecycleHistoryFixture(page,{origin='http://127.0.0.1:4328',backend=alertLifecycleHistoryBackend(),handler}={}) {
+ const session={backend,requests:[],reads:[],errors:[],handler};await page.route('**/api/v1/observation-targets/*/alerts/history**',async route=>{const request=route.request(),url=new URL(request.url());if(url.origin!==origin||request.method()!=='GET'){session.errors.push('Unexpected '+request.method()+' '+url.href);return route.abort();}
+  try{const item=lifecycleFixtureBinding(url);session.requests.push(request);session.reads.push(item);if(session.handler&&await session.handler(route,item,session))return;await route.fulfill({status:200,contentType:'application/json',headers:{'cache-control':'private, no-store'},body:JSON.stringify(item.selected?backend.detail(item.binding,item.selected):backend.read(item.binding,item.cursor))});}catch(error){await route.fulfill({status:error.status??503,contentType:'application/json',body:'{"detail":"PRIVATE_PROVIDER_ERROR"}'});}});return session;
+}

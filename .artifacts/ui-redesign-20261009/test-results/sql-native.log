@@ -1,0 +1,6 @@
+Test run for G:\Adams SQL Diagnostic Manager\tests\SqlObserver.IntegrationTests.SqlServer\bin\Release\net10.0\SqlObserver.IntegrationTests.SqlServer.dll (.NETCoreApp,Version=v10.0)
+A total of 1 test files matched the specified pattern.
+WARNING: Overwriting results file: G:\Adams SQL Diagnostic Manager\.artifacts\ui-redesign-20261009\test-results\redesign-sql-native.trx
+Results File: G:\Adams SQL Diagnostic Manager\.artifacts\ui-redesign-20261009\test-results\redesign-sql-native.trx
+
+Passed!  - Failed:     0, Passed:     1, Skipped:     0, Total:     1, Duration: 504 ms - SqlObserver.IntegrationTests.SqlServer.dll (net10.0)

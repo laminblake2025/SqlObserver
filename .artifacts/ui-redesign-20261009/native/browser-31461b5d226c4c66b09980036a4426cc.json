@@ -1,0 +1,10 @@
+{
+  "runId": "31461b5d-226c-4c66-b099-80036a4426cc",
+  "targetId": "dc312f3e-6211-493c-bbc8-62bd7095de25",
+  "connections": 2,
+  "rendered": true,
+  "apiStatus": 200,
+  "browser": "chromium",
+  "dashboardManifestSha256": "ba6b15b578f00eb7e9278363427d5cba888ac5791e15bc48a3fa7792352e0e2e",
+  "qualification": "Direct passive core collector test seam only; local certificate contract and test viewer authentication. Production collector admission, least-privilege operation, and other diagnostic sources are unqualified."
+}

@@ -6,28 +6,160 @@ using SqlObserver.Domain.Telemetry;
 
 namespace SqlObserver.Application.Services;
 
-public sealed class AlertQueryService(IAlertRepositoryPort repository) : IAlertQueryService
+public sealed class AlertQueryService(IAlertRepositoryPort repository, IAlertAssignmentEligibilityPort? assignmentEligibility = null) : IAlertQueryService
 {
+    private static readonly ApplicationRole[] ReadRoles =
+    [
+        ApplicationRole.Viewer, ApplicationRole.Operator, ApplicationRole.TargetAdministrator,
+        ApplicationRole.SecurityAdministrator, ApplicationRole.Auditor,
+    ];
+
+    public async ValueTask<AlertAssignmentView?> GetAssignmentAsync(AuthorizationContext authorization,
+        MonitoredInstanceId targetId, Guid alertId, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(authorization); ArgumentNullException.ThrowIfNull(targetId);
+        if (alertId == Guid.Empty) throw new ArgumentException("Alert identity is required.", nameof(alertId));
+        authorization.RequireAny(targetId, ReadRoles);
+        AlertAssignmentStatus? result = await repository.GetAssignmentAsync(targetId, alertId,
+            new RepositoryCallTimeout(TimeSpan.FromSeconds(5)), cancellationToken).ConfigureAwait(false);
+        if (result is null) return null;
+        if (result.TargetId.Value != targetId.Value || result.AlertId != alertId)
+            throw new InvalidDataException("The alert assignment read does not match its requested resource.");
+        bool canAssign = authorization.CanAccess(ApplicationRole.Operator, targetId) ||
+            authorization.CanAccess(ApplicationRole.TargetAdministrator, targetId);
+        IReadOnlyList<AlertAssignmentCandidate> candidates = canAssign ? assignmentEligibility?.ListEligible(targetId) ?? [] : [];
+        return new AlertAssignmentView(result, candidates, canAssign);
+    }
+
+    public ValueTask<AlertAssignmentHistoryPage> ListAssignmentHistoryAsync(AuthorizationContext authorization,
+        MonitoredInstanceId targetId, Guid alertId, int limit, Guid? beforeOperationId, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(authorization); ArgumentNullException.ThrowIfNull(targetId);
+        if (alertId == Guid.Empty || beforeOperationId == Guid.Empty) throw new ArgumentException("Alert and cursor identities must be nonempty.");
+        if (limit is < 1 or > AlertAssignmentContract.MaximumHistoryPageSize) throw new ArgumentOutOfRangeException(nameof(limit));
+        authorization.RequireAny(targetId, ReadRoles);
+        return repository.ListAssignmentHistoryAsync(targetId, alertId, limit, beforeOperationId,
+            new RepositoryCallTimeout(TimeSpan.FromSeconds(5)), cancellationToken);
+    }
+
+    public async ValueTask<AlertSnoozeStatus?> GetSnoozeAsync(AuthorizationContext authorization,
+        MonitoredInstanceId targetId, Guid alertId, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(authorization); ArgumentNullException.ThrowIfNull(targetId);
+        if (alertId == Guid.Empty) throw new ArgumentException("Alert identity is required.", nameof(alertId));
+        authorization.RequireAny(targetId, ReadRoles);
+        AlertSnoozeStatus? result = await repository.GetSnoozeAsync(targetId, alertId,
+            new RepositoryCallTimeout(TimeSpan.FromSeconds(5)), cancellationToken).ConfigureAwait(false);
+        if (result is not null && (result.TargetId.Value != targetId.Value || result.AlertId != alertId))
+            throw new InvalidDataException("The alert snooze read does not match its requested resource.");
+        return result;
+    }
+
     public ValueTask<IReadOnlyList<AlertActiveDto>> ListActiveAsync(AuthorizationContext authorization, MonitoredInstanceId targetId, int limit, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(authorization); ArgumentNullException.ThrowIfNull(targetId);
         if (limit is <= 0 or > 100) throw new ArgumentOutOfRangeException(nameof(limit));
-        bool readable = authorization.HasRole(ApplicationRole.Viewer) || authorization.HasRole(ApplicationRole.Operator) || authorization.HasRole(ApplicationRole.TargetAdministrator) || authorization.HasRole(ApplicationRole.SecurityAdministrator) || authorization.HasRole(ApplicationRole.Auditor);
-        if (!readable || !authorization.CanAccess(targetId)) throw new UnauthorizedAccessException();
+        authorization.RequireAny(targetId, ReadRoles);
         return repository.ListActiveAsync(targetId, limit, new RepositoryCallTimeout(TimeSpan.FromSeconds(5)), cancellationToken);
     }
     public ValueTask<AlertActivePage> ListActivePageAsync(AuthorizationContext authorization, MonitoredInstanceId targetId, int limit, AlertActiveCursor? cursor, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(authorization); ArgumentNullException.ThrowIfNull(targetId);
         if (limit is <= 0 or > 100) throw new ArgumentOutOfRangeException(nameof(limit));
-        bool readable = authorization.HasRole(ApplicationRole.Viewer) || authorization.HasRole(ApplicationRole.Operator) || authorization.HasRole(ApplicationRole.TargetAdministrator) || authorization.HasRole(ApplicationRole.SecurityAdministrator) || authorization.HasRole(ApplicationRole.Auditor);
-        if (!readable || !authorization.CanAccess(targetId) || cursor is not null && (cursor.TargetId.Value != targetId.Value || cursor.SnapshotUtc.Offset != TimeSpan.Zero)) throw new UnauthorizedAccessException();
+        authorization.RequireAny(targetId, ReadRoles);
+        if (cursor is not null && (cursor.TargetId.Value != targetId.Value || cursor.SnapshotUtc.Offset != TimeSpan.Zero)) throw new UnauthorizedAccessException();
         return repository.ListActivePageAsync(targetId, limit, cursor, new RepositoryCallTimeout(TimeSpan.FromSeconds(5)), cancellationToken);
+    }
+
+    public ValueTask<FleetAlertPage> ListFleetActivePageAsync(AuthorizationContext authorization, int limit, FleetAlertCursor? cursor, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(authorization);
+        if (limit is <= 0 or > 100) throw new ArgumentOutOfRangeException(nameof(limit));
+        TargetAuthorizationScope scope = authorization.GetScopeForRoles(ReadRoles);
+        if (!scope.AllTargets && scope.TargetIds.Count == 0) throw new UnauthorizedAccessException();
+        if (cursor is not null && (cursor.SnapshotUtc.Offset != TimeSpan.Zero || cursor.SortAtUtc.Offset != TimeSpan.Zero ||
+            cursor.SortAtUtc > cursor.SnapshotUtc || cursor.TargetId == Guid.Empty || cursor.AlertId == Guid.Empty))
+            throw new ArgumentException("Fleet alert cursor is invalid.", nameof(cursor));
+        return repository.ListFleetActivePageAsync(scope, limit, cursor, new RepositoryCallTimeout(TimeSpan.FromSeconds(5)), cancellationToken);
     }
 }
 
-public sealed class AlertAdministrationService(IAlertRepositoryPort repository, IAdministrativeAuditPort audit, IAlertDestinationApprovalPort? destinationApproval = null) : IAlertAdministrationService
+public sealed class AlertRuleQueryService(IAlertRuleReadPort repository) : IAlertRuleQueryService
 {
+    public ValueTask<AlertRuleListPage> ListRulesForAdminAsync(
+        AuthorizationContext authorization, MonitoredInstanceId targetId, int limit,
+        AlertRuleListCursor? cursor, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(authorization);
+        ArgumentNullException.ThrowIfNull(targetId);
+        if (limit is < 1 or > 100) throw new ArgumentOutOfRangeException(nameof(limit));
+        authorization.RequireAny(targetId, [ApplicationRole.TargetAdministrator]);
+        if (cursor is not null && (cursor.TargetId.Value != targetId.Value ||
+            cursor.ListingStartedUtc.Offset != TimeSpan.Zero || cursor.AfterRuleId == Guid.Empty))
+            throw new ArgumentException("Alert rule cursor does not match the target.", nameof(cursor));
+        return repository.ListRulesForAdminAsync(targetId, limit, cursor,
+            new RepositoryCallTimeout(TimeSpan.FromSeconds(5)), cancellationToken);
+    }
+}
+
+public sealed class MaintenanceWindowQueryService(IMaintenanceWindowReadPort repository) : IMaintenanceWindowQueryService
+{
+    public ValueTask<MaintenanceWindowListPage> ListMaintenanceForAdminAsync(
+        AuthorizationContext authorization, MonitoredInstanceId targetId, int limit,
+        MaintenanceWindowListCursor? cursor, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(authorization);
+        ArgumentNullException.ThrowIfNull(targetId);
+        if (limit is < 1 or > 100) throw new ArgumentOutOfRangeException(nameof(limit));
+        authorization.RequireAny(targetId, [ApplicationRole.TargetAdministrator]);
+        if (cursor is not null && (cursor.TargetId.Value != targetId.Value ||
+            cursor.ListingStartedUtc.Offset != TimeSpan.Zero ||
+            cursor.AfterStartsAtUtc.Offset != TimeSpan.Zero || cursor.AfterWindowId == Guid.Empty))
+            throw new ArgumentException("Maintenance cursor does not match the target.", nameof(cursor));
+        return repository.ListMaintenanceForAdminAsync(targetId, limit, cursor,
+            new RepositoryCallTimeout(TimeSpan.FromSeconds(5)), cancellationToken);
+    }
+}
+
+public sealed class AlertDestinationQueryService(IAlertDestinationReadPort repository) : IAlertDestinationQueryService
+{
+    public ValueTask<AlertDestinationListPage> ListDestinationsForAdminAsync(
+        AuthorizationContext authorization, MonitoredInstanceId targetId, int limit,
+        AlertDestinationListCursor? cursor, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(authorization);
+        ArgumentNullException.ThrowIfNull(targetId);
+        if (limit is < 1 or > 100) throw new ArgumentOutOfRangeException(nameof(limit));
+        authorization.RequireAny(targetId, [ApplicationRole.SecurityAdministrator]);
+        if (cursor is not null && (cursor.TargetId.Value != targetId.Value ||
+            cursor.ListingStartedUtc.Offset != TimeSpan.Zero || cursor.AfterDestinationId == Guid.Empty))
+            throw new ArgumentException("Destination cursor does not match the target.", nameof(cursor));
+        return repository.ListDestinationsForAdminAsync(targetId, limit, cursor,
+            new RepositoryCallTimeout(TimeSpan.FromSeconds(5)), cancellationToken);
+    }
+}
+
+public sealed class AlertAdministrationService(IAlertRepositoryPort repository, IAdministrativeAuditPort audit,
+    IAlertDestinationApprovalPort? destinationApproval = null, IAlertAssignmentEligibilityPort? assignmentEligibility = null) : IAlertAdministrationService
+{
+    public async ValueTask<AlertAssignmentWriteReceipt> SetAssignmentAsync(AuthorizationContext authorization,
+        AlertAssignmentWriteRequest request, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        AlertAssignmentWriteReceipt? result = null;
+        await WriteAnyAsync(authorization, request.Audit, request.Audit.TargetId, request.IdempotencyKey, async () =>
+        {
+            AlertAssignmentCandidate? candidate = request.AssigneeSid is null ? null :
+                assignmentEligibility?.ResolveApproved(request.Audit.TargetId, request.AssigneeSid);
+            // Never reject revoked approval before the atomic repository replay lookup.
+            // Caller-authored metadata is replaced even when the roster has changed.
+            var resolved = request with { AssigneeEligible = candidate is not null, ApprovedAssigneeName = candidate?.DisplayName };
+            result = await repository.SetAssignmentAsync(resolved, cancellationToken).ConfigureAwait(false);
+            return result.Audit;
+        }, cancellationToken).ConfigureAwait(false);
+        return result ?? throw new InvalidOperationException("The alert assignment mutation returned no receipt.");
+    }
+
     public ValueTask<AdministrativeAuditReceipt> UpsertRuleAsync(AuthorizationContext authorization, AlertRuleWriteRequest request, CancellationToken cancellationToken) =>
         WriteAsync(authorization, request.Audit, ApplicationRole.TargetAdministrator, request.Audit.TargetId, request.IdempotencyKey, () => repository.UpsertRuleAsync(request, cancellationToken), cancellationToken);
 
@@ -39,6 +171,19 @@ public sealed class AlertAdministrationService(IAlertRepositoryPort repository, 
 
     public ValueTask<AdministrativeAuditReceipt> AcknowledgeAsync(AuthorizationContext authorization, AlertAcknowledgeRequest request, CancellationToken cancellationToken) =>
         WriteAnyAsync(authorization, request.Audit, request.Audit.TargetId, request.IdempotencyKey, () => repository.AcknowledgeAsync(request, cancellationToken), cancellationToken);
+
+    public async ValueTask<AlertSnoozeWriteReceipt> SetSnoozeAsync(AuthorizationContext authorization,
+        AlertSnoozeWriteRequest request, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        AlertSnoozeWriteReceipt? result = null;
+        await WriteAnyAsync(authorization, request.Audit, request.Audit.TargetId, request.IdempotencyKey, async () =>
+        {
+            result = await repository.SetSnoozeAsync(request, cancellationToken).ConfigureAwait(false);
+            return result.Audit;
+        }, cancellationToken).ConfigureAwait(false);
+        return result ?? throw new InvalidOperationException("The alert snooze mutation returned no receipt.");
+    }
 
     public ValueTask<AdministrativeAuditReceipt> UpsertDestinationAsync(AuthorizationContext authorization, AlertDestinationWriteRequest request, CancellationToken cancellationToken) =>
         UpsertDestinationCoreAsync(authorization, request, cancellationToken);

@@ -1,5 +1,6 @@
 using Npgsql;
 using NpgsqlTypes;
+using System.Reflection;
 using SqlObserver.Application.Ports;
 using SqlObserver.Collector.Abstractions;
 using SqlObserver.Collectors;
@@ -16,9 +17,9 @@ namespace SqlObserver.IntegrationTests.PostgreSql;
 
 [Collection(PostgreSql18CollectionDefinition.Name)]
 [Trait("Category", "RequiresPostgreSql")]
-public sealed class M4CollectorPersistenceIntegrationTests
+public sealed partial class M4CollectorPersistenceIntegrationTests
 {
-    private const string BundleDigest = "34214cef39c56f1d984bee1da82fd40ac410552eca04f6bd64420b001bd3114c";
+    private const string BundleDigest = "10ef6cb84001d6a3f34889cb8c2d96d51c247289582ef3fa25c3f63862399a17";
     private static readonly string[] EngineCoreMetricIds =
     [
         "engine.batch_requests_total",
@@ -34,6 +35,75 @@ public sealed class M4CollectorPersistenceIntegrationTests
     private readonly PostgreSql18Fixture _fixture;
 
     public M4CollectorPersistenceIntegrationTests(PostgreSql18Fixture fixture) => _fixture = fixture;
+
+    [Fact]
+    public async Task DueWorkClaimsSkipLockedRowsAndHoldDistinctFencedLeasesAcrossCollectors()
+    {
+        await using RepositoryTestDatabase database=await CreateMigratedDatabaseAsync();
+        var ids=Enumerable.Range(0,20).Select(_=>new MonitoredInstanceId(Guid.NewGuid())).ToArray();
+        foreach(var id in ids) await InsertActiveTargetAsync(database,id,revision:1);
+        await using NpgsqlDataSource collectorSource=database.CreateCollectorDataSource();
+        var runtime=new PostgreSqlCollectorRuntimeRepositoryPort(collectorSource);
+        var leases=new PostgreSqlWorkerLeasePort(collectorSource);
+        var request=new ClaimDueCollectorWorkRequest(new WorkerExecutionId(Guid.NewGuid()),
+            new WorkerLeaseDuration(TimeSpan.FromSeconds(30)),DefaultTimeout);
+        CollectorDueWorkBatch initial=await runtime.ListDueAsync(
+            new ListDueCollectorWorkRequest(16,DefaultTimeout),CancellationToken.None);
+        CollectorDueWorkItem firstDue=Assert.Single(initial.Items.Take(1));
+
+        await using(var leaseLockConnection=await database.DataSource.OpenConnectionAsync())
+        await using(var leaseLockTransaction=await leaseLockConnection.BeginTransactionAsync())
+        {
+            await using(var leaseLock=new NpgsqlCommand("""
+                SELECT pg_advisory_xact_lock(hashtextextended('sqlobserver:lease:'||@key,0))
+                """,leaseLockConnection,leaseLockTransaction))
+            {
+                leaseLock.Parameters.AddWithValue("key","collector/run/"+firstDue.CollectorId.Value+"/"+firstDue.TargetId.Value.ToString("N"));
+                await leaseLock.ExecuteNonQueryAsync();
+            }
+            var watch=System.Diagnostics.Stopwatch.StartNew();
+            Assert.Null(await runtime.ClaimDueAsync(request,CancellationToken.None));
+            Assert.True(watch.Elapsed<TimeSpan.FromSeconds(2),"Claim waited on an active lease while holding a schedule lock.");
+            await leaseLockTransaction.RollbackAsync();
+        }
+
+        await using NpgsqlConnection lockingConnection=await database.DataSource.OpenConnectionAsync();
+        await using NpgsqlTransaction lockingTransaction=await lockingConnection.BeginTransactionAsync();
+        await using(var lockCommand=new NpgsqlCommand("""
+            SELECT 1 FROM control.collector_schedule
+            WHERE instance_id=@target AND collector_id=@collector FOR UPDATE
+            """,lockingConnection,lockingTransaction))
+        {
+            lockCommand.Parameters.AddWithValue("target",firstDue.TargetId.Value);
+            lockCommand.Parameters.AddWithValue("collector",firstDue.CollectorId.Value);
+            Assert.Equal(1,await lockCommand.ExecuteScalarAsync());
+        }
+        CollectorClaimedWork skipped=Assert.IsType<CollectorClaimedWork>(
+            await runtime.ClaimDueAsync(request,CancellationToken.None));
+        Assert.NotEqual((firstDue.TargetId.Value,firstDue.CollectorId.Value),
+            (skipped.Work.TargetId.Value,skipped.Work.CollectorId.Value));
+        await lockingTransaction.CommitAsync();
+
+        var claimed=new List<CollectorClaimedWork> { skipped };
+        for(int i=1;i<20;i++)
+            claimed.Add(Assert.IsType<CollectorClaimedWork>(await runtime.ClaimDueAsync(request,CancellationToken.None)));
+        Assert.Equal(20,claimed.Select(item=>(item.Work.TargetId.Value,item.Work.CollectorId.Value)).Distinct().Count());
+        Assert.Null(await runtime.ClaimDueAsync(request,CancellationToken.None));
+        await using(var privilege=database.DataSource.CreateCommand("""
+            SELECT has_function_privilege('sqlobserver_collector','control.claim_due_collector_work(uuid,interval)','EXECUTE')
+             AND NOT has_function_privilege('sqlobserver_server','control.claim_due_collector_work(uuid,interval)','EXECUTE')
+            """))
+            Assert.Equal(true,await privilege.ExecuteScalarAsync());
+
+        CollectorClaimedWork released=claimed[0];
+        Assert.Equal(LeaseReleaseStatus.Released,await leases.ReleaseAsync(
+            new ReleaseWorkerLeaseRequest(released.Lease.Identity,DefaultTimeout),CancellationToken.None));
+        CollectorClaimedWork reclaimed=Assert.IsType<CollectorClaimedWork>(
+            await runtime.ClaimDueAsync(request,CancellationToken.None));
+        Assert.Equal((released.Work.TargetId.Value,released.Work.CollectorId.Value),
+            (reclaimed.Work.TargetId.Value,reclaimed.Work.CollectorId.Value));
+        Assert.True(reclaimed.Lease.Identity.FencingToken.Value>released.Lease.Identity.FencingToken.Value);
+    }
 
     [Fact]
     public async Task MigrationBackfillsExistingActiveTargetsWithPendingSchedules()
@@ -124,9 +194,8 @@ public sealed class M4CollectorPersistenceIntegrationTests
             CancellationToken.None);
         Assert.Equal(3, reconciled.UnchangedCount);
 
-        CollectorSchedulerCycleResult cycle = await scheduler.RunCycleAsync(CancellationToken.None);
-        Assert.Equal(1, cycle.DueCount);
-        Assert.Equal(1, cycle.CommittedCount);
+        Assert.Equal(1,await scheduler.DispatchAvailableAsync(CancellationToken.None));
+        await scheduler.DrainAsync();
 
         var health = new PostgreSqlHealthProjectionPort(serverDataSource);
         InstanceHealthProjection projection = Assert.IsType<InstanceHealthProjection>(
@@ -137,6 +206,79 @@ public sealed class M4CollectorPersistenceIntegrationTests
         Assert.Equal(EngineCoreMetricIds.Length, projection.CoreMetrics.Count);
         Assert.Contains(projection.CoreMetrics, static metric =>
             metric.MetricId.Value == "engine.user_connections");
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task CoreCommitAndReplayUseGuardedPartitionedRunRead(bool directionalEntryPoint)
+    {
+        await using RepositoryTestDatabase database = await CreateMigratedDatabaseAsync();
+        var targetId = new MonitoredInstanceId(Guid.NewGuid());
+        await InsertActiveTargetAsync(database, targetId, revision: 1);
+        await using NpgsqlDataSource collectorSource = database.CreateCollectorDataSource();
+        var runtime = new PostgreSqlCollectorRuntimeRepositoryPort(collectorSource);
+        var leases = new PostgreSqlWorkerLeasePort(collectorSource);
+        await RecordUsableCapabilityProfileAsync(collectorSource, leases, targetId);
+        CollectorDueWorkItem work = Assert.Single((await runtime.ListDueAsync(
+            new ListDueCollectorWorkRequest(16, DefaultTimeout), CancellationToken.None)).Items);
+        WorkerLeaseIdentity lease = await AcquireRunLeaseAsync(leases, work);
+        var runId = new CollectorRunId(Guid.NewGuid());
+        Assert.Equal(CollectorRunStartStatus.Started,
+            (await runtime.BeginRunAsync(new BeginCollectorRunRequest(
+                work, runId, lease, DefaultTimeout), CancellationToken.None)).Status);
+
+        await using (NpgsqlConnection route = await database.DataSource.OpenConnectionAsync())
+        {
+            await using (var role = new NpgsqlCommand("SET ROLE sqlobserver_migrator;", route))
+                await role.ExecuteNonQueryAsync();
+            await using (var scope = new NpgsqlCommand(
+                "SELECT set_config('sqlobserver.target_scope',@target::text,false);", route))
+            {
+                scope.Parameters.AddWithValue("target", targetId.Value);
+                await scope.ExecuteScalarAsync();
+            }
+            await using (var definitions = new NpgsqlCommand("""
+                SELECT count(*) FROM pg_proc AS procedure
+                JOIN pg_namespace AS namespace ON namespace.oid=procedure.pronamespace
+                WHERE namespace.nspname='control'
+                  AND procedure.proname IN ('commit_collection_run','commit_collection_run_v2')
+                  AND procedure.prosrc LIKE '%telemetry.lookup_collection_run_runtime(p_run_id)%';
+                """, route))
+                Assert.Equal(2L, await definitions.ExecuteScalarAsync());
+            await using (NpgsqlTransaction backfill = await route.BeginTransactionAsync())
+            {
+                foreach (string function in new[]
+                    { "backfill_collection_run_v2", "backfill_collection_run_identity" })
+                {
+                    await using var copy = new NpgsqlCommand(
+                        $"SELECT complete FROM control.{function}(@target,10);", route, backfill);
+                    copy.Parameters.AddWithValue("target", targetId.Value);
+                    Assert.True((bool)(await copy.ExecuteScalarAsync())!);
+                }
+                await using var certificate = new NpgsqlCommand("""
+                    SELECT parity FROM control.record_collection_run_v2_parity_window(
+                      @target,'engine.core',
+                      date_trunc('day',(SELECT started_at FROM telemetry.collection_run WHERE run_id=@run)),
+                      date_trunc('day',(SELECT started_at FROM telemetry.collection_run WHERE run_id=@run))
+                        + interval '1 day',10);
+                    """, route, backfill);
+                certificate.Parameters.AddWithValue("target", targetId.Value);
+                certificate.Parameters.AddWithValue("run", runId.Value);
+                Assert.True((bool)(await certificate.ExecuteScalarAsync())!);
+                await backfill.CommitAsync();
+            }
+            await using var activate = new NpgsqlCommand(
+                "SELECT control.set_collection_run_v2_scheduler_read_route(true,10000);", route);
+            Assert.Equal(1L, await activate.ExecuteScalarAsync());
+        }
+
+        CommitCollectorRunRequest request = CreateSuccessCommit(
+            work, runId, lease, CreateEnginePayload(work));
+        Assert.Equal("committed", await ExecuteFileStallCommitAsync(
+            collectorSource, request, legacy: !directionalEntryPoint));
+        Assert.Equal("replayed", await ExecuteFileStallCommitAsync(
+            collectorSource, request, legacy: !directionalEntryPoint));
     }
 
     [Fact]
@@ -201,6 +343,161 @@ public sealed class M4CollectorPersistenceIntegrationTests
         CollectorDueWorkItem files = Assert.Single(afterInventory.Items, static item => item.CollectorId.Value == "database.files");
         Assert.Equal("database.files", files.CollectorId.Value);
         await CommitSuccessAsync(runtime, leases, files, CreateFilePayload(files, fileId: 1));
+    }
+
+    [Fact]
+    public async Task DatabaseInventoryV2PersistsLogReuseStateAndRejectsDivergentReplay()
+    {
+        await using RepositoryTestDatabase database = await CreateMigratedDatabaseAsync();
+        var targetId = new MonitoredInstanceId(Guid.NewGuid());
+        await InsertActiveTargetAsync(database, targetId, revision: 1);
+        await using NpgsqlDataSource collectorSource = database.CreateCollectorDataSource();
+        var runtime = new PostgreSqlCollectorRuntimeRepositoryPort(collectorSource);
+        var leases = new PostgreSqlWorkerLeasePort(collectorSource);
+
+        CollectorDueWorkItem engine = Assert.Single((await runtime.ListDueAsync(
+            new ListDueCollectorWorkRequest(16, DefaultTimeout), CancellationToken.None)).Items);
+        await CommitSuccessAsync(runtime, leases, engine, CreateEnginePayload(engine));
+
+        await ActivateInventoryV2Async(database, leases);
+
+        CollectorDueWorkItem work = Assert.Single((await runtime.ListDueAsync(
+            new ListDueCollectorWorkRequest(16, DefaultTimeout), CancellationToken.None)).Items,
+            static item => item.CollectorId.Value == "database.inventory");
+        Assert.Equal(2, work.CollectorManifestVersion);
+        WorkerLeaseIdentity lease = await AcquireRunLeaseAsync(leases, work);
+        var runId = new CollectorRunId(Guid.NewGuid());
+        Assert.Equal(CollectorRunStartStatus.Started, (await runtime.BeginRunAsync(
+            new BeginCollectorRunRequest(work, runId, lease, DefaultTimeout),
+            CancellationToken.None)).Status);
+
+        DateTimeOffset observedAt = MicrosecondNow();
+        DatabaseObservation Observation(string? token) => new(
+            work.TargetId, work.TargetRevision, 5,
+            new SqlServerObjectName("Ledger"), DatabaseOperationalState.Online,
+            DatabaseRecoveryModel.Full, DatabaseUserAccess.MultiUser,
+            isReadOnly: false, compatibilityLevel: 160, observedAt,
+            logReuseWaitDescription: token);
+        CollectorPayload Payload(string? token) => new(databases:
+            new DatabaseObservationBatch([Observation(token)]));
+        CommitCollectorRunRequest request = CreateSuccessCommit(work, runId, lease, Payload("LOG_BACKUP"));
+        CollectorRunCommitResult committed = await runtime.CommitRunAsync(request, CancellationToken.None);
+        Assert.Equal(CollectorRunCommitStatus.Committed, committed.Status);
+        Assert.Equal(Observation("LOG_BACKUP").EstimatedSizeBytes, committed.PersistedBytes);
+
+        await using (NpgsqlConnection connection = await database.DataSource.OpenConnectionAsync())
+        await using (var stored = new NpgsqlCommand("""
+            SET ROLE sqlobserver_migrator;
+            SELECT log_reuse_wait_desc FROM telemetry.database_inventory_snapshot
+            WHERE collection_run_id=@run;
+            """, connection))
+        {
+            stored.Parameters.AddWithValue("run", runId.Value);
+            Assert.Equal("LOG_BACKUP", await stored.ExecuteScalarAsync());
+        }
+
+        await using NpgsqlDataSource serverSource = database.CreateServerDataSource();
+        var health = new PostgreSqlHealthProjectionPort(serverSource);
+        DatabaseHealthPage page = Assert.IsType<DatabaseHealthPage>(
+            await health.ListDatabaseHealthAsync(
+                new ListDatabaseHealthRepositoryRequest(targetId, 100, cursor: null, DefaultTimeout),
+                CancellationToken.None));
+        Assert.Equal("LOG_BACKUP", Assert.Single(page.Items).Observation.LogReuseWaitDescription);
+
+        Assert.Equal(CollectorRunCommitStatus.Replayed,
+            (await runtime.CommitRunAsync(request, CancellationToken.None)).Status);
+        PostgresException divergent = await Assert.ThrowsAsync<PostgresException>(() =>
+            runtime.CommitRunAsync(
+                CreateSuccessCommit(work, runId, lease, Payload("LOG_REUSE")),
+                CancellationToken.None).AsTask());
+        Assert.Equal("22023", divergent.SqlState);
+
+        Assert.Contains((await runtime.ListDueAsync(
+            new ListDueCollectorWorkRequest(16, DefaultTimeout), CancellationToken.None)).Items,
+            static item => item.CollectorId.Value == "database.files");
+        CollectorClaimedWork claimed = Assert.IsType<CollectorClaimedWork>(
+            await runtime.ClaimDueAsync(
+                new ClaimDueCollectorWorkRequest(new WorkerExecutionId(Guid.NewGuid()),
+                    new WorkerLeaseDuration(TimeSpan.FromSeconds(30)), DefaultTimeout),
+                CancellationToken.None));
+        Assert.Equal("database.files", claimed.Work.CollectorId.Value);
+    }
+
+    [Fact]
+    public async Task InventoryV2ActivationWaitsForOldRunAndRoutesNewTargets()
+    {
+        await using RepositoryTestDatabase database = await CreateMigratedDatabaseAsync();
+        var targetId = new MonitoredInstanceId(Guid.NewGuid());
+        await InsertActiveTargetAsync(database, targetId, revision: 1);
+        await using NpgsqlDataSource collectorSource = database.CreateCollectorDataSource();
+        var runtime = new PostgreSqlCollectorRuntimeRepositoryPort(collectorSource);
+        var leases = new PostgreSqlWorkerLeasePort(collectorSource);
+
+        CollectorDueWorkItem engine = Assert.Single((await runtime.ListDueAsync(
+            new ListDueCollectorWorkRequest(16, DefaultTimeout), CancellationToken.None)).Items);
+        await CommitSuccessAsync(runtime, leases, engine, CreateEnginePayload(engine));
+        CollectorDueWorkItem inventory = Assert.Single((await runtime.ListDueAsync(
+            new ListDueCollectorWorkRequest(16, DefaultTimeout), CancellationToken.None)).Items,
+            static item => item.CollectorId.Value == "database.inventory");
+        Assert.Equal(1, inventory.CollectorManifestVersion);
+        WorkerLeaseIdentity runLease = await AcquireRunLeaseAsync(leases, inventory);
+        var runId = new CollectorRunId(Guid.NewGuid());
+        Assert.Equal(CollectorRunStartStatus.Started, (await runtime.BeginRunAsync(
+            new BeginCollectorRunRequest(inventory, runId, runLease, DefaultTimeout),
+            CancellationToken.None)).Status);
+
+        PostgresException pending = await Assert.ThrowsAsync<PostgresException>(() =>
+            ActivateInventoryV2Async(database, leases));
+        Assert.Equal("55000", pending.SqlState);
+        await using (var gate = database.DataSource.CreateCommand("""
+            SELECT NOT active FROM control.database_inventory_v2_activation
+            WHERE singleton;
+            """))
+            Assert.Equal(true, await gate.ExecuteScalarAsync());
+
+        Assert.Equal(CollectorRunCommitStatus.Committed,
+            (await runtime.CommitRunAsync(
+                CreateSuccessCommit(inventory, runId, runLease,
+                    CreateDatabasePayload(inventory, 5)), CancellationToken.None)).Status);
+        await leases.ReleaseAsync(new ReleaseWorkerLeaseRequest(runLease, DefaultTimeout),
+            CancellationToken.None);
+        WorkerExecutionId v2Worker = await ActivateInventoryV2Async(database, leases);
+
+        var newTarget = new MonitoredInstanceId(Guid.NewGuid());
+        await InsertActiveTargetAsync(database, newTarget, revision: 1);
+        await using var routes = database.DataSource.CreateCommand("""
+            SELECT (SELECT active FROM control.database_inventory_v2_activation WHERE singleton),
+                   (SELECT collector_version FROM control.collector_schedule
+                    WHERE instance_id=@old AND collector_id='database.inventory'),
+                   (SELECT collector_version FROM control.collector_schedule
+                    WHERE instance_id=@fresh AND collector_id='database.inventory');
+            """);
+        routes.Parameters.AddWithValue("old", targetId.Value);
+        routes.Parameters.AddWithValue("fresh", newTarget.Value);
+        await using NpgsqlDataReader reader = await routes.ExecuteReaderAsync();
+        Assert.True(await reader.ReadAsync());
+        Assert.True(reader.GetBoolean(0));
+        Assert.Equal(2, reader.GetInt32(1));
+        Assert.Equal(2, reader.GetInt32(2));
+
+        await using (var isolateInventory = database.DataSource.CreateCommand("""
+            SET ROLE sqlobserver_migrator;
+            UPDATE control.collector_schedule
+            SET next_due_at=clock_timestamp()+interval '1 day'
+            WHERE collector_id<>'database.inventory';
+            """))
+            await isolateInventory.ExecuteNonQueryAsync();
+        Assert.Null(await runtime.ClaimDueAsync(
+            new ClaimDueCollectorWorkRequest(new WorkerExecutionId(Guid.NewGuid()),
+                new WorkerLeaseDuration(TimeSpan.FromSeconds(30)), DefaultTimeout),
+            CancellationToken.None));
+        CollectorClaimedWork v2Claim = Assert.IsType<CollectorClaimedWork>(
+            await runtime.ClaimDueAsync(
+                new ClaimDueCollectorWorkRequest(v2Worker,
+                    new WorkerLeaseDuration(TimeSpan.FromSeconds(30)), DefaultTimeout),
+                CancellationToken.None));
+        Assert.Equal("database.inventory", v2Claim.Work.CollectorId.Value);
+        Assert.Equal(2, v2Claim.Work.CollectorManifestVersion);
     }
 
     [Fact]
@@ -411,6 +708,8 @@ public sealed class M4CollectorPersistenceIntegrationTests
         DatabaseFileHealthCursor oldFileCursor = Assert.IsType<DatabaseFileHealthCursor>(firstFilePage.NextCursor);
         Assert.NotNull(firstFilePage.SnapshotRunId);
         Assert.Equal(files.TargetRevision, firstFilePage.SnapshotTargetRevision);
+        Assert.Null(Assert.Single(firstFilePage.Items).Observation.ReadStallMilliseconds);
+        Assert.Null(Assert.Single(firstFilePage.Items).Observation.WriteStallMilliseconds);
 
         await MakeDueAsync(database, targetId, "database.inventory");
         CollectorDueWorkItem secondInventory = Assert.Single((await runtime.ListDueAsync(
@@ -462,6 +761,118 @@ public sealed class M4CollectorPersistenceIntegrationTests
         Assert.Null(empty.NextCursor);
         Assert.Equal(CollectorHealthState.Current, empty.Collector.State);
         Assert.Equal(emptyInventory.TargetId, empty.Collector.TargetId);
+    }
+
+    [Theory]
+    [InlineData(7L, 19L, 26L)]
+    [InlineData(0L, 0L, 0L)]
+    [InlineData(null, null, 26L)]
+    public async Task FileStallRoundTripAndIdenticalReplayPreserveKnownAndLegacyAccounting(long? readStall, long? writeStall, long total)
+    {
+        await using RepositoryTestDatabase database = await CreateMigratedDatabaseAsync();
+        var targetId = new MonitoredInstanceId(Guid.NewGuid());
+        await InsertActiveTargetAsync(database, targetId, revision: 1);
+        await using NpgsqlDataSource collectorSource = database.CreateCollectorDataSource();
+        await using NpgsqlDataSource serverSource = database.CreateServerDataSource();
+        var runtime = new PostgreSqlCollectorRuntimeRepositoryPort(collectorSource);
+        var leases = new PostgreSqlWorkerLeasePort(collectorSource);
+        CollectorDueWorkItem work = await PrepareFileStallWorkAsync(runtime, leases);
+        WorkerLeaseIdentity lease = await AcquireRunLeaseAsync(leases, work);
+        var runId = new CollectorRunId(Guid.NewGuid());
+        Assert.Equal(CollectorRunStartStatus.Started, (await runtime.BeginRunAsync(new BeginCollectorRunRequest(work, runId, lease, DefaultTimeout), CancellationToken.None)).Status);
+        CollectorPayload payload = CreateFileStallPayload(work, total, readStall, writeStall);
+        DatabaseFileObservation original = Assert.Single(payload.DatabaseFiles.Items);
+        int expectedBytes = DatabaseFileObservation.FixedEstimatedBytes + original.LogicalName.Utf8Bytes + (readStall.HasValue ? 16 : 0);
+        CommitCollectorRunRequest request = CreateSuccessCommit(work, runId, lease, payload);
+        CollectorRunCommitResult committed = await runtime.CommitRunAsync(request, CancellationToken.None);
+        Assert.Equal(CollectorRunCommitStatus.Committed, committed.Status);
+        Assert.Equal(expectedBytes, committed.PersistedBytes);
+        string beforeReplay = await ReadFileStallSnapshotAsync(database, work, runId);
+        CollectorRunCommitResult replay = await runtime.CommitRunAsync(request, CancellationToken.None);
+        Assert.Equal(CollectorRunCommitStatus.Replayed, replay.Status);
+        Assert.Equal(expectedBytes, replay.PersistedBytes);
+        Assert.Equal(beforeReplay, await ReadFileStallSnapshotAsync(database, work, runId));
+
+        var health = new PostgreSqlHealthProjectionPort(serverSource);
+        DatabaseFileHealthPage page = Assert.IsType<DatabaseFileHealthPage>(await health.ListDatabaseFileHealthAsync(
+            new ListDatabaseFileHealthRepositoryRequest(targetId, 100, cursor: null, DefaultTimeout), CancellationToken.None));
+        DatabaseFileObservation restored = Assert.Single(page.Items).Observation;
+        Assert.Equal(CollectorHealthState.Current, page.Collector.State);
+        Assert.Equal(total, restored.IoStallMilliseconds);
+        Assert.Equal(readStall, restored.ReadStallMilliseconds);
+        Assert.Equal(writeStall, restored.WriteStallMilliseconds);
+        Assert.Equal(expectedBytes, restored.EstimatedSizeBytes);
+        Assert.Equal(original.ObservedAtUtc, restored.ObservedAtUtc);
+        await using var stored = database.DataSource.CreateCommand("SELECT io_stall_ms,io_stall_read_ms,io_stall_write_ms,o.output_bytes,o.persisted_bytes FROM telemetry.database_file_snapshot f JOIN telemetry.collection_run_outcome o ON o.run_id=f.collection_run_id WHERE f.collection_run_id=@run");
+        stored.Parameters.AddWithValue("run", runId.Value);
+        await using NpgsqlDataReader reader = await stored.ExecuteReaderAsync();
+        Assert.True(await reader.ReadAsync());
+        Assert.Equal(total, reader.GetInt64(0));
+        Assert.Equal(readStall, reader.IsDBNull(1) ? (long?)null : reader.GetInt64(1));
+        Assert.Equal(writeStall, reader.IsDBNull(2) ? (long?)null : reader.GetInt64(2));
+        Assert.Equal(expectedBytes, reader.GetInt64(3));
+        Assert.Equal(expectedBytes, reader.GetInt64(4));
+    }
+
+    [Fact]
+    public async Task FileStallReplayRejectsAlteredPairWithUnchangedTotalWithoutMutation()
+    {
+        await using RepositoryTestDatabase database = await CreateMigratedDatabaseAsync();
+        var targetId = new MonitoredInstanceId(Guid.NewGuid());
+        await InsertActiveTargetAsync(database, targetId, revision: 1);
+        await using NpgsqlDataSource collectorSource = database.CreateCollectorDataSource();
+        var runtime = new PostgreSqlCollectorRuntimeRepositoryPort(collectorSource);
+        var leases = new PostgreSqlWorkerLeasePort(collectorSource);
+        CollectorDueWorkItem work = await PrepareFileStallWorkAsync(runtime, leases);
+        WorkerLeaseIdentity lease = await AcquireRunLeaseAsync(leases, work);
+        var runId = new CollectorRunId(Guid.NewGuid());
+        Assert.Equal(CollectorRunStartStatus.Started, (await runtime.BeginRunAsync(new BeginCollectorRunRequest(work, runId, lease, DefaultTimeout), CancellationToken.None)).Status);
+        CollectorPayload original = CreateFileStallPayload(work, 26, 7, 19);
+        CommitCollectorRunRequest request = CreateSuccessCommit(work, runId, lease, original);
+        Assert.Equal(CollectorRunCommitStatus.Committed, (await runtime.CommitRunAsync(request, CancellationToken.None)).Status);
+        string beforeReplay = await ReadFileStallSnapshotAsync(database, work, runId);
+        CollectorPayload altered = CreateFileStallPayload(work, 26, 8, 18, Assert.Single(original.DatabaseFiles.Items).ObservedAtUtc);
+        PostgresException failure = await Assert.ThrowsAsync<PostgresException>(() => runtime.CommitRunAsync(
+            CreateSuccessCommit(work, runId, lease, altered), CancellationToken.None).AsTask());
+        Assert.Equal("22023", failure.SqlState);
+        Assert.Equal(beforeReplay, await ReadFileStallSnapshotAsync(database, work, runId));
+        Assert.Equal(CollectorRunCommitStatus.Replayed, (await runtime.CommitRunAsync(request, CancellationToken.None)).Status);
+    }
+
+    [Fact]
+    public async Task FileStallSqlRejectsInvalidPairsBeforePersistingRunOutcome()
+    {
+        await using RepositoryTestDatabase database = await CreateMigratedDatabaseAsync();
+        var targetId = new MonitoredInstanceId(Guid.NewGuid());
+        await InsertActiveTargetAsync(database, targetId, revision: 1);
+        await using NpgsqlDataSource collectorSource = database.CreateCollectorDataSource();
+        var runtime = new PostgreSqlCollectorRuntimeRepositoryPort(collectorSource);
+        var leases = new PostgreSqlWorkerLeasePort(collectorSource);
+        CollectorDueWorkItem work = await PrepareFileStallWorkAsync(runtime, leases);
+        WorkerLeaseIdentity lease = await AcquireRunLeaseAsync(leases, work);
+        var runId = new CollectorRunId(Guid.NewGuid());
+        Assert.Equal(CollectorRunStartStatus.Started, (await runtime.BeginRunAsync(new BeginCollectorRunRequest(work, runId, lease, DefaultTimeout), CancellationToken.None)).Status);
+        CommitCollectorRunRequest request = CreateSuccessCommit(work, runId, lease, CreateFileStallPayload(work, 26, 7, 19));
+        string beforeInvalid = await ReadFileStallSnapshotAsync(database, work, runId);
+        (long? Read, long? Write, long Total)[] invalidPairs =
+        [
+            (null, 26, 26), (26, null, 26), (-1, 27, 26), (27, -1, 26),
+            (7, 18, 26), (long.MaxValue, 1, long.MaxValue),
+        ];
+        foreach (var pair in invalidPairs)
+        {
+            PostgresException failure = await Assert.ThrowsAsync<PostgresException>(() => ExecuteFileStallCommitAsync(
+                collectorSource, request, mutate: command =>
+                {
+                    command.Parameters["file_read_stall_ms"].Value = new long?[] { pair.Read };
+                    command.Parameters["file_write_stall_ms"].Value = new long?[] { pair.Write };
+                    command.Parameters["file_io_stall_ms"].Value = new[] { pair.Total };
+                }));
+            Assert.Equal("22023", failure.SqlState);
+            Assert.Contains("stall pair", failure.MessageText, StringComparison.Ordinal);
+            Assert.Equal(beforeInvalid, await ReadFileStallSnapshotAsync(database, work, runId));
+        }
+        Assert.Equal(CollectorRunCommitStatus.Committed, (await runtime.CommitRunAsync(request, CancellationToken.None)).Status);
     }
 
     [Fact]
@@ -708,13 +1119,23 @@ public sealed class M4CollectorPersistenceIntegrationTests
     }
 
     [Theory]
-    [InlineData(-600)]
-    [InlineData(600)]
-    public async Task CommitRejectsObservationOutsideRunClockSkew(int secondsFromRepositoryTime)
+    [InlineData(-600, 0)]
+    [InlineData(600, 0)]
+    [InlineData(-600, 1)]
+    [InlineData(600, 1)]
+    public async Task CommitRecordsClockSkewAsVisibleLossAndAdvancesTheSchedule(int secondsFromRepositoryTime, int priorFailures)
     {
         await using RepositoryTestDatabase database = await CreateMigratedDatabaseAsync();
         var targetId = new MonitoredInstanceId(Guid.NewGuid());
         await InsertActiveTargetAsync(database, targetId, revision: 1);
+        if (priorFailures > 0)
+        {
+            await using NpgsqlConnection setup = await database.DataSource.OpenConnectionAsync();
+            await using var setFailures = new NpgsqlCommand("UPDATE control.collector_schedule SET consecutive_failure_count = @failures WHERE instance_id = @target AND collector_id = 'engine.core'", setup);
+            setFailures.Parameters.AddWithValue("failures", priorFailures);
+            setFailures.Parameters.AddWithValue("target", targetId.Value);
+            Assert.Equal(1, await setFailures.ExecuteNonQueryAsync());
+        }
         await using NpgsqlDataSource collectorDataSource = database.CreateCollectorDataSource();
         var runtime = new PostgreSqlCollectorRuntimeRepositoryPort(collectorDataSource);
         var leases = new PostgreSqlWorkerLeasePort(collectorDataSource);
@@ -734,11 +1155,42 @@ public sealed class M4CollectorPersistenceIntegrationTests
             TimeSpan.Zero);
         CollectorPayload payload = CreateEnginePayload(work.TargetId, observedAt);
 
-        PostgresException rejected = await Assert.ThrowsAsync<PostgresException>(async () =>
-            await runtime.CommitRunAsync(
-                CreateSuccessCommit(work, runId, lease, payload),
-                CancellationToken.None));
-        Assert.Equal("22023", rejected.SqlState);
+        CommitCollectorRunRequest commit = CreateSuccessCommit(work, runId, lease, payload);
+        CollectorRunCommitResult saved = await runtime.CommitRunAsync(commit, CancellationToken.None);
+        Assert.Equal(CollectorRunCommitStatus.Committed, saved.Status);
+        Assert.Equal(0, saved.InsertedCount);
+        Assert.Equal(payload.ItemCount, saved.RejectedCount);
+        Assert.Equal(CollectorRunCommitStatus.Replayed,
+            (await runtime.CommitRunAsync(commit, CancellationToken.None)).Status);
+
+        await using NpgsqlConnection connection = await database.DataSource.OpenConnectionAsync();
+        await using var command = new NpgsqlCommand("""
+            SELECT outcome.outcome, outcome.reason_code, gap.reason_code,
+                   gap.lost_row_count, gap.count_is_exact,
+                   schedule.active_run_id, schedule.next_due_at > clock_timestamp(),
+                   schedule.consecutive_failure_count,
+                   (SELECT count(*) FROM telemetry.raw_metric_sample AS sample
+                    WHERE sample.collection_run_id = @run_id)
+            FROM telemetry.collection_run_outcome AS outcome
+            JOIN telemetry.visibility_gap AS gap ON gap.run_id = outcome.run_id
+            JOIN control.collector_schedule AS schedule
+              ON schedule.instance_id = @target_id AND schedule.collector_id = 'engine.core'
+            WHERE outcome.run_id = @run_id
+            """, connection);
+        command.Parameters.AddWithValue("run_id", runId.Value);
+        command.Parameters.AddWithValue("target_id", targetId.Value);
+        await using NpgsqlDataReader reader = await command.ExecuteReaderAsync();
+        Assert.True(await reader.ReadAsync());
+        Assert.Equal("output_invalid", reader.GetString(0));
+        Assert.Equal("output_validation_failed", reader.GetString(1));
+        Assert.Equal("target_clock_skew", reader.GetString(2));
+        Assert.Equal(payload.ItemCount, reader.GetInt64(3));
+        Assert.True(reader.GetBoolean(4));
+        Assert.True(reader.IsDBNull(5));
+        Assert.True(reader.GetBoolean(6));
+        Assert.Equal(0, reader.GetInt32(7));
+        Assert.Equal(0, reader.GetInt64(8));
+        Assert.False(await reader.ReadAsync());
     }
 
     [Fact]
@@ -1019,10 +1471,86 @@ public sealed class M4CollectorPersistenceIntegrationTests
         var result = await history.ReadAsync(targetId, 1, cutoff.AddHours(-1), cutoff, cutoff, CancellationToken.None);
         var connections = Assert.Single(result, x => x.Metric == "engine.user_connections");
         Assert.Equal(3, connections.Points.Sum(x => x.Samples));
+        var sqlMemory = Assert.Single(result, x => x.Metric == "engine.process_physical_memory_bytes");
+        Assert.Equal("GiB", sqlMemory.Unit);
+        Assert.Equal(3, sqlMemory.Points.Sum(x => x.Samples));
+        Assert.All(sqlMemory.Points.Where(x => x.Value.HasValue), x => Assert.True(x.Value > 0));
         var rates = Assert.Single(result, x => x.Metric == "engine.batch_requests_per_second");
         Assert.Equal(includeMarker ? 1 : 0, rates.Points.Sum(x => x.Samples));
         if (includeMarker) Assert.Equal(100 / (observed[1] - observed[0]).TotalSeconds, Assert.Single(rates.Points, x => x.Value.HasValue).Value!.Value, precision: 5);
         else Assert.All(rates.Points, point => Assert.Null(point.Value));
+        await using (var parity = await database.DataSource.OpenConnectionAsync())
+        {
+            await using (var role = new NpgsqlCommand("SET ROLE sqlobserver_migrator;", parity))
+                await role.ExecuteNonQueryAsync();
+            await using (var scope = new NpgsqlCommand("""
+                SELECT set_config('sqlobserver.role','Viewer',false),
+                       set_config('sqlobserver.target_scope',@id::text,false);
+                """, parity))
+            {
+                scope.Parameters.AddWithValue("id", targetId.Value);
+                await scope.ExecuteNonQueryAsync();
+            }
+            async Task<List<string>> Read(string name)
+            {
+                await using var query = new NpgsqlCommand(
+                    $"SELECT to_jsonb(row)::text FROM reporting.{name}(@id,1,@from,@to,@to) AS row ORDER BY metric_key,bucket_at;",
+                    parity);
+                query.Parameters.AddWithValue("id", targetId.Value);
+                query.Parameters.AddWithValue("from", cutoff.AddHours(-1));
+                query.Parameters.AddWithValue("to", cutoff);
+                var rows = new List<string>();
+                await using NpgsqlDataReader reader = await query.ExecuteReaderAsync();
+                while (await reader.ReadAsync()) rows.Add(reader.GetString(0));
+                return rows;
+            }
+            Assert.Equal(await Read("overview_workload_history"),
+                await Read("overview_workload_history_v2_shadow"));
+            await using (NpgsqlTransaction backfill = await parity.BeginTransactionAsync())
+            {
+                foreach (string function in new[]
+                    { "backfill_collection_run_v2", "backfill_collection_run_identity" })
+                {
+                    await using var copy = new NpgsqlCommand(
+                        $"SELECT complete FROM control.{function}(@id,10);", parity, backfill);
+                    copy.Parameters.AddWithValue("id", targetId.Value);
+                    Assert.True((bool)(await copy.ExecuteScalarAsync())!);
+                }
+                var days = new List<DateTimeOffset>();
+                await using (var dayQuery = new NpgsqlCommand("""
+                    SELECT DISTINCT date_trunc('day',run.started_at)
+                    FROM telemetry.collection_run AS run
+                    WHERE run.instance_id=@id AND run.collector_id='engine.core';
+                    """, parity, backfill))
+                {
+                    dayQuery.Parameters.AddWithValue("id", targetId.Value);
+                    await using NpgsqlDataReader reader = await dayQuery.ExecuteReaderAsync();
+                    while (await reader.ReadAsync()) days.Add(reader.GetFieldValue<DateTimeOffset>(0));
+                }
+                Assert.NotEmpty(days);
+                foreach (DateTimeOffset day in days)
+                {
+                    await using var certificate = new NpgsqlCommand("""
+                        SELECT parity FROM control.record_collection_run_v2_parity_window(
+                          @id,'engine.core',@day,@day + interval '1 day',10);
+                        """, parity, backfill);
+                    certificate.Parameters.AddWithValue("id", targetId.Value);
+                    certificate.Parameters.AddWithValue("day", day);
+                    Assert.True((bool)(await certificate.ExecuteScalarAsync())!);
+                }
+                await backfill.CommitAsync();
+            }
+            await using (var activate = new NpgsqlCommand(
+                "SELECT control.set_collection_run_v2_overview_read_route(true,10000);", parity))
+                Assert.Equal(1L, await activate.ExecuteScalarAsync());
+            Assert.Equal(await Read("overview_workload_history_v2_shadow"),
+                await Read("overview_workload_history"));
+            await using (var rollback = new NpgsqlCommand(
+                "SELECT control.set_collection_run_v2_overview_read_route(false,10000);", parity))
+                Assert.Equal(2L, await rollback.ExecuteScalarAsync());
+            Assert.Equal(await Read("overview_workload_history_legacy"),
+                await Read("overview_workload_history"));
+        }
         await using var connection = await server.OpenConnectionAsync();
         await using var command = new NpgsqlCommand("SELECT * FROM reporting.overview_workload_history(@id,1,@from,@to,@to)",connection);
         command.Parameters.AddWithValue("id",targetId.Value);command.Parameters.AddWithValue("from",cutoff.AddHours(-1));command.Parameters.AddWithValue("to",cutoff);
@@ -1451,12 +1979,108 @@ public sealed class M4CollectorPersistenceIntegrationTests
         await command.ExecuteNonQueryAsync();
     }
 
+    private static async Task<string> ExecuteFileStallCommitAsync(
+        NpgsqlDataSource dataSource,
+        CommitCollectorRunRequest request,
+        bool legacy = false,
+        Action<NpgsqlCommand>? mutate = null)
+    {
+        // Reuse the production SQL/parameter mapper while allowing raw invalid
+        // arrays and the preserved pre-0084 entry point to reach PostgreSQL.
+        const BindingFlags hiddenStatic = BindingFlags.NonPublic | BindingFlags.Static;
+        Type port = typeof(PostgreSqlCollectorRuntimeRepositoryPort);
+        string sql = (string)port.GetField("CommitCoreSql", hiddenStatic)!.GetRawConstantValue()!;
+        if (legacy)
+        {
+            sql = sql.Replace("control.commit_collection_run_v2(", "control.commit_collection_run(", StringComparison.Ordinal);
+            int splitArguments = sql.IndexOf("@file_read_stall_ms", StringComparison.Ordinal);
+            Assert.True(splitArguments > 0);
+            sql = sql[..splitArguments].TrimEnd(' ', '\r', '\n', ',') + ");";
+        }
+        byte[] digest = (byte[])port.GetMethod("CreateRequestDigest", hiddenStatic)!.Invoke(null, [request.Work, request.Summary.RunId, request.Lease])!;
+        await using NpgsqlConnection connection = await dataSource.OpenConnectionAsync();
+        await using var command = new NpgsqlCommand(sql, connection)
+        {
+            CommandTimeout = checked((int)Math.Ceiling(request.Timeout.Value.TotalSeconds)),
+        };
+        port.GetMethod("AddRunIdentity", hiddenStatic)!.Invoke(null, [command, request.Work, request.Summary.RunId, request.Lease, digest]);
+        port.GetMethod("AddCommitParameters", hiddenStatic)!.Invoke(null, [command, request, false, false, false]);
+        mutate?.Invoke(command);
+        return (string)(await command.ExecuteScalarAsync())!;
+    }
+
+    private static async Task<CollectorDueWorkItem> PrepareFileStallWorkAsync(
+        PostgreSqlCollectorRuntimeRepositoryPort runtime,
+        PostgreSqlWorkerLeasePort leases)
+    {
+        CollectorDueWorkItem engine = Assert.Single((await runtime.ListDueAsync(new ListDueCollectorWorkRequest(16, DefaultTimeout), CancellationToken.None)).Items);
+        await CommitSuccessAsync(runtime, leases, engine, CreateEnginePayload(engine));
+        CollectorDueWorkItem inventory = Assert.Single((await runtime.ListDueAsync(new ListDueCollectorWorkRequest(16, DefaultTimeout), CancellationToken.None)).Items,
+            static item => item.CollectorId.Value == "database.inventory");
+        await CommitSuccessAsync(runtime, leases, inventory, CreateDatabasePayload(inventory, 5));
+        return Assert.Single((await runtime.ListDueAsync(new ListDueCollectorWorkRequest(16, DefaultTimeout), CancellationToken.None)).Items,
+            static item => item.CollectorId.Value == "database.files");
+    }
+
+    private static async Task<string> ReadFileStallSnapshotAsync(
+        RepositoryTestDatabase database,
+        CollectorDueWorkItem work,
+        CollectorRunId runId)
+    {
+        await using var command = database.DataSource.CreateCommand("""
+            SELECT jsonb_build_object(
+                'files',(SELECT jsonb_agg(to_jsonb(f) ORDER BY f.snapshot_id) FROM telemetry.database_file_snapshot f WHERE f.collection_run_id=@run),
+                'run',(SELECT to_jsonb(r) FROM telemetry.collection_run r WHERE r.run_id=@run),
+                'outcome',(SELECT to_jsonb(o) FROM telemetry.collection_run_outcome o WHERE o.run_id=@run),
+                'schedule',(SELECT to_jsonb(s) FROM control.collector_schedule s WHERE s.instance_id=@target AND s.collector_id='database.files'))::text
+            """);
+        command.Parameters.AddWithValue("run", runId.Value);
+        command.Parameters.AddWithValue("target", work.TargetId.Value);
+        return (string)(await command.ExecuteScalarAsync())!;
+    }
+
     private static Task<WorkerLeaseIdentity> AcquireRunLeaseAsync(
         PostgreSqlWorkerLeasePort leases,
         CollectorDueWorkItem work) =>
         AcquireAsync(
             leases,
             new WorkerLeaseKey($"collector/run/{work.CollectorId.Value}/{work.TargetId.Value:N}"));
+
+    private static async Task<WorkerExecutionId> ActivateInventoryV2Async(
+        RepositoryTestDatabase database,
+        PostgreSqlWorkerLeasePort leases)
+    {
+        WorkerLeaseIdentity lease = await AcquireAsync(leases,
+            new WorkerLeaseKey("collector/catalog/reconcile"));
+        try
+        {
+            await using NpgsqlConnection connection = await database.DataSource.OpenConnectionAsync();
+            await using var activate = new NpgsqlCommand("""
+                SET ROLE sqlobserver_migrator;
+                WITH catalog AS MATERIALIZED (
+                    SELECT * FROM control.collector_contract
+                    WHERE execution_order BETWEEN 1 AND 19
+                      AND collector_version=CASE WHEN collector_id='database.inventory' THEN 2 ELSE 1 END)
+                SELECT * FROM control.reconcile_collector_catalog_m15(
+                    ARRAY(SELECT collector_id FROM catalog ORDER BY execution_order),
+                    ARRAY(SELECT collector_version FROM catalog ORDER BY execution_order),
+                    ARRAY(SELECT manifest_sha256 FROM catalog ORDER BY execution_order),
+                    ARRAY(SELECT asset_bundle_sha256 FROM catalog ORDER BY execution_order),
+                    ARRAY(SELECT execution_order FROM catalog ORDER BY execution_order),
+                    @work_key,@owner_execution_id,@fencing_token);
+                """, connection);
+            activate.Parameters.AddWithValue("work_key", lease.Key.Value);
+            activate.Parameters.AddWithValue("owner_execution_id", lease.Owner.Value);
+            activate.Parameters.AddWithValue("fencing_token", lease.FencingToken.Value);
+            await activate.ExecuteNonQueryAsync();
+            return lease.Owner;
+        }
+        finally
+        {
+            await leases.ReleaseAsync(new ReleaseWorkerLeaseRequest(lease, DefaultTimeout),
+                CancellationToken.None);
+        }
+    }
 
     private static async Task<CollectorRunCommitResult> CommitSuccessAsync(
         PostgreSqlCollectorRuntimeRepositoryPort runtime,
@@ -1590,6 +2214,18 @@ public sealed class M4CollectorPersistenceIntegrationTests
             observedAt)).ToArray();
         return new CollectorPayload(databases: new DatabaseObservationBatch(items));
     }
+
+    private static CollectorPayload CreateFileStallPayload(
+        CollectorDueWorkItem work,
+        long total,
+        long? readStall,
+        long? writeStall,
+        DateTimeOffset? observedAt = null) => new(databaseFiles: new DatabaseFileObservationBatch(
+        [
+            new DatabaseFileObservation(work.TargetId, work.TargetRevision, 5, 1, new SqlServerObjectName("file_1"),
+                DatabaseFileType.Rows, DatabaseFileState.Online, 1024, 4096, 512, 0, 10, 5, 4096, 2048,
+                total, observedAt ?? MicrosecondNow(), readStall, writeStall),
+        ]));
 
     private static CollectorPayload CreateFilePayload(CollectorDueWorkItem work, int fileId)
         => CreateFilePayloads(work, fileId);

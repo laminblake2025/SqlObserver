@@ -450,6 +450,32 @@ public sealed record BlockingHistoryCursor
     public SqlServerWaitType WaitType { get; }
 }
 
+public sealed record ServerWaitHistoryCursor
+{
+    public ServerWaitHistoryCursor(MonitoredInstanceId targetId, DateTimeOffset fromUtc,
+        DateTimeOffset toUtc, DateTimeOffset observedAtUtc, CollectorRunId runId,
+        SqlServerWaitType waitType)
+    {
+        TargetId = targetId ?? throw new ArgumentNullException(nameof(targetId));
+        RunId = runId ?? throw new ArgumentNullException(nameof(runId));
+        WaitType = waitType ?? throw new ArgumentNullException(nameof(waitType));
+        ActivityPortValidation.TimeWindow(fromUtc, toUtc);
+        observedAtUtc = CollectionPortValidation.RequireUtc(observedAtUtc, nameof(observedAtUtc));
+        if (observedAtUtc < fromUtc || observedAtUtc >= toUtc)
+            throw new ArgumentOutOfRangeException(nameof(observedAtUtc));
+        FromUtc = fromUtc;
+        ToUtc = toUtc;
+        ObservedAtUtc = observedAtUtc;
+    }
+
+    public MonitoredInstanceId TargetId { get; }
+    public DateTimeOffset FromUtc { get; }
+    public DateTimeOffset ToUtc { get; }
+    public DateTimeOffset ObservedAtUtc { get; }
+    public CollectorRunId RunId { get; }
+    public SqlServerWaitType WaitType { get; }
+}
+
 public sealed class ListActivitySessionsRepositoryRequest
     : ActivityRepositoryRequest<ActivitySessionCursor>
 {
@@ -550,6 +576,35 @@ public sealed class ListBlockingHistoryRepositoryRequest
     public DateTimeOffset ToUtc { get; }
     public int MaxResults { get; }
     public BlockingHistoryCursor? Cursor { get; }
+    public RepositoryCallTimeout Timeout { get; }
+}
+
+public sealed class ListServerWaitHistoryRepositoryRequest
+{
+    public const int MaximumResults = 100;
+    public ListServerWaitHistoryRepositoryRequest(MonitoredInstanceId targetId,
+        DateTimeOffset fromUtc, DateTimeOffset toUtc, int maxResults,
+        ServerWaitHistoryCursor? cursor, RepositoryCallTimeout timeout)
+    {
+        TargetId = targetId ?? throw new ArgumentNullException(nameof(targetId));
+        Timeout = timeout ?? throw new ArgumentNullException(nameof(timeout));
+        ActivityPortValidation.TimeWindow(fromUtc, toUtc);
+        if (maxResults is <= 0 or > MaximumResults)
+            throw new ArgumentOutOfRangeException(nameof(maxResults));
+        if (cursor is not null &&
+            (cursor.TargetId != targetId || cursor.FromUtc != fromUtc || cursor.ToUtc != toUtc))
+            throw new ArgumentException("A wait-history cursor must retain its target and UTC window.", nameof(cursor));
+        FromUtc = fromUtc;
+        ToUtc = toUtc;
+        MaxResults = maxResults;
+        Cursor = cursor;
+    }
+
+    public MonitoredInstanceId TargetId { get; }
+    public DateTimeOffset FromUtc { get; }
+    public DateTimeOffset ToUtc { get; }
+    public int MaxResults { get; }
+    public ServerWaitHistoryCursor? Cursor { get; }
     public RepositoryCallTimeout Timeout { get; }
 }
 
@@ -712,6 +767,58 @@ public sealed class BlockingHistoryPage
     public DateTimeOffset RepositoryTimeUtc { get; }
 }
 
+public sealed class ServerWaitHistoryItem
+{
+    public ServerWaitHistoryItem(ActivitySnapshotEvidence evidence, CollectorRunId? baselineRunId,
+        ServerWaitSummaryItem wait)
+    {
+        Evidence = evidence ?? throw new ArgumentNullException(nameof(evidence));
+        Wait = wait ?? throw new ArgumentNullException(nameof(wait));
+        if (evidence.CollectorId.Value != "waits.server")
+            throw new ArgumentException("Wait history requires waits.server run evidence.", nameof(evidence));
+        BaselineRunId = baselineRunId;
+    }
+
+    public ActivitySnapshotEvidence Evidence { get; }
+    public CollectorRunId? BaselineRunId { get; }
+    public ServerWaitSummaryItem Wait { get; }
+}
+
+public sealed class ServerWaitHistoryPage
+{
+    private readonly ReadOnlyCollection<ServerWaitHistoryItem> _items;
+    public ServerWaitHistoryPage(MonitoredInstanceId targetId, DateTimeOffset fromUtc,
+        DateTimeOffset toUtc, IReadOnlyList<ServerWaitHistoryItem> items,
+        ServerWaitHistoryCursor? nextCursor, DateTimeOffset repositoryTimeUtc)
+    {
+        TargetId = targetId ?? throw new ArgumentNullException(nameof(targetId));
+        ArgumentNullException.ThrowIfNull(items);
+        ActivityPortValidation.TimeWindow(fromUtc, toUtc);
+        if (items.Count > ListServerWaitHistoryRepositoryRequest.MaximumResults ||
+            items.Any(item => item is null || item.Evidence.TargetId != targetId ||
+                item.Wait.ObservedAtUtc < fromUtc || item.Wait.ObservedAtUtc >= toUtc) ||
+            nextCursor is not null &&
+            (nextCursor.TargetId != targetId || nextCursor.FromUtc != fromUtc ||
+             nextCursor.ToUtc != toUtc || items.Count == 0 ||
+             nextCursor.ObservedAtUtc != items[^1].Wait.ObservedAtUtc ||
+             nextCursor.RunId != items[^1].Evidence.RunId ||
+             nextCursor.WaitType != items[^1].Wait.WaitType))
+            throw new ArgumentException("A wait-history page must be bounded and target/window scoped.", nameof(items));
+        FromUtc = fromUtc;
+        ToUtc = toUtc;
+        _items = Array.AsReadOnly(items.ToArray());
+        NextCursor = nextCursor;
+        RepositoryTimeUtc = CollectionPortValidation.RequireUtc(repositoryTimeUtc, nameof(repositoryTimeUtc));
+    }
+
+    public MonitoredInstanceId TargetId { get; }
+    public DateTimeOffset FromUtc { get; }
+    public DateTimeOffset ToUtc { get; }
+    public IReadOnlyList<ServerWaitHistoryItem> Items => _items;
+    public ServerWaitHistoryCursor? NextCursor { get; }
+    public DateTimeOffset RepositoryTimeUtc { get; }
+}
+
 public abstract class ActivityPage<TItem, TCursor>
     where TItem : class
     where TCursor : class
@@ -774,6 +881,10 @@ public interface IActivityProjectionRepositoryPort
 
     ValueTask<BlockingHistoryPage?> ListBlockingHistoryAsync(
         ListBlockingHistoryRepositoryRequest request,
+        CancellationToken cancellationToken);
+
+    ValueTask<ServerWaitHistoryPage?> ListServerWaitHistoryAsync(
+        ListServerWaitHistoryRepositoryRequest request,
         CancellationToken cancellationToken);
 }
 

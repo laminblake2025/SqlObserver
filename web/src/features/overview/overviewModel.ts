@@ -1,32 +1,97 @@
 import type { OverviewEvidence, OverviewResource, OverviewScope, OverviewValue, OverviewSnapshot } from './overviewTypes';
+import { canonicalUtcTimestamp, utcMicroseconds } from '../../utcTimestamp.ts';
+
+// Normalize native Guid identity without repairing malformed URL input.
+const canonicalTargetId = (value: string): string => /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/iu.test(value)
+  ? value.toLowerCase() : value;
 
 export function readOverviewScope(hash: string): OverviewScope {
   const params = new URLSearchParams(hash.split('?')[1]);
   const range = params.get('range');
-  return { target: params.get('target') ?? '', range: range === '1h' || range === '6h' || range === '7d' || range === 'custom' ? range : '24h', from: params.get('from') ?? undefined, to: params.get('to') ?? undefined, compare: params.get('compare') === '1' };
+  const target = canonicalTargetId(params.get('target') ?? '');
+  const database = params.getAll('databaseId');
+  const databaseId = target && database.length === 1 && /^[1-9]\d{0,4}$/.test(database[0]!) && Number(database[0]) <= 32767 ? Number(database[0]) : undefined;
+  return { target, range: range === '1h' || range === '6h' || range === '7d' || range === 'custom' ? range : '24h', from: params.get('from') ?? undefined, to: params.get('to') ?? undefined, compare: params.get('compare') === '1', ...(databaseId !== undefined ? { databaseId } : {}) };
 }
 export function overviewHref(scope: OverviewScope, page = 'overview', target = scope.target): string {
   const query = new URLSearchParams();
-  if (target) query.set('target', target);
+  if (target) query.set('target', canonicalTargetId(target));
+  if (target && target.toLowerCase() === scope.target.toLowerCase() && Number.isInteger(scope.databaseId) && scope.databaseId! >= 1 && scope.databaseId! <= 32767) query.set('databaseId', String(scope.databaseId));
   query.set('range', scope.range);
   if (scope.range === 'custom') { if (scope.from) query.set('from', scope.from); if (scope.to) query.set('to', scope.to); }
   if (scope.compare) query.set('compare', '1');
   return `#/${page}?${query}`;
 }
-export function overviewWindow(scope: OverviewScope, now: number): {fromUtc: string; toUtc: string} {
-  const end = scope.range === 'custom' ? Date.parse(scope.to ?? '') : now;
-  const start = scope.range === 'custom' ? Date.parse(scope.from ?? '') : end - ({'1h': 1, '6h': 6, '24h': 24, '7d': 168}[scope.range]) * 3600000;
-  if (!Number.isFinite(start) || !Number.isFinite(end) || start >= end || end - start > 31 * 86400000 || end > now + 60000) throw new Error('Choose a valid UTC range of up to 31 days, ending no later than now.');
-  return {fromUtc:new Date(start).toISOString(), toUtc:new Date(end).toISOString()};
+export function issueHref(scope: OverviewScope, target: string, destination: string, observedAtUtc: string | null, title?: string): string {
+  if (destination === 'operations' && (title === 'Backup faults observed' || title === 'Backup policy checks failed'))
+    return backupAssessmentHref(scope, target, observedAtUtc);
+  const href = overviewHref(scope, destination, target);
+  if (destination === 'operations' && title === 'SQL Agent failures') return `${href}&check=agent`;
+  return destination === 'activity' && observedAtUtc ? `${href}&at=${encodeURIComponent(observedAtUtc)}` : href;
 }
-export function customUtcWindow(from:string,to:string,now:number,maximumDays=31): {fromUtc:string;toUtc:string} {
-  const parse=(value:string) => /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,3})?)?$/.test(value) ? Date.parse(`${value}Z`) : NaN;
-  const start=parse(from),end=parse(to);
-  if (!Number.isFinite(start)||!Number.isFinite(end)) throw new Error('Enter both dates and times in UTC.');
-  if (start>=end) throw new Error('The end must be after the start.');
-  if (end-start>maximumDays*86400000) throw new Error(`Choose a range of ${maximumDays} days or less.`);
-  if (end>now) throw new Error('The end must not be in the future (UTC).');
-  return {fromUtc:new Date(start).toISOString(),toUtc:new Date(end).toISOString()};
+export function backupAssessmentHref(scope: OverviewScope, target: string, assessedAtUtc: string | null): string {
+  return overviewHref(assessedAtUtc ? {
+    ...scope, range: 'custom', from: new Date(Date.parse(assessedAtUtc) - 3600000).toISOString(), to: assessedAtUtc,
+  } : { ...scope, range: '1h', from: undefined, to: undefined }, 'operations', target);
+}
+export function workspaceUtcTimestamp(input: string): string {
+  // Native .NET timestamps may append a zero beyond PostgreSQL's exact precision.
+  const normalized=input.replace(/(\.\d{6})0(?=Z$|\+00:00$)/u,'$1');
+  return canonicalUtcTimestamp(normalized);
+}
+function overviewUtcBoundary(input: string): {value: bigint; text: string} {
+  const text=workspaceUtcTimestamp(input);
+  return {value:utcMicroseconds(text),text};
+}
+export function overviewWindow(scope: OverviewScope, now: number): {fromUtc: string; toUtc: string} {
+  const invalid=()=>new Error('Choose a valid UTC range of up to 31 days, ending no later than now.');
+  if (!Number.isFinite(now)) throw invalid();
+  let from:{value:bigint;text:string},to:{value:bigint;text:string};
+  try {
+    if (scope.range==='custom') {
+      from=overviewUtcBoundary(scope.from??'');to=overviewUtcBoundary(scope.to??'');
+    } else {
+      const start=now-({'1h':1,'6h':6,'24h':24,'7d':168}[scope.range])*3600000;
+      from=overviewUtcBoundary(new Date(start).toISOString());to=overviewUtcBoundary(new Date(now).toISOString());
+    }
+  } catch { throw invalid(); }
+  if (from.value>=to.value || to.value-from.value>31n*86400n*1000000n || to.value>BigInt(Math.trunc(now+60000))*1000n) throw invalid();
+  return {fromUtc:from.text,toUtc:to.text};
+}
+/** Native datetime-local controls expose millisecond precision; keep finer source bounds separately. */
+export function customUtcInputValue(utc:string|undefined): string {
+  if (utc===undefined) return '';
+  try {
+    const timestamp=overviewUtcBoundary(utc).text.replace(/Z$/,'');
+    const [seconds,fraction='']=timestamp.split('.');
+    return `${seconds}.${fraction.slice(0,3).padEnd(3,'0')}`;
+  } catch { return ''; }
+}
+
+export function customUtcWindow(from:string,to:string,now:number,maximumDays=31,
+  original?:{readonly fromUtc?:string;readonly toUtc?:string;readonly fromEdited?:boolean;readonly toEdited?:boolean}): {fromUtc:string;toUtc:string} {
+  const parseInput=(value:string) => {
+    const match=/^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2})(?::(\d{2})(?:\.(\d{1,3}))?)?$/.exec(value);
+    if (!match) throw new Error('Enter both dates and times in UTC.');
+    const text=`${match[1]}:${match[2]??'00'}${match[3]?`.${match[3]}`:''}Z`;
+    try { return {value:utcMicroseconds(text),text:canonicalUtcTimestamp(text)}; }
+    catch { throw new Error('Enter both dates and times in UTC.'); }
+  };
+  const parseBound=(input:string,stored:string|undefined,edited:boolean|undefined) => {
+    const entered=parseInput(input);
+    const displayed=customUtcInputValue(stored);
+    if (!edited && stored!==undefined && displayed!=='' && entered.value===parseInput(displayed).value)
+      return overviewUtcBoundary(stored);
+    return entered;
+  };
+  const start=parseBound(from,original?.fromUtc,original?.fromEdited),end=parseBound(to,original?.toUtc,original?.toEdited);
+  if (!Number.isFinite(now) || !Number.isSafeInteger(maximumDays) || maximumDays<1)
+    throw new Error('Choose a valid UTC range limit.');
+  if (start.value>=end.value) throw new Error('The end must be after the start.');
+  if (end.value-start.value>BigInt(maximumDays)*86400n*1000000n)
+    throw new Error(`Choose a range of ${maximumDays} days or less.`);
+  if (end.value>BigInt(Math.trunc(now))*1000n) throw new Error('The end must not be in the future (UTC).');
+  return {fromUtc:start.text,toUtc:end.text};
 }
 export function aggregateValue(evidence: readonly OverviewEvidence[], key: 'activeAlerts' | 'blockedSessions' | 'deadlocks'): {text: string; note: string} {
   const values: OverviewValue[] = evidence.map(item => item[key]);
@@ -35,8 +100,9 @@ export function aggregateValue(evidence: readonly OverviewEvidence[], key: 'acti
   const incomplete = known.length !== values.length || known.some(v => v.state === 'partial');
   return {text:`${known.reduce((sum,v) => sum + v.value!,0).toLocaleString()}${incomplete ? '+' : ''}`, note:`${known.length}/${values.length} servers · ${incomplete ? 'partial count' : key === 'deadlocks' ? 'observed events in window' : 'latest snapshots'}`};
 }
-export function rankedIssues(snapshot: OverviewSnapshot) {
-  return snapshot.evidence.flatMap(e => e.issues).sort((a,b) => a.priority-b.priority || (a.observedAtUtc ?? '').localeCompare(b.observedAtUtc ?? '') || a.server.localeCompare(b.server)).slice(0,5);
+export function rankedIssues(snapshot: OverviewSnapshot, limit: number | null = 5) {
+  const issues = snapshot.evidence.flatMap(e => e.issues).sort((a,b) => a.priority-b.priority || (a.observedAtUtc ?? '').localeCompare(b.observedAtUtc ?? '') || a.server.localeCompare(b.server));
+  return limit === null ? issues : issues.slice(0,limit);
 }
 export function displayMetric(value: number | null): string { return value === null ? '—' : value.toLocaleString(undefined, {maximumFractionDigits:2}); }
 
@@ -57,10 +123,10 @@ function observationAge(observedAtUtc: string, refreshedAtUtc: string): string {
   return `${days}d ${hours % 24}h`;
 }
 
-export function overviewResourceObservationText(resource: OverviewResource, refreshedAtUtc: string): string {
+export function overviewResourceObservationText(resource: OverviewResource, refreshedAtUtc: string, formatTime: (value: string) => string = value => new Date(value).toISOString().replace('T', ' ')): string {
   const windowed = isWindowedResource(resource);
   const timestamp = resource.observedAtUtc && Number.isFinite(Date.parse(resource.observedAtUtc))
-    ? new Date(resource.observedAtUtc).toISOString().replace('T', ' ')
+    ? formatTime(resource.observedAtUtc)
     : 'No observation';
   const age = windowed && resource.observedAtUtc
     ? ` · Observation age: ${observationAge(resource.observedAtUtc, refreshedAtUtc)}`
@@ -68,6 +134,6 @@ export function overviewResourceObservationText(resource: OverviewResource, refr
   return `${windowed ? 'Latest in selected window' : 'Latest source snapshot'} · ${resource.state}${age} · ${timestamp}`;
 }
 
-export function overviewEvidenceFooter(snapshot: Pick<OverviewSnapshot, 'fromUtc' | 'toUtc' | 'refreshedAtUtc'>): string {
-  return `Current cards, waits, and operations use latest source snapshots. Host, storage, and replication metric rows show the latest observation inside the selected window (${snapshot.fromUtc} to ${snapshot.toUtc}); observation age is measured against refresh time ${snapshot.refreshedAtUtc}. Historical charts use ${snapshot.fromUtc} to ${snapshot.toUtc}. Independent collectors can have different coverage.`;
+export function overviewEvidenceFooter(snapshot: Pick<OverviewSnapshot, 'fromUtc' | 'toUtc' | 'refreshedAtUtc'>, formatTime: (value: string) => string = value => value): string {
+  return `Current cards and waits use latest source snapshots. SQL Agent history uses first observation inside the selected window; other operational panels state their own coverage. Host, storage, and replication metric rows show the latest observation inside the selected window (${formatTime(snapshot.fromUtc)} to ${formatTime(snapshot.toUtc)}); observation age is measured against refresh time ${formatTime(snapshot.refreshedAtUtc)}. Historical charts use ${formatTime(snapshot.fromUtc)} to ${formatTime(snapshot.toUtc)}. Independent collectors can have different coverage.`;
 }

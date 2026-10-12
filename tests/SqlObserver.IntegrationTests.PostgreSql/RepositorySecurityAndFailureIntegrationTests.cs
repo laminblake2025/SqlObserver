@@ -301,7 +301,8 @@ public sealed class RepositorySecurityAndFailureIntegrationTests
 
         await Assert.ThrowsAsync<NotSupportedException>(async () =>
             await repository.GetOrAddAsync(
-                new SensitivePayloadGetOrAddRequest(payload, lease.Identity, DefaultTimeout),
+                new SensitivePayloadGetOrAddRequest(new MonitoredInstanceId(Guid.NewGuid()), payload,
+                    lease.Identity, DefaultTimeout),
                 CancellationToken.None));
 
         await using NpgsqlConnection connection = await database.DataSource.OpenConnectionAsync();

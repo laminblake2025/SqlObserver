@@ -1,0 +1,23 @@
+.maintenance-calendar { margin-block: 1rem; min-width: 0; }
+.maintenance-calendar-controls { display: flex; flex-wrap: wrap; align-items: end; gap: .5rem; margin-block: .75rem; }
+.maintenance-calendar-controls label { display: flex; flex-direction: column; gap: .25rem; min-width: 0; }
+.maintenance-calendar-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 1rem; }
+.maintenance-month-table { table-layout: fixed; width: 100%; border-collapse: collapse; }
+.maintenance-month-table caption { text-align: start; padding-block: .5rem; font-weight: 700; }
+.maintenance-month-table th { padding: .4rem .1rem; text-align: center; color: var(--muted); font-size: .75rem; }
+.maintenance-month-table td { padding: .15rem; border: 0; text-align: center; vertical-align: top; }
+.maintenance-calendar-day { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: .2rem; width: 100%; min-height: 3.5rem; padding: .35rem .1rem; color: var(--text); background: var(--surface-soft); border: 1px solid var(--border); }
+.maintenance-calendar-day[aria-pressed="true"] { border-color: var(--teal); background: var(--teal-soft); }
+.maintenance-calendar-day[aria-current="date"] { text-decoration: underline; text-underline-offset: .2rem; }
+.maintenance-calendar-day-count { color: var(--muted); font-size: .7rem; }
+.maintenance-calendar-day:focus-visible { outline: 2px solid var(--teal); outline-offset: 2px; }
+.maintenance-agenda { min-width: 0; overflow-wrap: anywhere; }
+.maintenance-agenda h4 { margin-block: .5rem; }
+.maintenance-agenda-list { list-style: none; margin: 0; padding: 0; max-height: 30rem; overflow: auto; }
+.maintenance-agenda-list li { border-block-start: 1px solid var(--border); padding-block: .75rem; }
+.maintenance-agenda-list button { text-align: start; max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
+.maintenance-agenda-list button[aria-pressed="true"] { color: var(--teal-deep); text-decoration: underline; }
+.maintenance-agenda-list p { margin-block: .4rem; font-size: .8rem; color: var(--muted); }
+@media (max-width: 900px) { .maintenance-calendar-layout { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 560px) { .maintenance-calendar { padding: .75rem; } .maintenance-calendar-controls button { flex: 1 1 auto; } .maintenance-month-table td { padding: .1rem; } }
+@media (forced-colors: active) { .maintenance-calendar-day[aria-pressed="true"] { border: 2px solid Highlight; } .maintenance-calendar-day:focus-visible { outline-color: Highlight; } }

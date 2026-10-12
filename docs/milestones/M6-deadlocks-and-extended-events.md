@@ -1,5 +1,13 @@
 # M6 — deadlocks and Extended Events
 
+Migration 0309 advances the pinned SQL bundle to correct false empty scans from
+the native XE timestamp predicate on SQL Server 2022 Express `16.0.1000.6`.
+The occurrence filter now remains a residual predicate; existing source bounds
+and safe output are unchanged. Deploy the matching Collector build and migration
+together. The owned Windows/PostgreSQL lab qualifies real deadlock collection,
+deduplication, permission gaps and signed firing/recovery delivery; see
+[deadlock count alert evidence](../technical/Deadlock-Count-Alerts.md).
+
 M6 is a passive, read-only system-health integration. The Collector reads only
 `xml_deadlock_report` rows from the already-running SQL Server `system_health`
 event-file target through documented XE catalog surfaces and

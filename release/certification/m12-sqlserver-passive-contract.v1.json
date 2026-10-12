@@ -7,12 +7,12 @@
   "platform": "windows",
   "supportedMajorVersions": [15, 16, 17],
   "assetBundles": {
-    "m4-core-health": "34214cef39c56f1d984bee1da82fd40ac410552eca04f6bd64420b001bd3114c",
-    "m5-activity": "86b049c90409e157c06612ebd48c36435213122636c9a84637e1d79029cc959e",
+    "m4-core-health": "10ef6cb84001d6a3f34889cb8c2d96d51c247289582ef3fa25c3f63862399a17",
+    "m5-activity": "d233698a8b350ebdf805cbb65b085b0a93b64fc66f57f8f21d354c3445ee00c8",
     "m6-deadlocks": "57fa05f859d8f1e355786b84cc0ea6c05810ace0088fe176120b6ba019a654de",
-    "m7-query-performance": "da915ffb11e60bc0f1f019cb3e3e81ccafabc2c3ff94b26520378574562855eb",
-    "m9-operational-health": "5697aaf35aee3f30f339de5fd973041978b6a0d767759e30cd223eb829e74484",
-    "m10-replication": "8fa9d8d4c8f3a8fdfb17ffe675f7642220ada826719136d5b7338372866c2b9a"
+    "m7-query-performance": "1f1afa0fe152ff21f01782192bfbab5585da4e408cb2122df9975feb30bdec11",
+    "m9-operational-health": "ce5cf58bf6442b561426b7e72b7825c3e08093e80e5277f2ec6a93ddece6ba87",
+    "m10-replication": "e9d52f49d1c728ed6968867a1caee11d6a5f288c5326da585b68a9bed0060f36"
   },
   "collectors": [
     { "collectorId": "engine.core", "executionOrder": 1, "assetVersion": 2, "supportedMajorVersions": [15, 16, 17] },

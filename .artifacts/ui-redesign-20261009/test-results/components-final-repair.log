@@ -1,0 +1,10 @@
+[WebServer] (node:204320) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+
+Running 1 test using 1 worker
+
+(node:202408) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ok 1 [chromium] › component-tests\ReportsPanel.spec.mjs:209:44 › report controls and exports remain readable and accessible at 1440px (1.4s)
+
+  1 passed (4.0s)

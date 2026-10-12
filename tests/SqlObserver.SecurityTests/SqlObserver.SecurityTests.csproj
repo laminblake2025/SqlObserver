@@ -4,6 +4,7 @@
     <AssemblyName>SqlObserver.SecurityTests</AssemblyName>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="../../tools/SqlPolicyTokens.cs" Link="SqlPolicyTokens.Shared.cs" />
     <None Update="Fixtures\m8-alert-observation.json" CopyToOutputDirectory="PreserveNewest" />
     <ProjectReference Include="../../src/SqlObserver.Application/SqlObserver.Application.csproj" />
     <ProjectReference Include="../../src/SqlObserver.Domain/SqlObserver.Domain.csproj" />

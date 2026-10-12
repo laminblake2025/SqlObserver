@@ -46,8 +46,8 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
     private static void AuthorizeRead(AuthorizationContext authorization, AnalyticsQueryRequest request)
     {
         ArgumentNullException.ThrowIfNull(authorization); ArgumentNullException.ThrowIfNull(request);
-        if (!authorization.IsActive || (!authorization.HasRole(ApplicationRole.Viewer) && !authorization.HasRole(ApplicationRole.Operator) && !authorization.HasRole(ApplicationRole.TargetAdministrator))) throw new UnauthorizedAccessException("Analytics read role denied.");
-        if (!authorization.CanAccess(request.TargetId)) throw new UnauthorizedAccessException("Analytics target scope denied.");
+        authorization.RequireAny(request.TargetId,
+            ApplicationRole.Viewer, ApplicationRole.Operator, ApplicationRole.TargetAdministrator);
     }
     private static void Validate(AnalyticsQueryRequest request)
     {

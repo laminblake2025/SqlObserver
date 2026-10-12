@@ -1,0 +1,132 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sqlobserver.local/cpu.components.v1.schema.json",
+  "title": "SQL process and target host CPU component collector",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "$schema",
+    "schemaVersion",
+    "collectorId",
+    "collectorVersion",
+    "displayName",
+    "operationalMode",
+    "dependsOn",
+    "supportedTargets",
+    "requiredCapabilities",
+    "requiredPermissionsByMajor",
+    "cadence",
+    "executionBounds",
+    "resilience",
+    "estimatedCostClass",
+    "fallback",
+    "queryResource",
+    "outputSchemaVersion",
+    "outputKind",
+    "defaultEnabled"
+  ],
+  "properties": {
+    "$schema": {
+      "const": "cpu.components.v1.schema.json"
+    },
+    "schemaVersion": {
+      "const": 6
+    },
+    "collectorId": {
+      "const": "cpu.components"
+    },
+    "collectorVersion": {
+      "const": 1
+    },
+    "displayName": {
+      "const": "SQL process and target host CPU"
+    },
+    "operationalMode": {
+      "const": "passive"
+    },
+    "dependsOn": {
+      "const": [
+        "capability.connection"
+      ]
+    },
+    "supportedTargets": {
+      "const": {
+        "product": "Microsoft SQL Server",
+        "minimumMajorVersion": 15,
+        "maximumMajorVersion": 17,
+        "platforms": [
+          "Windows"
+        ],
+        "engineEditions": [
+          2,
+          3
+        ]
+      }
+    },
+    "requiredCapabilities": {
+      "const": [
+        "connection.tds",
+        "authentication.windows-integrated",
+        "transport.tls-validated",
+        "privilege.non-sysadmin",
+        "platform.windows"
+      ]
+    },
+    "requiredPermissionsByMajor": {
+      "const": {
+        "15": [
+          "server.view-state"
+        ],
+        "16": [
+          "server.view-performance-state"
+        ],
+        "17": [
+          "server.view-performance-state"
+        ]
+      }
+    },
+    "cadence": {
+      "const": {
+        "defaultIntervalSeconds": 60,
+        "minimumIntervalSeconds": 30,
+        "nonOverlappingPerTarget": true
+      }
+    },
+    "executionBounds": {
+      "const": {
+        "connectTimeoutSeconds": 5,
+        "commandTimeoutSeconds": 30,
+        "maximumRows": 6,
+        "maximumResponseBytes": 212992
+      }
+    },
+    "resilience": {
+      "const": {
+        "maximumAttempts": 1,
+        "transientRetryDelayMilliseconds": 0,
+        "circuitFailureThreshold": 3,
+        "circuitOpenSeconds": 300
+      }
+    },
+    "estimatedCostClass": {
+      "const": "moderate"
+    },
+    "fallback": {
+      "const": {
+        "mode": "unsupported"
+      }
+    },
+    "queryResource": {
+      "const": "cpu.target-witness.sqlserver15-17-windows.v2.sql"
+    },
+    "outputSchemaVersion": {
+      "const": 1
+    },
+    "outputKind": {
+      "const": "cpu-components"
+    },
+    "defaultEnabled": {
+      "const": false
+    }
+  }
+}

@@ -51,7 +51,8 @@ public sealed class CollectorExecutionRequest
         SqlServerConnectionPolicy connectionPolicy,
         CapabilityProfile capabilityProfile,
         CollectorAttemptNumber attempt,
-        CollectorExecutionTimeout timeout)
+        CollectorExecutionTimeout timeout,
+        DeadlockReadExecutionContext? deadlockReadContext = null)
     {
         ArgumentNullException.ThrowIfNull(runId);
         ArgumentNullException.ThrowIfNull(targetId);
@@ -67,6 +68,9 @@ public sealed class CollectorExecutionRequest
                 nameof(capabilityProfile));
         }
 
+        if (deadlockReadContext is not null && (deadlockReadContext.TargetId != targetId || deadlockReadContext.TargetRevision != targetRevision || deadlockReadContext.RunId != runId))
+            throw new ArgumentException("Deadlock context must match the exact execution request.", nameof(deadlockReadContext));
+        DeadlockReadContext = deadlockReadContext;
         RunId = runId;
         TargetId = targetId;
         TargetRevision = targetRevision;
@@ -83,6 +87,7 @@ public sealed class CollectorExecutionRequest
     public CapabilityProfile CapabilityProfile { get; }
     public CollectorAttemptNumber Attempt { get; }
     public CollectorExecutionTimeout Timeout { get; }
+    public DeadlockReadExecutionContext? DeadlockReadContext { get; }
 }
 
 public sealed class CollectorPayload
@@ -102,7 +107,15 @@ public sealed class CollectorPayload
         IReadOnlyList<QueryPerformanceDatabaseStatus>? queryPerformanceStatuses = null,
         QueryPerformanceTargetStatus? queryPerformanceTargetStatus = null,
         OperationalHealthPayload? operationalHealth = null,
-        HostMetricsPayloadContext? hostMetricsContext = null)
+        HostMetricsPayloadContext? hostMetricsContext = null,
+        SqlVolumeObservationBatch? sqlVolumes = null,
+        QueryStoreGroupOutputBatch? queryStoreGroups = null,
+        ServerConfigurationObservationBatch? serverConfigurations = null,
+        PlanCacheRuntimeOutputBatch? planCacheRuntime = null,
+        PlanCacheContentOutputBatch? planCacheContent = null,
+        CpuPairedCaptureObservation? cpuPairedCapture = null,
+        CpuComponentsObservation? cpuComponents = null,
+        SqlAgentModuleCaptureResult? sqlAgentModuleCapture = null)
     {
         metrics ??= Array.Empty<MetricSample>();
         if (metrics.Count > IngestionLimits.MaximumItemCount)
@@ -123,54 +136,86 @@ public sealed class CollectorPayload
         _metrics = Array.AsReadOnly(metricCopy);
         Databases = databases ?? new DatabaseObservationBatch([]);
         DatabaseFiles = databaseFiles ?? new DatabaseFileObservationBatch([]);
+        SqlVolumes = sqlVolumes ?? new SqlVolumeObservationBatch([]);
         ActivitySessions = activitySessions ?? new ActivitySessionObservationBatch([]);
         ActivityRequests = activityRequests ?? new ActivityRequestObservationBatch([]);
         ServerWaits = serverWaits ?? new ServerWaitObservationBatch([]);
         BlockingEdges = blockingEdges ?? new BlockingEdgeObservationBatch([]);
         Deadlocks = deadlocks ?? new DeadlockObservationBatch([]);
         QueryPerformance = queryPerformance ?? new QueryPerformanceObservationBatch([]);
+        QueryStoreGroups = queryStoreGroups;
+        PlanCacheRuntime = planCacheRuntime;
+        PlanCacheContent = planCacheContent;
+        if (planCacheContent is not null && !ReferenceEquals(planCacheContent.Runtime, planCacheRuntime))
+            throw new ArgumentException("Cache content requires its exact qualified runtime frame.", nameof(planCacheContent));
+        ServerConfigurations = serverConfigurations ?? new ServerConfigurationObservationBatch([]);
+        int protectedCount = QueryPerformance.Items.Count(static item => item.ProtectedContent is not null);
+        int protectedBytes = QueryPerformance.Items.Sum(static item => item.ProtectedContent?.ProtectedSizeBytes ?? 0);
+        if (protectedCount > 64 || protectedBytes > 64 * (16 * 1024 + 48))
+            throw new ArgumentException("Protected query text sidecars exceed the bounded collector envelope.", nameof(queryPerformance));
         QueryPerformanceStatuses = new ReadOnlyCollection<QueryPerformanceDatabaseStatus>((queryPerformanceStatuses ?? Array.Empty<QueryPerformanceDatabaseStatus>()).ToArray());
         if (QueryPerformanceStatuses.Count > 256 || QueryPerformanceStatuses.Select(static x => x.DatabaseId).Distinct().Count() != QueryPerformanceStatuses.Count) throw new ArgumentException("Query performance database statuses must be bounded and unique.", nameof(queryPerformanceStatuses));
         QueryPerformanceTargetStatus = queryPerformanceTargetStatus;
         OperationalHealth = operationalHealth;
         HostMetricsContext = hostMetricsContext;
+        CpuPairedCapture = cpuPairedCapture;
+        CpuComponents = cpuComponents;
+        SqlAgentModuleCapture = sqlAgentModuleCapture;
     }
 
     public IReadOnlyList<MetricSample> Metrics => _metrics;
     public DatabaseObservationBatch Databases { get; }
     public DatabaseFileObservationBatch DatabaseFiles { get; }
+    public SqlVolumeObservationBatch SqlVolumes { get; }
     public ActivitySessionObservationBatch ActivitySessions { get; }
     public ActivityRequestObservationBatch ActivityRequests { get; }
     public ServerWaitObservationBatch ServerWaits { get; }
     public BlockingEdgeObservationBatch BlockingEdges { get; }
     public DeadlockObservationBatch Deadlocks { get; }
     public QueryPerformanceObservationBatch QueryPerformance { get; }
+    public QueryStoreGroupOutputBatch? QueryStoreGroups { get; }
+    public PlanCacheRuntimeOutputBatch? PlanCacheRuntime { get; }
+    public PlanCacheContentOutputBatch? PlanCacheContent { get; }
+    public ServerConfigurationObservationBatch ServerConfigurations { get; }
     public IReadOnlyList<QueryPerformanceDatabaseStatus> QueryPerformanceStatuses { get; }
     public QueryPerformanceTargetStatus? QueryPerformanceTargetStatus { get; }
     public OperationalHealthPayload? OperationalHealth { get; }
     public HostMetricsPayloadContext? HostMetricsContext { get; }
+    public CpuPairedCaptureObservation? CpuPairedCapture { get; }
+    public CpuComponentsObservation? CpuComponents { get; }
+    public SqlAgentModuleCaptureResult? SqlAgentModuleCapture { get; }
     public int ItemCount => checked(
         Metrics.Count +
         Databases.Items.Count +
         DatabaseFiles.Items.Count +
+        SqlVolumes.Items.Count +
         ActivitySessions.Items.Count +
         ActivityRequests.Items.Count +
         ServerWaits.Items.Count +
         BlockingEdges.Items.Count +
         Deadlocks.Items.Count +
         QueryPerformance.Items.Count +
-        (OperationalHealth?.ItemCount ?? 0));
+        (QueryStoreGroups?.Items.Count ?? 0) +
+        (PlanCacheRuntime?.Items.Count ?? 0) +
+        (PlanCacheContent?.Items.Count ?? 0) +
+        ServerConfigurations.Items.Count +
+        (OperationalHealth?.ItemCount ?? 0) + (CpuPairedCapture is null ? 0 : 1) + (CpuComponents is null ? 0 : 1) + (SqlAgentModuleCapture is null ? 0 : 1));
     public int EstimatedSizeBytes => checked(
         Metrics.Sum(static item => item.EstimatedSizeBytes) +
         Databases.Items.Sum(static item => item.EstimatedSizeBytes) +
         DatabaseFiles.Items.Sum(static item => item.EstimatedSizeBytes) +
+        SqlVolumes.Items.Sum(static item => item.EstimatedSizeBytes) +
         ActivitySessions.Items.Sum(static item => item.EstimatedSizeBytes) +
         ActivityRequests.Items.Sum(static item => item.EstimatedSizeBytes) +
         ServerWaits.Items.Sum(static item => item.EstimatedSizeBytes) +
         BlockingEdges.Items.Sum(static item => item.EstimatedSizeBytes) +
         Deadlocks.Items.Sum(static item => item.EstimatedSizeBytes) +
         QueryPerformance.Items.Sum(static item => item.EstimatedSizeBytes) +
-        (OperationalHealth?.EstimatedSizeBytes ?? 0));
+        (QueryStoreGroups?.EstimatedSizeBytes ?? 0) +
+        (PlanCacheRuntime?.EstimatedSizeBytes ?? 0) +
+        (PlanCacheContent?.EstimatedSizeBytes ?? 0) +
+        ServerConfigurations.EstimatedSizeBytes +
+        (OperationalHealth?.EstimatedSizeBytes ?? 0) + (CpuPairedCapture?.EstimatedSizeBytes ?? 0) + (CpuComponents?.EstimatedSizeBytes ?? 0) + (SqlAgentModuleCapture is null ? 0 : SqlAgentActivityObservationsOutputValidation.EstimatedSizeBytes(SqlAgentModuleCapture)));
 
     public static CollectorPayload Empty { get; } = new();
 }
@@ -188,7 +233,8 @@ public sealed class CollectorExecutionResult
         CollectorRunReason reason,
         CollectorPayload payload,
         CollectorRunAccounting accounting,
-        CollectorLossEvidence loss)
+        CollectorLossEvidence loss,
+        DeadlockReadSourceProof? deadlockReadProof = null)
     {
         ArgumentNullException.ThrowIfNull(targetId);
         ArgumentNullException.ThrowIfNull(targetRevision);
@@ -252,6 +298,7 @@ public sealed class CollectorExecutionResult
         Payload = payload;
         Accounting = accounting;
         Loss = loss;
+        DeadlockReadProof = deadlockReadProof;
     }
 
     public MonitoredInstanceId TargetId { get; }
@@ -264,6 +311,7 @@ public sealed class CollectorExecutionResult
     public CollectorPayload Payload { get; }
     public CollectorRunAccounting Accounting { get; }
     public CollectorLossEvidence Loss { get; }
+    public DeadlockReadSourceProof? DeadlockReadProof { get; }
 }
 
 public sealed class CollectorMetricOutputContract
@@ -319,7 +367,15 @@ public sealed class CollectorOutputContract
         int maxBlockingEdgeObservations = 0,
         int maxDeadlockObservations = 0,
         int maxQueryPerformanceObservations = 0,
-        int maxOperationalHealthObservations = 0)
+        int maxOperationalHealthObservations = 0,
+        int maxSqlVolumeObservations = 0,
+        int maxQueryStoreGroupObservations = 0,
+        int maxServerConfigurationObservations = 0,
+        int maxPlanCacheRuntimeObservations = 0,
+        int maxPlanCacheContentObservations = 0,
+        int maxCpuPairedCaptureObservations = 0,
+        int maxCpuComponentsObservations = 0,
+        int maxSqlAgentActivityObservations = 0)
     {
         ArgumentNullException.ThrowIfNull(schemaVersion);
         ArgumentNullException.ThrowIfNull(metrics);
@@ -336,6 +392,11 @@ public sealed class CollectorOutputContract
         if (maxDatabaseFileObservations is < 0 or > DatabaseFileObservationBatch.MaximumItems)
         {
             throw new ArgumentOutOfRangeException(nameof(maxDatabaseFileObservations));
+        }
+
+        if (maxSqlVolumeObservations is < 0 or > SqlVolumeObservationBatch.MaximumItems)
+        {
+            throw new ArgumentOutOfRangeException(nameof(maxSqlVolumeObservations));
         }
 
         if (maxActivitySessionObservations is < 0 or > ActivitySessionObservationBatch.MaximumItems)
@@ -365,6 +426,14 @@ public sealed class CollectorOutputContract
         {
             throw new ArgumentOutOfRangeException(nameof(maxQueryPerformanceObservations));
         }
+        if (maxQueryStoreGroupObservations is < 0 or > QueryStoreGroupOutputBatch.MaximumItems)
+        {
+            throw new ArgumentOutOfRangeException(nameof(maxQueryStoreGroupObservations));
+        }
+        if (maxServerConfigurationObservations is < 0 or > ServerConfigurationObservationBatch.MaximumItems)
+            throw new ArgumentOutOfRangeException(nameof(maxServerConfigurationObservations));
+        if (maxPlanCacheRuntimeObservations is < 0 or > PlanCacheRuntimeOutputBatch.MaximumItems)
+            throw new ArgumentOutOfRangeException(nameof(maxPlanCacheRuntimeObservations));
         if (maxOperationalHealthObservations is < 0 or > IngestionLimits.MaximumItemCount)
         {
             throw new ArgumentOutOfRangeException(nameof(maxOperationalHealthObservations));
@@ -395,13 +464,27 @@ public sealed class CollectorOutputContract
         MaxMetricSamples = maxMetricSamples;
         MaxDatabaseObservations = maxDatabaseObservations;
         MaxDatabaseFileObservations = maxDatabaseFileObservations;
+        MaxSqlVolumeObservations = maxSqlVolumeObservations;
         MaxActivitySessionObservations = maxActivitySessionObservations;
         MaxActivityRequestObservations = maxActivityRequestObservations;
         MaxServerWaitObservations = maxServerWaitObservations;
         MaxBlockingEdgeObservations = maxBlockingEdgeObservations;
         MaxDeadlockObservations = maxDeadlockObservations;
         MaxQueryPerformanceObservations = maxQueryPerformanceObservations;
+        MaxQueryStoreGroupObservations = maxQueryStoreGroupObservations;
+        MaxPlanCacheRuntimeObservations = maxPlanCacheRuntimeObservations;
+        if (maxPlanCacheContentObservations is < 0 or > PlanCacheContentOutputBatch.MaximumEntries)
+            throw new ArgumentOutOfRangeException(nameof(maxPlanCacheContentObservations));
+        MaxPlanCacheContentObservations = maxPlanCacheContentObservations;
+        MaxServerConfigurationObservations = maxServerConfigurationObservations;
         MaxOperationalHealthObservations = maxOperationalHealthObservations;
+        if (maxCpuPairedCaptureObservations is < 0 or > 1)
+            throw new ArgumentOutOfRangeException(nameof(maxCpuPairedCaptureObservations));
+        MaxCpuPairedCaptureObservations = maxCpuPairedCaptureObservations;
+        if (maxCpuComponentsObservations is < 0 or > 1) throw new ArgumentOutOfRangeException(nameof(maxCpuComponentsObservations));
+        MaxCpuComponentsObservations = maxCpuComponentsObservations;
+        if (maxSqlAgentActivityObservations is < 0 or > 1) throw new ArgumentOutOfRangeException(nameof(maxSqlAgentActivityObservations));
+        MaxSqlAgentActivityObservations = maxSqlAgentActivityObservations;
     }
 
     public CollectorOutputSchemaVersion SchemaVersion { get; }
@@ -409,13 +492,21 @@ public sealed class CollectorOutputContract
     public int MaxMetricSamples { get; }
     public int MaxDatabaseObservations { get; }
     public int MaxDatabaseFileObservations { get; }
+    public int MaxSqlVolumeObservations { get; }
     public int MaxActivitySessionObservations { get; }
     public int MaxActivityRequestObservations { get; }
     public int MaxServerWaitObservations { get; }
     public int MaxBlockingEdgeObservations { get; }
     public int MaxDeadlockObservations { get; }
     public int MaxQueryPerformanceObservations { get; }
+    public int MaxQueryStoreGroupObservations { get; }
+    public int MaxPlanCacheRuntimeObservations { get; }
+    public int MaxPlanCacheContentObservations { get; }
+    public int MaxServerConfigurationObservations { get; }
     public int MaxOperationalHealthObservations { get; }
+    public int MaxCpuPairedCaptureObservations { get; }
+    public int MaxCpuComponentsObservations { get; }
+    public int MaxSqlAgentActivityObservations { get; }
 }
 
 /// <summary>Typed M9 payload; snapshots are immutable and contain no provider text.</summary>

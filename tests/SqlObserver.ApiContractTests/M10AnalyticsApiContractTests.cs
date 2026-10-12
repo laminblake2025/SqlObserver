@@ -46,6 +46,28 @@ public sealed class M10AnalyticsApiContractTests : IClassFixture<M10AnalyticsApi
     }
 
     [Fact]
+    public async Task SqlBaselineReadBindsVersionRevisionAndSourceWindowAndRequiresTargetReadRole()
+    {
+        factory.Repository.Clear(); factory.Repository.Mode = M10RepositoryMode.Normal;
+        string path = $"/api/v1/observation-targets/{M10AnalyticsApiFactory.Target:D}/analytics/sql-baselines?metricKey=engine.batch_requests_per_second&targetRevision=2&fromUtc=2026-09-02T00:00:00Z&toUtc=2026-09-30T00:00:00Z";
+        using HttpClient client = CreateClient("viewer"); using HttpResponseMessage response = await client.GetAsync(path);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        using JsonDocument body = JsonDocument.Parse(await response.Content.ReadAsStringAsync()); JsonElement page = body.RootElement;
+        Assert.Equal(2, page.GetProperty("catalogVersion").GetInt32()); Assert.Equal(MetricCatalogV2.Checksum, page.GetProperty("catalogChecksum").GetString());
+        Assert.Equal(2, page.GetProperty("targetRevision").GetInt64()); Assert.Equal("batches_per_second", page.GetProperty("unit").GetString());
+        Assert.Equal("unavailable", page.GetProperty("state").GetString()); Assert.Equal(168, page.GetProperty("items").GetArrayLength());
+        foreach (string identity in new[] { "denied", "scope" })
+        { using HttpClient denied = CreateClient(identity); Assert.Equal(HttpStatusCode.Forbidden, (await denied.GetAsync(path)).StatusCode); }
+        Assert.Equal(HttpStatusCode.BadRequest, (await client.GetAsync(path + "&catalogVersion=1")).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await client.GetAsync(path.Replace("engine.batch_requests_per_second", "host.cpu.percent", StringComparison.Ordinal))).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await client.GetAsync(path.Replace("2026-09-02", "2026-09-03", StringComparison.Ordinal))).StatusCode);
+        Assert.Single(factory.Repository.TargetIds);
+        factory.Repository.MalformedSqlBaseline = true;
+        try { Assert.Equal(HttpStatusCode.ServiceUnavailable, (await client.GetAsync(path)).StatusCode); }
+        finally { factory.Repository.MalformedSqlBaseline = false; }
+    }
+
+    [Fact]
     public void ServerCompositionResolvesRetentionPolicyServiceWithProductionRepository()
     {
         using var composed = factory.WithWebHostBuilder(builder => builder.ConfigureAppConfiguration((_, configuration) =>
@@ -302,6 +324,7 @@ internal enum M10RepositoryMode { Normal, Delayed, Oversized }
 internal sealed class M10AnalyticsRepository : IAnalyticsRepositoryPort, IAnalyticsSurfaceRepositoryPort
 {
     internal M10RepositoryMode Mode { get; set; }
+    internal bool MalformedSqlBaseline { get; set; }
     internal List<Guid> TargetIds { get; } = [];
     internal TaskCompletionSource<bool> Started { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
     internal TaskCompletionSource<bool> CancellationObserved { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -356,6 +379,15 @@ internal sealed class M10AnalyticsRepository : IAnalyticsRepositoryPort, IAnalyt
 
     public ValueTask<IReadOnlyList<BaselineResult>> ReadBaselinesAsync(AnalyticsQueryRequest request, CancellationToken cancellationToken) =>
         ValueTask.FromResult<IReadOnlyList<BaselineResult>>([new BaselineResult { MetricKey = request.MetricKey, HourOfWeek = 1, CompleteDays = 1, SampleCount = 1, Mean = 42, Confidence = 1, Coverage = 1 }]);
+
+    public ValueTask<IReadOnlyList<SqlMetricBaselineResult>> ReadSqlBaselinesAsync(AnalyticsQueryRequest request, long generation, CancellationToken cancellationToken)
+    {
+        Observe(request.TargetId.Value);
+        return ValueTask.FromResult<IReadOnlyList<SqlMetricBaselineResult>>(Enumerable.Range(0, 168).Select(hour => new SqlMetricBaselineResult(
+            new BaselineResult { MetricKey = request.MetricKey, HourOfWeek = hour, CompleteDays = 0, SampleCount = 0,
+                WindowStartUtc = request.FromUtc, WindowEndUtc = request.ToUtc, Generation = generation, VisibilityState = "unavailable",
+                Coverage = MalformedSqlBaseline ? 2 : 0 }, request.ToUtc)).ToArray());
+    }
 
     public ValueTask<IReadOnlyList<ForecastResult>> ReadForecastsAsync(AnalyticsQueryRequest request, TimeSpan horizon, CancellationToken cancellationToken) =>
         ValueTask.FromResult<IReadOnlyList<ForecastResult>>([new ForecastResult { MetricKey = request.MetricKey, HorizonStartUtc = At, HorizonEndUtc = At.Add(horizon), Estimate = 42, Confidence = 1, Residual = 0 }]);

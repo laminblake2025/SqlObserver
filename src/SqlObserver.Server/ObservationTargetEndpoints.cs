@@ -19,6 +19,7 @@ public static class ObservationTargetEndpoints
     public static IEndpointRouteBuilder MapObservationTargetEndpoints(this IEndpointRouteBuilder endpoints)
     {
         ArgumentNullException.ThrowIfNull(endpoints);
+        endpoints.MapGet("/api/v1/me", MeAsync).RequireAuthorization();
 
         RouteGroupBuilder group = endpoints.MapGroup(RoutePrefix).RequireAuthorization();
         group.MapGet("/", ListAsync);
@@ -27,11 +28,35 @@ public static class ObservationTargetEndpoints
         group.MapGet("/{instanceId:guid}", GetAsync);
         group.MapPut("/{instanceId:guid}", UpdateAsync)
             .RequireRateLimiting(AdministrativeMutationRateLimitPolicy.PolicyName);
+        group.MapPut("/{instanceId:guid}/grouping", UpdateGroupingAsync)
+            .RequireRateLimiting(AdministrativeMutationRateLimitPolicy.PolicyName);
         group.MapPost("/{instanceId:guid}/retire", RetireAsync)
             .RequireRateLimiting(AdministrativeMutationRateLimitPolicy.PolicyName);
         group.MapPost("/{instanceId:guid}/rediscovery", RediscoverAsync)
             .RequireRateLimiting(AdministrativeMutationRateLimitPolicy.PolicyName);
         return endpoints;
+    }
+
+    private static IResult MeAsync(HttpContext context, WindowsGroupRoleResolver resolver, Guid? targetId = null)
+    {
+        if (targetId == Guid.Empty) return Results.BadRequest();
+        try
+        {
+            AuthorizationContext authorization = resolver.Resolve(context.User);
+            var target = targetId is { } id ? new MonitoredInstanceId(id) : null;
+            string[] grantedRoles = authorization.IsActive
+                ? authorization.Roles.Select(static role => role.ToString()).ToArray()
+                : [];
+            string[] allTargetRoles = authorization.Roles
+                .Where(authorization.HasRoleForAllTargets)
+                .Select(static role => role.ToString()).ToArray();
+            string[] targetRoles = target is null
+                ? []
+                : authorization.Roles.Where(role => authorization.CanAccess(role, target))
+                    .Select(static role => role.ToString()).ToArray();
+            return Results.Ok(new { active = authorization.IsActive, grantedRoles, allTargetRoles, targetId, targetRoles });
+        }
+        catch (UnauthorizedAccessException) { return Results.Forbid(); }
     }
 
     private static async Task<IResult> ListAsync(
@@ -233,6 +258,36 @@ public static class ObservationTargetEndpoints
         {
             return InvalidRequest(correlationId);
         }
+    }
+
+    private static async Task<IResult> UpdateGroupingAsync(
+        HttpContext httpContext,
+        Guid instanceId,
+        UpdateObservationTargetGroupingBody body,
+        IObservationTargetGroupingService grouping,
+        WindowsGroupRoleResolver authorizationResolver,
+        CancellationToken cancellationToken)
+    {
+        AuditCorrelationId correlationId = BeginRequest(httpContext);
+        try
+        {
+            AuthorizationContext authorization = authorizationResolver.Resolve(httpContext.User);
+            var command = new SetObservationTargetGroupingCommand(authorization,
+                new MonitoredInstanceId(instanceId), body.ExpectedRevision, body.Environment,
+                body.Tags, correlationId, RepositoryTimeout);
+            ObservationTargetGroupingMutationResult result = await grouping.SetAsync(command, cancellationToken);
+            return result.Status switch
+            {
+                ObservationTargetGroupingMutationStatus.Applied => Results.Ok(
+                    new ObservationTargetGroupingResponse(instanceId, command.Environment, command.Tags, result.Revision!.Value)),
+                ObservationTargetGroupingMutationStatus.NotFound => NotFound(correlationId),
+                ObservationTargetGroupingMutationStatus.RevisionConflict or
+                    ObservationTargetGroupingMutationStatus.AlreadyRetired => Conflict(correlationId),
+                _ => throw new InvalidOperationException("The target grouping service returned an unknown status."),
+            };
+        }
+        catch (UnauthorizedAccessException) { return Forbidden(correlationId); }
+        catch (ArgumentException) { return InvalidRequest(correlationId); }
     }
 
     private static async Task<IResult> RetireAsync(

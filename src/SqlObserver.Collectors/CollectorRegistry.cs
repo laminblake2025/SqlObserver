@@ -17,6 +17,7 @@ public static class CollectorCatalogIds
     public static readonly CollectorId CurrentBlocking = new("blocking.current");
     public static readonly CollectorId Deadlocks = new("deadlocks.system-health");
     public static readonly CollectorId QueryPerformance = new("queries.performance");
+    public static readonly CollectorId QueryStoreGroups = new("queries.performance-groups");
     public static readonly CollectorId BackupsStatus = new("backups.status");
     public static readonly CollectorId SqlAgentFailures = new("sql-agent.failures");
     public static readonly CollectorId TempDbHealth = new("tempdb.health");
@@ -65,27 +66,38 @@ public sealed class CollectorRegistration
             (output.MaxMetricSamples > 0 ? 1 : 0) +
             (output.MaxDatabaseObservations > 0 ? 1 : 0) +
             (output.MaxDatabaseFileObservations > 0 ? 1 : 0) +
+            (output.MaxSqlVolumeObservations > 0 ? 1 : 0) +
             (output.MaxActivitySessionObservations > 0 ? 1 : 0) +
             (output.MaxActivityRequestObservations > 0 ? 1 : 0) +
             (output.MaxServerWaitObservations > 0 ? 1 : 0) +
             (output.MaxBlockingEdgeObservations > 0 ? 1 : 0) +
             (output.MaxDeadlockObservations > 0 ? 1 : 0) +
-            (output.MaxQueryPerformanceObservations > 0 ? 1 : 0);
+            (output.MaxQueryPerformanceObservations > 0 ? 1 : 0) +
+            (output.MaxQueryStoreGroupObservations > 0 ? 1 : 0) +
+            (output.MaxServerConfigurationObservations > 0 ? 1 : 0);
             populatedKinds += output.MaxOperationalHealthObservations > 0 ? 1 : 0;
+            populatedKinds += output.MaxCpuComponentsObservations > 0 ? 1 : 0;
+            populatedKinds += output.MaxSqlAgentActivityObservations > 0 ? 1 : 0;
         bool valid = populatedKinds == 1 && manifest.OutputKind switch
         {
             CollectorOutputKind.Metrics => output.MaxMetricSamples > 0,
             CollectorOutputKind.DatabaseInventory => output.MaxDatabaseObservations > 0,
             CollectorOutputKind.DatabaseFiles => output.MaxDatabaseFileObservations > 0,
+            CollectorOutputKind.SqlVolumes => output.MaxSqlVolumeObservations > 0,
             CollectorOutputKind.ActivitySessions => output.MaxActivitySessionObservations > 0,
             CollectorOutputKind.ActivityRequests => output.MaxActivityRequestObservations > 0,
             CollectorOutputKind.ServerWaits => output.MaxServerWaitObservations > 0,
             CollectorOutputKind.CurrentBlocking => output.MaxBlockingEdgeObservations > 0,
             CollectorOutputKind.Deadlocks => output.MaxDeadlockObservations > 0,
             CollectorOutputKind.QueryPerformance => output.MaxQueryPerformanceObservations > 0,
+            CollectorOutputKind.QueryStoreGroups => output.MaxQueryStoreGroupObservations > 0,
+            CollectorOutputKind.ServerConfigurations => output.MaxServerConfigurationObservations > 0,
             CollectorOutputKind.BackupsStatus or CollectorOutputKind.SqlAgentFailures or CollectorOutputKind.TempDbHealth or CollectorOutputKind.AvailabilityGroupsHealth => output.MaxOperationalHealthObservations > 0,
             CollectorOutputKind.ReplicationHealth => output.MaxOperationalHealthObservations > 0,
+            CollectorOutputKind.ServerLifecycle => output.MaxOperationalHealthObservations > 0,
             CollectorOutputKind.CapabilityProfile => false,
+            CollectorOutputKind.CpuComponents => output.MaxCpuComponentsObservations > 0,
+            CollectorOutputKind.SqlAgentActivityObservations => output.MaxSqlAgentActivityObservations > 0,
             _ => false,
         };
         if (!valid)
@@ -119,6 +131,12 @@ public sealed class CollectorRegistry
                 [CollectorCatalogIds.AvailabilityGroupsHealth.Value] = (13, CollectorOutputKind.AvailabilityGroupsHealth),
                 [CollectorCatalogIds.HostMetrics.Value] = (14, CollectorOutputKind.Metrics),
                 [CollectorCatalogIds.ReplicationHealth.Value] = (15, CollectorOutputKind.ReplicationHealth),
+                [CollectorCatalogIds.QueryStoreGroups.Value] = (17, CollectorOutputKind.QueryStoreGroups),
+                ["engine.buffer-nodes"] = (18, CollectorOutputKind.Metrics),
+                ["engine.configurations"] = (19, CollectorOutputKind.ServerConfigurations),
+                ["cpu.components"] = (20, CollectorOutputKind.CpuComponents),
+                ["server.lifecycle"] = (21, CollectorOutputKind.ServerLifecycle),
+                ["sql-agent.activity-observations"] = (22, CollectorOutputKind.SqlAgentActivityObservations),
             });
 
     private readonly ReadOnlyCollection<CollectorRegistration> _registrations;

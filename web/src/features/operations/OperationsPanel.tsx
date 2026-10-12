@@ -1,15 +1,31 @@
-import { useEffect, useReducer, useRef, useState } from "react";
-import { AnalyticsSurfacePanel } from "../analytics/AnalyticsSurfacePanel";
-import { EvidenceStatus, Tabs } from "../../components/DiagnosticUi";
-import { EvidenceTable } from "../../components/EvidenceTable";
-import { getOperationalPage, OperationalApiError } from "./operationsApi";
-import { initialOperationsState, operationKinds, operationsReducer } from "./operationsState";
-import { buildOperationsRenderModel, type OperationsRenderCard } from "./operationsRenderModel";
-import type { OperationalKind, OperationalPage } from "./operationsTypes";
+import { useLayoutEffect, useMemo, useRef, useState } from "react";
+import { Tabs } from "../../components/DiagnosticUi";
+import { healthSectionHref, readRoute } from "../../dashboardModel";
+import "./operationsProjection.css";
+import type { OverviewScope } from "../overview/overviewTypes";
+import { overviewWindow } from "../overview/overviewModel";
+import { AvailabilityEvidencePanel } from "./AvailabilityEvidencePanel";
+import type { AvailabilityEvidenceAccessOwner } from "./useAvailabilityEvidence";
+import { BackupAssessmentPanel } from "./BackupAssessmentPanel";
+import { AgentFailureHistoryPanel } from "./AgentFailureHistoryPanel";
+import { healthCheckHref, type HealthCheckTab } from "./agentHistoryModel.ts";
+import { useTempDbWindowHistory } from "./useTempDbWindowHistory";
+import { TempDbWindowHistoryPanel } from "./TempDbWindowHistoryPanel";
+import { tempDbWindow, tempDbContextIdentity, type TempDbSelection } from "./tempDbWindowHistoryModel";
+import { useReplicationWindowHistory } from "./useReplicationWindowHistory";
+import { ReplicationWindowHistoryPanel } from "./ReplicationWindowHistoryPanel";
+import { replicationWindow, replicationContextIdentity, type ReplicationSelection } from "./replicationWindowHistoryModel";
+import { retainReplicationSelectionHref } from "./replicationSelectionModel";
+import { useBackupAvailabilityWindowHistory } from "./useBackupAvailabilityWindowHistory";
+import { BackupAvailabilityWindowHistoryPanel } from "./BackupAvailabilityWindowHistoryPanel";
+import { backupAvailabilityWindow, backupAvailabilityContextIdentity, type BackupAvailabilitySelection } from "./backupAvailabilityWindowHistoryModel";
+import { retainBackupAvailabilitySelectionHref } from "./backupAvailabilitySelectionModel";
+import { useAgentActivityHistory } from "./useAgentActivityHistory";
+import { AgentActivityHistoryPanel } from "./AgentActivityHistoryPanel";
+import { agentActivityWindow, type AgentActivitySelection } from "./agentActivityHistoryModel";
+import { retainAgentActivitySelectionHref } from "./agentActivitySelectionModel";
 
-type OperationsTab = "backups" | "agent" | "tempdb" | "availability" | "replication";
-
-// Existing projection labels remain visible within the grouped tabs: Backups, SQL Agent failures, TempDB summary, TempDB files, Availability Group replicas, and Availability Group databases.
+type OperationsTab = HealthCheckTab;
 
 const tabs: readonly { readonly value: OperationsTab; readonly label: string }[] = [
   { value: "backups", label: "Backups" },
@@ -19,162 +35,170 @@ const tabs: readonly { readonly value: OperationsTab; readonly label: string }[]
   { value: "replication", label: "Replication" },
 ];
 
-const tabKinds: Readonly<Record<Exclude<OperationsTab, "replication">, readonly OperationalKind[]>> = {
-  backups: ["backups"],
-  agent: ["agent"],
-  tempdb: ["tempdb-summary", "tempdb-files"],
-  availability: ["ag-replicas", "ag-databases"],
-};
+interface OperationsWindow { readonly fromUtc: string; readonly toUtc: string }
+export interface OperationsPanelProps {
+  readonly instanceId: string;
+  readonly targetRevision: number;
+  readonly initialTab?: OperationsTab;
+  readonly refresh: number;
+  readonly scope: OverviewScope;
+  readonly canManageBackupPolicies?: boolean;
+  readonly selectedTempDb?: TempDbSelection | null;
+  readonly onSelectTempDb?: (selection: TempDbSelection | undefined, window?: OperationsWindow) => void;
+  readonly onRetainTempDbWindow?: (window: OperationsWindow, selection?: TempDbSelection) => void;
+  readonly selectedReplication?: ReplicationSelection | null;
+  readonly onSelectReplication?: (selection: ReplicationSelection | undefined, window?: OperationsWindow) => void;
+  readonly onRetainReplicationWindow?: (window: OperationsWindow, selection?: ReplicationSelection) => void;
+  readonly selectedAgentActivity?: AgentActivitySelection | null;
+  readonly onSelectAgentActivity?: (selection: AgentActivitySelection | undefined, window?: OperationsWindow) => void;
+  readonly onRetainAgentActivityWindow?: (window: OperationsWindow, selection?: AgentActivitySelection) => void;
+  readonly selectedBackupHistory?: BackupAvailabilitySelection | null;
+  readonly selectedAvailabilityHistory?: BackupAvailabilitySelection | null;
+  readonly onSelectBackupHistory?: (selection: BackupAvailabilitySelection | undefined, window?: OperationsWindow) => void;
+  readonly onSelectAvailabilityHistory?: (selection: BackupAvailabilitySelection | undefined, window?: OperationsWindow) => void;
+  readonly onRetainBackupHistoryWindow?: (window: OperationsWindow, selection?: BackupAvailabilitySelection) => void;
+  readonly onRetainAvailabilityHistoryWindow?: (window: OperationsWindow, selection?: BackupAvailabilitySelection) => void;
+  readonly accessContext?: string;
+}
 
-export function OperationsPanel({ instanceId }: { readonly instanceId: string }) {
-  const [cards, dispatch] = useReducer(operationsReducer, undefined, initialOperationsState);
-  const [tab, setTab] = useState<OperationsTab>("backups");
-  const controllers = useRef(new Map<OperationalKind, AbortController>());
-
-  useEffect(() => {
-    controllers.current.forEach((controller) => controller.abort());
-    controllers.current.clear();
-    dispatch({ type: "reset" });
-    let disposed = false;
-    const isCurrent = (kind: OperationalKind, controller: AbortController) => !disposed && !controller.signal.aborted && controllers.current.get(kind) === controller;
-    const load = async (kind: OperationalKind, cursor?: string | null) => {
-      const controller = new AbortController();
-      controllers.current.set(kind, controller);
-      dispatch({ type: "start", kind, append: cursor !== undefined });
-      try {
-        const page = await getOperationalPage(instanceId, kind, { cursor, limit: 50, signal: controller.signal });
-        if (isCurrent(kind, controller)) dispatch({ type: "success", kind, page, append: cursor !== undefined });
-      } catch (error: unknown) {
-        if (isCurrent(kind, controller) && !(error instanceof DOMException && error.name === "AbortError")) {
-          const api = error instanceof OperationalApiError ? error : undefined;
-          dispatch({ type: "failure", kind, error: api?.message ?? "Operational health is temporarily unavailable.", retryable: api?.retryable ?? true });
-        }
-      }
-    };
-    operationKinds.forEach((kind) => { void load(kind); });
-    return () => {
-      disposed = true;
-      controllers.current.forEach((controller) => controller.abort());
-      controllers.current.clear();
-    };
-  }, [instanceId]);
-
-  const retry = (kind: OperationalKind) => {
-    controllers.current.get(kind)?.abort();
-    const controller = new AbortController();
-    controllers.current.set(kind, controller);
-    dispatch({ type: "start", kind, append: false });
-    void getOperationalPage(instanceId, kind, { limit: 50, signal: controller.signal })
-      .then((page) => { if (!controller.signal.aborted && controllers.current.get(kind) === controller) dispatch({ type: "success", kind, page, append: false }); })
-      .catch((error: unknown) => { if (!controller.signal.aborted && controllers.current.get(kind) === controller && !(error instanceof DOMException && error.name === "AbortError")) dispatch({ type: "failure", kind, error: error instanceof OperationalApiError ? error.message : "Operational health is temporarily unavailable.", retryable: true }); });
+export function OperationsPanel({
+  instanceId, targetRevision, initialTab = "backups", refresh, scope, canManageBackupPolicies = false,
+  selectedTempDb, onSelectTempDb, onRetainTempDbWindow,
+  selectedReplication, onSelectReplication, onRetainReplicationWindow,
+  selectedAgentActivity, onSelectAgentActivity, onRetainAgentActivityWindow,
+  selectedBackupHistory, selectedAvailabilityHistory, onSelectBackupHistory, onSelectAvailabilityHistory,
+  onRetainBackupHistoryWindow, onRetainAvailabilityHistoryWindow, accessContext = "",
+}: OperationsPanelProps) {
+  const renderedHash = location.hash;
+  const primaryAgAuthority = JSON.stringify([instanceId.toLowerCase(), targetRevision, accessContext]);
+  const primaryAgAccess = useRef<{ authority: string; owner: AvailabilityEvidenceAccessOwner }>({ authority: primaryAgAuthority, owner: {} });
+  if (primaryAgAccess.current.authority !== primaryAgAuthority) primaryAgAccess.current = { authority: primaryAgAuthority, owner: {} };
+  const tabKey = JSON.stringify([instanceId.toLowerCase(), initialTab]);
+  const [selectedTab, setSelectedTab] = useState<{ key: string; value: OperationsTab }>();
+  const tab = selectedTab?.key === tabKey ? selectedTab.value : initialTab;
+  const section = useRef<HTMLElement | null>(null);
+  useLayoutEffect(() => {
+    const scroller = section.current?.querySelector<HTMLDivElement>(':scope > [role="tablist"]');
+    if (!scroller) return;
+    function revealSelected() {
+      const selected = scroller!.querySelector<HTMLButtonElement>('[role="tab"][aria-selected="true"]');
+      if (!selected || scroller!.scrollWidth <= scroller!.clientWidth) return;
+      const viewport = scroller!.getBoundingClientRect(), bounds = selected.getBoundingClientRect();
+      const scale = viewport.width / scroller!.offsetWidth;
+      if (!Number.isFinite(scale) || scale <= 0) return;
+      const left = viewport.left + scroller!.clientLeft * scale, right = left + scroller!.clientWidth * scale;
+      // Reveal locally without moving focus or the page's vertical position.
+      if (bounds.left < left) scroller!.scrollLeft -= Math.ceil((left - bounds.left) / scale);
+      else if (bounds.right > right) scroller!.scrollLeft += Math.ceil((bounds.right - right) / scale);
+    }
+    revealSelected();
+    let width = scroller.clientWidth;
+    const observer = new ResizeObserver(() => {
+      const nextWidth = scroller.clientWidth;
+      if (nextWidth === width) return;
+      width = nextWidth;
+      revealSelected();
+    });
+    observer.observe(scroller);
+    return () => observer.disconnect();
+  }, [tab]);
+  const tempDbScopeKey = scope.range === "custom" ? tempDbContextIdentity({targetId:instanceId,targetRevision,fromUtc:scope.from ?? "",toUtc:scope.to ?? ""}) : JSON.stringify([instanceId.toLowerCase(),targetRevision,scope.range]);
+  const retainedTempDbWindow = useRef<{key:string;window:{fromUtc:string;toUtc:string}} | undefined>(undefined);
+  const previousTempDbScope = useRef(tempDbScopeKey);
+  if (previousTempDbScope.current !== tempDbScopeKey) { previousTempDbScope.current = tempDbScopeKey; retainedTempDbWindow.current = undefined; }
+  const tempDbContext = useMemo(() => {
+    try { const window = retainedTempDbWindow.current?.key === tempDbScopeKey ? retainedTempDbWindow.current.window : overviewWindow(scope, Date.now()); const bounded = tempDbWindow(window.fromUtc, window.toUtc); if (selectedTempDb !== undefined) retainedTempDbWindow.current = {key:tempDbScopeKey,window:bounded}; return { binding: { targetId: instanceId, targetRevision, ...bounded }, error: undefined }; }
+    catch (failure) { return { binding: undefined, error: failure instanceof Error ? failure.message : "Choose a valid TempDB history window." }; }
+  }, [instanceId, targetRevision, tempDbScopeKey, refresh, selectedTempDb]);
+  const tempDbHistory = useTempDbWindowHistory(tab === "tempdb" ? tempDbContext.binding : undefined, selectedTempDb, refresh);
+  const receivedTempDbWindow = tempDbHistory.list.pages[0] ?? tempDbHistory.detail.pages[0] ?? tempDbContext.binding;
+  const retainTempDbWindow = () => { if (receivedTempDbWindow) { tempDbHistory.retain(); retainedTempDbWindow.current = {key:tempDbScopeKey,window:receivedTempDbWindow}; onRetainTempDbWindow?.(receivedTempDbWindow, tempDbHistory.selected ?? undefined); } };
+  const replicationScopeKey = scope.range === "custom" ? replicationContextIdentity({targetId:instanceId,targetRevision,fromUtc:scope.from ?? "",toUtc:scope.to ?? ""}) : JSON.stringify([instanceId.toLowerCase(),targetRevision,scope.range]);
+  const retainedReplicationWindow = useRef<{key:string;window:{fromUtc:string;toUtc:string}} | undefined>(undefined);
+  const previousReplicationScope = useRef(replicationScopeKey);
+  if (previousReplicationScope.current !== replicationScopeKey) { previousReplicationScope.current = replicationScopeKey; retainedReplicationWindow.current = undefined; }
+  const replicationContext = useMemo(() => {
+    try { const window = retainedReplicationWindow.current?.key === replicationScopeKey ? retainedReplicationWindow.current.window : overviewWindow(scope, Date.now()); const bounded = replicationWindow(window.fromUtc, window.toUtc); if (selectedReplication !== undefined) retainedReplicationWindow.current = {key:replicationScopeKey,window:bounded}; return { binding: { targetId: instanceId, targetRevision, ...bounded }, error: undefined }; }
+    catch (failure) { return { binding: undefined, error: failure instanceof Error ? failure.message : "Choose a valid replication history window." }; }
+  }, [instanceId, targetRevision, replicationScopeKey, refresh, selectedReplication]);
+  const replicationHistory = useReplicationWindowHistory(tab === "replication" ? replicationContext.binding : undefined, selectedReplication, refresh, accessContext);
+  const receivedReplicationWindow = replicationHistory.list.pages[0] ?? replicationHistory.detail.pages[0] ?? replicationContext.binding;
+  const retainReplicationWindow = () => { if (receivedReplicationWindow) { replicationHistory.retain(); retainedReplicationWindow.current = {key:replicationScopeKey,window:receivedReplicationWindow}; onRetainReplicationWindow?.(receivedReplicationWindow, replicationHistory.selected ?? undefined); } };
+  const agentActivityScopeKey = JSON.stringify([instanceId.toLowerCase(), targetRevision, scope.range,
+    scope.range === "custom" ? scope.from ?? "" : "", scope.range === "custom" ? scope.to ?? "" : ""]);
+  const retainedAgentActivityWindow = useRef<{ key: string; window: OperationsWindow } | undefined>(undefined);
+  const previousAgentActivityScope = useRef(agentActivityScopeKey);
+  if (previousAgentActivityScope.current !== agentActivityScopeKey) {
+    previousAgentActivityScope.current = agentActivityScopeKey;
+    retainedAgentActivityWindow.current = undefined;
+  }
+  const agentActivityContext = useMemo(() => {
+    try {
+      const window = retainedAgentActivityWindow.current?.key === agentActivityScopeKey
+        ? retainedAgentActivityWindow.current.window : overviewWindow(scope, Date.now());
+      const bounded = agentActivityWindow(window.fromUtc, window.toUtc);
+      if (selectedAgentActivity !== undefined) retainedAgentActivityWindow.current = { key: agentActivityScopeKey, window: bounded };
+      return { binding: { targetId: instanceId, targetRevision, ...bounded }, error: undefined };
+    } catch (failure) {
+      return { binding: undefined, error: failure instanceof Error ? failure.message : "Choose a valid Agent observation window." };
+    }
+  }, [instanceId, targetRevision, agentActivityScopeKey, refresh, selectedAgentActivity]);
+  const agentActivityHistory = useAgentActivityHistory(tab === "agent" ? agentActivityContext.binding : undefined,
+    selectedAgentActivity, refresh, accessContext);
+  const receivedAgentActivityWindow = agentActivityHistory.list.pages[0] ?? agentActivityHistory.detail.pages[0] ?? agentActivityContext.binding;
+  const retainAgentActivityWindow = () => {
+    if (receivedAgentActivityWindow) {
+      agentActivityHistory.retain();
+      retainedAgentActivityWindow.current = { key: agentActivityScopeKey, window: receivedAgentActivityWindow };
+      onRetainAgentActivityWindow?.(receivedAgentActivityWindow, agentActivityHistory.selected ?? undefined);
+    }
   };
-
-  const more = (kind: OperationalKind, cursor: string) => {
-    controllers.current.get(kind)?.abort();
-    const controller = new AbortController();
-    controllers.current.set(kind, controller);
-    dispatch({ type: "start", kind, append: true });
-    void getOperationalPage(instanceId, kind, { limit: 50, cursor, signal: controller.signal })
-      .then((page) => { if (!controller.signal.aborted && controllers.current.get(kind) === controller) dispatch({ type: "success", kind, page, append: true }); })
-      .catch((error: unknown) => { if (!controller.signal.aborted && controllers.current.get(kind) === controller && !(error instanceof DOMException && error.name === "AbortError")) dispatch({ type: "failure", kind, error: error instanceof OperationalApiError ? error.message : "Operational health is temporarily unavailable.", retryable: true }); });
-  };
-
-  const cancel = (kind: OperationalKind) => {
-    controllers.current.get(kind)?.abort();
-    controllers.current.delete(kind);
-    dispatch({ type: "cancel", kind });
-  };
-
-  const model = buildOperationsRenderModel(cards);
-  const activeKinds = tab === "replication" ? [] : tabKinds[tab];
-  return <section className="operations-screen" aria-label="Operational health">
-    <div className="screen-intro"><div><p className="eyebrow">Operations · target-scoped projections</p><h2>Operational health</h2><p>Daily checks for recovery, jobs, TempDB, availability, and replication visibility. Each category retains its own loading, failure, retry, cancellation, and paging state.</p></div></div>
-    <Tabs label="Operational health categories" tabs={tabs} value={tab} onChange={(value) => setTab(value as OperationsTab)} />
-    {tab === "replication" ? <ReplicationTab instanceId={instanceId} /> : <div className="operations-stack">{activeKinds.map((kind) => <OperationCard card={model.cards[kind]} key={kind} onCancel={cancel} onLoadMore={more} onRetry={retry} />)}</div>}
+  const earlierScopeKey = scope.range === "custom" ? backupAvailabilityContextIdentity({ targetId: instanceId, targetRevision, fromUtc: scope.from ?? "", toUtc: scope.to ?? "" }) : JSON.stringify([instanceId.toLowerCase(), targetRevision, scope.range]);
+  const retainedBackupWindow = useRef<{key:string;window:{fromUtc:string;toUtc:string}} | undefined>(undefined);
+  const retainedAvailabilityWindow = useRef<{key:string;window:{fromUtc:string;toUtc:string}} | undefined>(undefined);
+  const previousEarlierScope = useRef(earlierScopeKey);
+  if (previousEarlierScope.current !== earlierScopeKey) { previousEarlierScope.current = earlierScopeKey; retainedBackupWindow.current = undefined; retainedAvailabilityWindow.current = undefined; }
+  function resolveEarlierWindow(selected: BackupAvailabilitySelection | null | undefined, retained: typeof retainedBackupWindow) {
+    try {
+      const window = retained.current?.key === earlierScopeKey ? retained.current.window : overviewWindow(scope, Date.now()), bounded = backupAvailabilityWindow(window.fromUtc, window.toUtc);
+      if (selected !== undefined) retained.current = { key: earlierScopeKey, window: bounded };
+      return { binding: { targetId: instanceId, targetRevision, ...bounded }, error: undefined };
+    } catch (failure) { return { binding: undefined, error: failure instanceof Error ? failure.message : "Choose a valid earlier collection history window." }; }
+  }
+  const backupContext = useMemo(() => resolveEarlierWindow(selectedBackupHistory, retainedBackupWindow), [instanceId, targetRevision, earlierScopeKey, refresh, selectedBackupHistory]);
+  const availabilityContext = useMemo(() => resolveEarlierWindow(selectedAvailabilityHistory, retainedAvailabilityWindow), [instanceId, targetRevision, earlierScopeKey, refresh, selectedAvailabilityHistory]);
+  const backupHistory = useBackupAvailabilityWindowHistory(tab === "backups" ? backupContext.binding : undefined, "backup", selectedBackupHistory, refresh, accessContext);
+  const availabilityHistory = useBackupAvailabilityWindowHistory(tab === "availability" ? availabilityContext.binding : undefined, "availability", selectedAvailabilityHistory, refresh, accessContext);
+  const receivedBackupWindow = backupHistory.list.pages[0] ?? backupHistory.backup.pages[0] ?? backupContext.binding;
+  const receivedAvailabilityWindow = availabilityHistory.list.pages[0] ?? availabilityHistory.replicas.pages[0] ?? availabilityHistory.databases.pages[0] ?? availabilityContext.binding;
+  function retainBackupWindow() { if (receivedBackupWindow) { backupHistory.retain(); retainedBackupWindow.current = { key: earlierScopeKey, window: receivedBackupWindow }; onRetainBackupHistoryWindow?.(receivedBackupWindow, backupHistory.selected ?? undefined); } }
+  function retainAvailabilityWindow() { if (receivedAvailabilityWindow) { availabilityHistory.retain(); retainedAvailabilityWindow.current = { key: earlierScopeKey, window: receivedAvailabilityWindow }; onRetainAvailabilityHistoryWindow?.(receivedAvailabilityWindow, availabilityHistory.selected ?? undefined); } }
+  return <section ref={section} className="operations-screen" aria-label="Health checks">
+    <div className="screen-intro"><div><p className="eyebrow">Database operations</p><h2>Health checks</h2><p>Investigate backup freshness, job failures, TempDB usage evidence, availability, and replication from collected evidence.</p></div></div>
+    <Tabs label="Health check categories" tabs={tabs} value={tab} revealFocusedTab onChange={(value) => {
+      const currentHash = location.hash, currentRoute = readRoute(currentHash);
+      if (currentHash !== renderedHash || currentRoute.page !== "operations"
+        || currentRoute.target.toLowerCase() !== instanceId.toLowerCase()) return;
+      setSelectedTab({ key: tabKey, value: value as OperationsTab });
+      location.hash = retainAgentActivitySelectionHref(retainBackupAvailabilitySelectionHref(retainReplicationSelectionHref(
+        healthCheckHref(scope, instanceId, value as OperationsTab), currentHash), currentHash), currentHash);
+    }} />
+    <nav className="toolbar" aria-label="Additional health checks">
+      <a className="secondary-button" href={healthSectionHref(scope, instanceId, "summary")}>Configuration drift</a>
+      <a className="secondary-button" href={healthSectionHref(scope, instanceId, "databases")}>Database options</a>
+    </nav>
+    <p className="table-note">Configuration drift and database options open their existing Server summary sections with this workspace time and database context. Change history follows the selected window when supported; current settings and inventory show their latest source snapshots. Server configuration remains server-wide.</p>
+    {scope.range === "custom" && <p className="table-note">Rewind selects completion-window TempDB, replication, Agent activity observations and supporting legacy backup/AG receipts. Primary backup assessments and per-replica v2 AG evidence use the declared window end as their assessment/publication cutoff; their start does not filter snapshot rows. SQL Agent failure history uses first-observed time.</p>}
+    {tab === "agent" ? <><AgentFailureHistoryPanel instanceId={instanceId} targetRevision={targetRevision} scope={scope} refresh={refresh} />
+      {agentActivityContext.error && <p role="alert">{agentActivityContext.error}</p>}
+      <AgentActivityHistoryPanel history={agentActivityHistory} selected={selectedAgentActivity}
+        onSelectReceipt={selection => onSelectAgentActivity?.(selection, receivedAgentActivityWindow)}
+        onRetainWindow={retainAgentActivityWindow} /></>
+      : tab === "availability" ? <><AvailabilityEvidencePanel instanceId={instanceId} targetRevision={targetRevision} accessContext={accessContext} accessOwner={primaryAgAccess.current.owner} scope={scope} refresh={refresh} />
+      {availabilityContext.error && <p role="alert">{availabilityContext.error}</p>}<BackupAvailabilityWindowHistoryPanel kind="availability" history={availabilityHistory} selected={selectedAvailabilityHistory} onSelectReceipt={selection => onSelectAvailabilityHistory?.(selection, receivedAvailabilityWindow)} onRetainWindow={retainAvailabilityWindow} />
+      </> : tab === "backups" ? <><BackupAssessmentPanel instanceId={instanceId} scope={scope} refresh={refresh} canManagePolicies={canManageBackupPolicies} />
+        {backupContext.error && <p role="alert">{backupContext.error}</p>}<BackupAvailabilityWindowHistoryPanel kind="backup" history={backupHistory} selected={selectedBackupHistory} onSelectReceipt={selection => onSelectBackupHistory?.(selection, receivedBackupWindow)} onRetainWindow={retainBackupWindow} />
+        </> : tab === "replication" ? <>{replicationContext.error && <p role="alert">{replicationContext.error}</p>}<ReplicationWindowHistoryPanel history={replicationHistory} selected={selectedReplication} onSelectReceipt={selection => onSelectReplication?.(selection, receivedReplicationWindow)} onRetainWindow={retainReplicationWindow} /></>
+        : <>{tempDbContext.error && <p role="alert">{tempDbContext.error}</p>}<TempDbWindowHistoryPanel history={tempDbHistory} selected={selectedTempDb} onSelectReceipt={selection => onSelectTempDb?.(selection, receivedTempDbWindow)} onRetainWindow={retainTempDbWindow} /></>}
   </section>;
-}
-
-function OperationCard({ card, onRetry, onLoadMore, onCancel }: { readonly card: OperationsRenderCard; readonly onRetry: (kind: OperationalKind) => void; readonly onLoadMore: (kind: OperationalKind, cursor: string) => void; readonly onCancel: (kind: OperationalKind) => void }) {
-  const page = card.page;
-  const tone = card.status === "Complete" ? "current" : card.status === "Error" || card.status === "PermissionDenied" ? "critical" : card.status === "Partial" || card.status === "Degraded" ? "warning" : "unavailable";
-  return <article className="operation-card panel" aria-label={card.label}>
-    <div className="operation-card-heading"><div><p className="eyebrow">{card.kind === "agent" ? "SQL AGENT" : card.kind.toUpperCase()}</p><h3>{card.label}</h3></div><EvidenceStatus label={card.loading ? "Loading" : page?.state ?? card.status} detail={page ? `Observed ${formatUtc(page.observedAtUtc)}` : undefined} tone={tone} /></div>
-    {card.status === "Loading" ? <div className="operation-state"><p>Loading bounded evidence…</p><button type="button" onClick={() => onCancel(card.kind)}>Cancel</button></div> : null}
-    {card.status === "Error" && page === undefined ? <div className="operation-state"><p role="alert">{card.error ?? "Operational health is temporarily unavailable."}</p>{card.canRetry ? <button type="button" onClick={() => onRetry(card.kind)}>Retry</button> : null}</div> : null}
-    {page ? <>
-      <OperationCoverage page={page} kind={card.kind} />
-      {card.kind === "tempdb-summary" ? <TempDbSummary page={page} /> : null}
-      {page.state === "NoData" ? <p className="empty-state">No data is available for this target.</p> : null}
-      {page.state === "Unsupported" ? <p className="empty-state">Unsupported by this target.</p> : null}
-      {page.state === "PermissionDenied" ? <p className="empty-state">Permission denied.</p> : null}
-      {page.items.length ? <NamedOperationEvidence kind={card.kind} page={page} /> : card.kind !== "tempdb-summary" && page.state === "Complete" ? <p className="empty-state">No bounded rows were reported by this observation.</p> : null}
-      {page.items.length ? <details className="evidence-disclosure"><summary>Secondary projection fields</summary><EvidenceTable label={`${card.label} secondary evidence`} rows={card.items} /></details> : null}
-      {card.error ? <div className="operation-state"><p role="alert">{card.error}</p>{card.canRetry ? <button type="button" onClick={() => onRetry(card.kind)}>Retry</button> : null}</div> : null}
-      {card.canLoadMore && page.nextCursor ? <button type="button" disabled={card.loading} onClick={() => onLoadMore(card.kind, page.nextCursor!)}>Load more bounded rows</button> : null}
-    </> : null}
-  </article>;
-}
-
-function OperationCoverage({ page, kind }: { readonly page: OperationalPage; readonly kind: OperationalKind }) {
-  return <div className="operation-coverage"><span>Snapshot observed {formatUtc(page.observedAtUtc)}</span>{page.truncated ? <strong>Partial capture · additional rows may be missing</strong> : null}{page.visibilityScope ? <span>Visibility: {page.visibilityScope}</span> : null}{page.coverageFromUtc || page.coverageToUtc ? <span>SQL Agent coverage: {formatUtc(page.coverageFromUtc ?? "")} to {formatUtc(page.coverageToUtc ?? "")}</span> : null}{kind === "agent" ? <small>Job names/messages and source-local timestamps are unavailable; timestamps are labeled first observed in UTC.</small> : null}</div>;
-}
-
-function TempDbSummary({ page }: { readonly page: OperationalPage }) {
-  const values: readonly [string, unknown][] = [["Total bytes", page.totalBytes], ["Used bytes", page.usedBytes], ["Log total bytes", page.logTotalBytes], ["Log used bytes", page.logUsedBytes]];
-  return <div className="operation-metrics">{values.map(([label, value]) => <div key={label}><span>{label}</span><strong>{formatValue(value)}</strong></div>)}</div>;
-}
-
-function NamedOperationEvidence({ kind, page }: { readonly kind: OperationalKind; readonly page: OperationalPage }) {
-  const rows = namedRows(kind, page.items);
-  return <div className="named-evidence"><h4>Available fields</h4><EvidenceTable label={`${kind} named evidence`} rows={rows} /></div>;
-}
-
-function namedRows(kind: OperationalKind, items: readonly Record<string, unknown>[]): readonly Record<string, unknown>[] {
-  return items.map((item) => {
-    if (kind === "backups") return {
-      "Database fingerprint": item.databaseFingerprint,
-      "Backup kind": item.kind,
-      "Last finish (UTC)": formatUtcValue(item.lastFinishUtc),
-      "Size bytes": item.sizeBytes,
-      "Copy only": item.copyOnly,
-      "Checksum": item.hasChecksum,
-      "Damaged": item.isDamaged,
-      Coverage: item.coverage,
-    };
-    if (kind === "agent") return {
-      "Job identifier": item.jobId,
-      "History instance": item.historyInstanceId,
-      "Step": item.stepId,
-      "Run status": item.runStatus,
-      "Failure kind": item.failureKind,
-      Severity: item.severity,
-      "Retry attempt": item.retryAttempt,
-      "Duration seconds": item.durationSeconds,
-      "First observed (UTC)": formatUtcValue(item.firstObservedAtUtc),
-      "Failure fingerprint": item.failureFingerprint,
-    };
-    if (kind === "tempdb-files") return { "File identifier": item.fileId, "Size bytes": item.sizeBytes, "Used bytes": item.usedBytes, "Free bytes": item.freeBytes, State: item.state };
-    if (kind === "ag-replicas") return { "Group fingerprint": item.groupFingerprint, "Replica fingerprint": item.replicaFingerprint, Role: item.role, "Operational state": item.operationalState, "Connected state": item.connectedState, Visibility: item.visibilityScope, "State available": item.stateAvailable };
-    return { "Group fingerprint": item.groupFingerprint, "Database fingerprint": item.databaseFingerprint, "Synchronization state": item.synchronizationState, "Database state": item.databaseState, Visibility: item.visibilityScope, "State available": item.stateAvailable };
-  });
-}
-
-function ReplicationTab({ instanceId }: { readonly instanceId: string }) {
-  return <div className="replication-tab"><div className="evidence-callout">Replication retains the existing analytics client and rendering behavior. Status and historical evidence have independent snapshot and visibility states.</div><div className="replication-grid"><AnalyticsSurfacePanel targetId={instanceId} surface="replication/status" /><AnalyticsSurfacePanel targetId={instanceId} surface="replication/evidence" /></div></div>;
-}
-
-function formatUtcValue(value: unknown): string {
-  return typeof value === "string" ? formatUtc(value) : formatValue(value);
-}
-
-function formatUtc(value: string): string {
-  const parsed = new Date(value);
-  return Number.isNaN(parsed.valueOf()) ? "Unavailable" : parsed.toISOString().replace("T", " ").replace(".000Z", " UTC");
-}
-
-function formatValue(value: unknown): string {
-  if (value === null || value === undefined) return "Unavailable";
-  if (typeof value === "boolean") return value ? "Yes" : "No";
-  if (typeof value === "string" || typeof value === "number") return String(value);
-  try { return JSON.stringify(value); } catch { return "Unavailable"; }
 }

@@ -15,5 +15,6 @@
   <ItemGroup>
     <EmbeddedResource Include="../../database/migrations/*.sql" Link="Migrations/%(Filename)%(Extension)" />
     <EmbeddedResource Include="../../database/migrations/checksums.sha256" Link="Migrations/checksums.sha256" />
+    <EmbeddedResource Include="../../database/seeds/development.sql" LogicalName="SqlObserver.Infrastructure.PostgreSql.Seeds.development.sql" />
   </ItemGroup>
 </Project>

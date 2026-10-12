@@ -15,7 +15,7 @@ using SqlObserver.Domain.Telemetry;
 namespace SqlObserver.Infrastructure.PostgreSql;
 
 /// <summary>Target-scoped analytics persistence. Every command runs in a short transaction with local UTC/scope settings.</summary>
-public sealed partial class PostgreSqlAnalyticsRepositoryPort : IAnalyticsRepositoryPort, IAnalyticsSurfaceRepositoryPort, IRetentionRepositoryPort, IRetentionPolicyRepositoryPort, IAnalyticsDerivationStore, IMetricSeriesProjectionRepositoryPort, IStorageForecastProjectionRepositoryPort, IDiagnosticEventProjectionRepositoryPort, IIncidentEvidenceProjectionRepositoryPort
+public sealed partial class PostgreSqlAnalyticsRepositoryPort : IAnalyticsRepositoryPort, IAnalyticsSurfaceRepositoryPort, IRetentionRepositoryPort, IRetentionPolicyRepositoryPort, IAnalyticsDerivationStore, IMetricSeriesProjectionRepositoryPort, IStorageForecastProjectionRepositoryPort, IDiagnosticEventProjectionRepositoryPort, IIncidentEvidenceProjectionRepositoryPort, IIncidentListProjectionRepositoryPort
 {
     private static readonly RepositoryCallTimeout FiveSecondTimeout = new(TimeSpan.FromSeconds(5));
     private readonly NpgsqlDataSource dataSource;
@@ -39,7 +39,16 @@ public sealed partial class PostgreSqlAnalyticsRepositoryPort : IAnalyticsReposi
         int scheduled = Convert.ToInt32(value, CultureInfo.InvariantCulture);
         if (scheduled is < 0 or > AnalyticsJobBounds.MaximumRows)
             throw new InvalidDataException("PostgreSQL returned an out-of-bounds derivation schedule count.");
-        return scheduled;
+        command.CommandText = "SELECT control.schedule_sql_metric_rollup_jobs(@owner_execution_id,@fencing_token)";
+        object? sqlValue = await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
+        if (sqlValue is null or DBNull) throw new InvalidDataException("PostgreSQL returned no SQL rollup schedule count.");
+        int total = checked(scheduled + Convert.ToInt32(sqlValue, CultureInfo.InvariantCulture));
+        command.CommandText = "SELECT control.schedule_sql_metric_baseline_jobs(@owner_execution_id,@fencing_token)";
+        object? baselineValue = await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
+        if (baselineValue is null or DBNull) throw new InvalidDataException("PostgreSQL returned no SQL baseline schedule count.");
+        total = checked(total + Convert.ToInt32(baselineValue, CultureInfo.InvariantCulture));
+        if (total is < 0 or > AnalyticsJobBounds.MaximumRows) throw new InvalidDataException("SQL rollup scheduling exceeded its bound.");
+        return total;
     }
 
     public async ValueTask<IReadOnlyList<AnalyticsDerivationJob>> ClaimAsync(WorkerLeaseIdentity lease, int maximumJobs, CancellationToken cancellationToken)
@@ -48,7 +57,7 @@ public sealed partial class PostgreSqlAnalyticsRepositoryPort : IAnalyticsReposi
         if (maximumJobs is < 1 or > AnalyticsJobBounds.MaximumConcurrency)
             throw new ArgumentOutOfRangeException(nameof(maximumJobs));
         await using NpgsqlConnection connection = await dataSource.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
-        await using var command = new NpgsqlCommand("SELECT job_id,instance_id,target_revision,job_kind,from_utc,to_utc,source_cutoff_utc,generation,metric_key,horizon_seconds,dimensions_hash,rollup_interval FROM control.claim_m10_derivation_jobs(@work_key,@owner_execution_id,@fencing_token,@limit)", connection) { CommandTimeout = 5 };
+        await using var command = new NpgsqlCommand("SELECT job_id,instance_id,target_revision,job_kind,from_utc,to_utc,source_cutoff_utc,generation,metric_key,horizon_seconds,dimensions_hash,rollup_interval,source_catalog_version,source_cadence_seconds FROM control.claim_m10_derivation_jobs_versioned(@work_key,@owner_execution_id,@fencing_token,@limit)", connection) { CommandTimeout = 5 };
         command.Parameters.AddWithValue("work_key", lease.Key.Value); command.Parameters.AddWithValue("owner_execution_id", lease.Owner.Value); command.Parameters.AddWithValue("fencing_token", lease.FencingToken.Value); command.Parameters.AddWithValue("limit", maximumJobs);
         var jobs = new List<AnalyticsDerivationJob>(maximumJobs);
         await using NpgsqlDataReader reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
@@ -57,7 +66,11 @@ public sealed partial class PostgreSqlAnalyticsRepositoryPort : IAnalyticsReposi
             TimeSpan? horizon = reader.IsDBNull(9) ? null : TimeSpan.FromSeconds(reader.GetDouble(9));
             string? dimensionHash = reader.IsDBNull(10) ? null : Convert.ToHexString(reader.GetFieldValue<byte[]>(10)).ToLowerInvariant();
             RollupInterval? rollupInterval = reader.IsDBNull(11) ? null : reader.GetString(11) switch { "5m" => SqlObserver.Domain.Analytics.RollupInterval.FiveMinutes, "hour" => SqlObserver.Domain.Analytics.RollupInterval.Hour, "day" => SqlObserver.Domain.Analytics.RollupInterval.Day, _ => throw new InvalidDataException("PostgreSQL returned an unknown derivation rollup interval.") };
-            var job = new AnalyticsDerivationJob(reader.GetGuid(0), new MonitoredInstanceId(reader.GetGuid(1)), new ObservationTargetRevision(reader.GetInt64(2)), reader.GetString(3), ReadUtc(reader, 4), ReadUtc(reader, 5), reader.IsDBNull(6) ? ReadUtc(reader, 5) : ReadUtc(reader, 6), reader.IsDBNull(7) ? 1 : reader.GetInt64(7), reader.IsDBNull(8) ? null : reader.GetString(8), horizon, dimensionHash, rollupInterval);
+            var job = new AnalyticsDerivationJob(reader.GetGuid(0), new MonitoredInstanceId(reader.GetGuid(1)), new ObservationTargetRevision(reader.GetInt64(2)), reader.GetString(3), ReadUtc(reader, 4), ReadUtc(reader, 5), reader.IsDBNull(6) ? ReadUtc(reader, 5) : ReadUtc(reader, 6), reader.IsDBNull(7) ? 1 : reader.GetInt64(7), reader.IsDBNull(8) ? null : reader.GetString(8), horizon, dimensionHash, rollupInterval)
+            {
+                SourceCatalogVersion = reader.GetInt32(12),
+                SourceCadenceSeconds = reader.IsDBNull(13) ? null : reader.GetDouble(13),
+            };
             job.Validate(); jobs.Add(job);
         }
         return jobs;
@@ -72,12 +85,14 @@ public sealed partial class PostgreSqlAnalyticsRepositoryPort : IAnalyticsReposi
     public ValueTask<IReadOnlyList<RollupResult>> ReadBaselineInputsAsync(AnalyticsDerivationJob job, CancellationToken cancellationToken)
     {
         job.Validate();
+        if (job.SourceCatalogVersion != MetricCatalogV1.Version) throw new ArgumentException("Catalog-v1 baseline inputs require a version-1 job.", nameof(job));
         return ReadRollupsAsync(new AnalyticsQueryRequest(job.TargetId, job.MetricKey ?? "host.cpu.percent", job.FromUtc, job.ToUtc, AnalyticsJobBounds.MaximumRows, FiveSecondTimeout, job.TargetRevision, job.SourceCutoffUtc, job.DimensionsSha256), RollupInterval.Hour, cancellationToken);
     }
 
     public async ValueTask<IReadOnlyList<MetricPoint>> ReadRollupInputsAsync(AnalyticsDerivationJob job, RollupInterval interval, CancellationToken cancellationToken)
     {
         job.Validate();
+        if (job.SourceCatalogVersion != MetricCatalogV1.Version) throw new ArgumentException("Catalog-v1 inputs require a version-1 job.", nameof(job));
         const string sql = "SELECT observed_at,metric_key,metric_value,dimensions,reset,complete FROM reporting.read_m10_rollup_derivation_inputs(@instance_id,@target_revision,@from_utc,@to_utc,@metric_key,@limit,@snapshot_utc,@rollup_interval,@dimension_hash);";
         await using NpgsqlConnection connection = await dataSource.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
         await using NpgsqlTransaction transaction = await connection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
@@ -328,7 +343,7 @@ public sealed partial class PostgreSqlAnalyticsRepositoryPort : IAnalyticsReposi
         generationCommand.Parameters.AddWithValue("instance_id", request.TargetId.Value); generationCommand.Parameters.AddWithValue("target_revision", targetRevision);
         long generationFence = Convert.ToInt64(await generationCommand.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false), CultureInfo.InvariantCulture);
         if (generationFence < 1 || continuation is not null && continuation.Generation != generationFence) throw new InvalidOperationException("Rollup generation changed.");
-        await using var command = Command(connection, transaction, sql, timeout); command.Parameters.AddWithValue("instance_id", request.TargetId.Value); command.Parameters.AddWithValue("target_revision", targetRevision); command.Parameters.AddWithValue("metric_key", request.MetricKey); command.Parameters.AddWithValue("from_utc", request.FromUtc); command.Parameters.AddWithValue("to_utc", request.ToUtc); command.Parameters.AddWithValue("limit", Math.Min(request.Limit + 1, AnalyticsJobBounds.MaximumRows)); command.Parameters.AddWithValue("snapshot_utc", snapshotUtc); command.Parameters.AddWithValue("rollup_interval", interval switch { RollupInterval.FiveMinutes => "5m", RollupInterval.Hour => "hour", RollupInterval.Day => "day", _ => throw new ArgumentOutOfRangeException(nameof(interval)) }); command.Parameters.AddWithValue("dimension_hash", NpgsqlTypes.NpgsqlDbType.Bytea, (object?)(request.DimensionsSha256 is null ? null : Convert.FromHexString(request.DimensionsSha256)) ?? DBNull.Value);
+        await using var command = Command(connection, transaction, sql, timeout); command.Parameters.AddWithValue("instance_id", request.TargetId.Value); command.Parameters.AddWithValue("target_revision", targetRevision); command.Parameters.AddWithValue("metric_key", request.MetricKey); command.Parameters.AddWithValue("from_utc", request.FromUtc); command.Parameters.AddWithValue("to_utc", request.ToUtc); command.Parameters.AddWithValue("limit", request.Limit + 1); command.Parameters.AddWithValue("snapshot_utc", snapshotUtc); command.Parameters.AddWithValue("rollup_interval", interval switch { RollupInterval.FiveMinutes => "5m", RollupInterval.Hour => "hour", RollupInterval.Day => "day", _ => throw new ArgumentOutOfRangeException(nameof(interval)) }); command.Parameters.AddWithValue("dimension_hash", NpgsqlTypes.NpgsqlDbType.Bytea, (object?)(request.DimensionsSha256 is null ? null : Convert.FromHexString(request.DimensionsSha256)) ?? DBNull.Value);
         command.Parameters.AddWithValue("after_bucket", NpgsqlTypes.NpgsqlDbType.TimestampTz, (object?)continuation?.TieBucket ?? DBNull.Value);
         command.Parameters.AddWithValue("after_metric", NpgsqlTypes.NpgsqlDbType.Text, (object?)continuation?.TieMetric ?? DBNull.Value);
         command.Parameters.AddWithValue("after_dimensions", NpgsqlTypes.NpgsqlDbType.Bytea, (object?)(continuation is null ? null : Convert.FromHexString(continuation.TieDimensions)) ?? DBNull.Value);
@@ -486,7 +501,33 @@ public sealed partial class PostgreSqlAnalyticsRepositoryPort : IAnalyticsReposi
     }
     public async ValueTask<RetentionPolicyReadResult> UpdatePolicyAsync(RetentionPolicyUpdateRequest request, CancellationToken cancellationToken)
     {
-        ArgumentNullException.ThrowIfNull(request); RetentionPolicyValidator.Validate(request.Policy); await using NpgsqlConnection connection = await dataSource.OpenConnectionAsync(cancellationToken).ConfigureAwait(false); await using NpgsqlTransaction transaction = await connection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false); await PostgreSqlRuntimeSupport.ConfigureTransactionAsync(connection, transaction, FiveSecondTimeout, cancellationToken).ConfigureAwait(false); await SetClaimAsync(connection, transaction, "SecurityAdministrator", "global", FiveSecondTimeout, request.Authorization.ActorSid.ToString(), cancellationToken).ConfigureAwait(false); await using var command = Command(connection, transaction, "SELECT system.update_m10_retention_policy(@data_class,@enabled,@retain_for,@minimum,@expected,@changed_by,@reason)", FiveSecondTimeout); command.Parameters.AddWithValue("data_class", request.Policy.DataClass); command.Parameters.AddWithValue("enabled", request.Policy.Enabled); command.Parameters.AddWithValue("retain_for", (object?)request.Policy.RetainFor ?? DBNull.Value); command.Parameters.AddWithValue("minimum", request.Policy.MinimumPartitionsToKeep); command.Parameters.AddWithValue("expected", request.ExpectedRevision); command.Parameters.AddWithValue("changed_by", request.Authorization.ActorSid.ToString()); command.Parameters.AddWithValue("reason", request.ChangeReason); await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false); await transaction.CommitAsync(cancellationToken).ConfigureAwait(false); return await GetPolicyAsync(request.Policy.DataClass, cancellationToken).ConfigureAwait(false);
+        ArgumentNullException.ThrowIfNull(request);
+        RetentionPolicyValidator.Validate(request.Policy);
+        await using NpgsqlConnection connection = await dataSource.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+        await using NpgsqlTransaction transaction = await connection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
+        await PostgreSqlRuntimeSupport.ConfigureTransactionAsync(connection, transaction, FiveSecondTimeout, cancellationToken).ConfigureAwait(false);
+        await SetClaimAsync(connection, transaction, "SecurityAdministrator", "global", FiveSecondTimeout, request.Authorization.ActorSid.ToString(), cancellationToken).ConfigureAwait(false);
+        await using var command = Command(connection, transaction,
+            "SELECT system.update_m10_retention_policy(@data_class,@enabled,@retain_for,@minimum,@expected,@changed_by,@reason)", FiveSecondTimeout);
+        command.Parameters.AddWithValue("data_class", request.Policy.DataClass);
+        command.Parameters.AddWithValue("enabled", request.Policy.Enabled);
+        command.Parameters.AddWithValue("retain_for", (object?)request.Policy.RetainFor ?? DBNull.Value);
+        command.Parameters.AddWithValue("minimum", request.Policy.MinimumPartitionsToKeep);
+        command.Parameters.AddWithValue("expected", request.ExpectedRevision);
+        command.Parameters.AddWithValue("changed_by", request.Authorization.ActorSid.ToString());
+        command.Parameters.AddWithValue("reason", request.ChangeReason);
+        try
+        {
+            await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
+            await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (PostgresException error) when (request.Policy.DataClass is "server_lifecycle_receipts" or "server_lifecycle_events")
+        {
+            if (error.SqlState == "40001") throw new InvalidOperationException("The lifecycle retention policy revision changed.");
+            if (error.SqlState == "22023") throw new ArgumentException("The lifecycle retention policy bounds are invalid.", nameof(request));
+            throw;
+        }
+        return await GetPolicyAsync(request.Policy.DataClass, cancellationToken).ConfigureAwait(false);
     }
 
     private static NpgsqlCommand Command(NpgsqlConnection connection, NpgsqlTransaction transaction, string sql, RepositoryCallTimeout timeout) => new(sql, connection, transaction) { CommandTimeout = PostgreSqlRuntimeSupport.GetCommandTimeoutSeconds(timeout) };

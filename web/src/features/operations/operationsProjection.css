@@ -1,0 +1,125 @@
+.operations-screen,
+.operations-screen .operations-stack,
+.operations-screen .operation-projection-card,
+.operations-screen .operation-card-heading > div,
+.operations-screen .named-evidence,
+.operations-screen .evidence-disclosure {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.operations-screen .operation-projection-card {
+  color: var(--text);
+  background: var(--surface);
+}
+
+.operations-screen > .tabs .tab {
+  min-width: 44px;
+  min-height: 44px;
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.operations-screen > .tabs .tab:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: -5px;
+}
+
+.operations-screen .operation-projection-receipt,
+.operations-screen .operation-projection-retained,
+.operations-screen .operation-projection-note,
+.operations-screen .operation-coverage > *,
+.operations-screen .operation-state > p {
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+.operations-screen .operation-projection-receipt,
+.operations-screen .operation-projection-note {
+  color: var(--muted);
+  font-size: .82rem;
+  line-height: 1.6;
+}
+
+.operations-screen .operation-projection-retained {
+  color: var(--text);
+  border-inline-start: 3px solid var(--teal);
+  padding-inline-start: .75rem;
+  line-height: 1.6;
+}
+
+.operations-screen .operation-projection-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .6rem;
+}
+
+.operations-screen .operation-projection-controls button,
+.operations-screen .operation-state button {
+  min-width: 0;
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.operations-screen .operation-projection-card .evidence-table-scroll {
+  max-height: 32rem;
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-color: var(--border-strong) var(--surface-soft);
+}
+
+.operations-screen .operation-projection-card .evidence-table-scroll:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: -3px;
+}
+
+.operations-screen .operation-projection-card .evidence-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--surface-table);
+}
+
+.operations-screen .operation-projection-card .evidence-table .evidence-wrap {
+  max-width: 20rem;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.operations-screen .operation-projection-card .evidence-table pre {
+  max-width: 28rem;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.operations-screen .operation-metrics > div {
+  min-width: 0;
+}
+
+.operations-screen .operation-metrics strong {
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 600px) {
+  .operations-screen .operation-projection-card {
+    padding: 14px;
+  }
+
+  .operations-screen .operation-projection-controls > span {
+    flex-basis: 100%;
+  }
+}
+
+@media (forced-colors: active) {
+  .operations-screen > .tabs .tab:focus-visible {
+    outline-color: Highlight;
+  }
+
+  .operations-screen .operation-projection-retained {
+    border-color: CanvasText;
+  }
+}

@@ -1,0 +1,24 @@
+import { expect } from '@playwright/test';
+
+// Legacy evidence suites inspect the retained supporting surfaces through the
+// same disclosures available to an operator in the redesigned workspace.
+export async function expandDisclosure(page, label) {
+  const summary = page.locator('summary').filter({ hasText: label === 'Advanced session filters' ? /^Advanced session filters(?: · filters applied)?$/ : new RegExp(`^${label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`) });
+  await expect(summary).toHaveCount(1);
+  if (!await summary.locator('..').evaluate(element => element.open)) await summary.click();
+}
+
+export async function revealHealthSupport(page) {
+  await expandDisclosure(page, 'Latest health, databases & configuration');
+  const resources = page.locator('summary').filter({ hasText: /^Resource charts, wait history & baselines$/ });
+  if (await resources.count() && await resources.isVisible()) await expandDisclosure(page, 'Resource charts, wait history & baselines');
+}
+
+export async function revealDashboardSupport(page) {
+  const health = page.locator('summary').filter({ hasText: /^Latest health, databases & configuration$/ });
+  if (await health.count() && !await health.locator('..').evaluate(element => element.open)) await health.click();
+  await expandDisclosure(page, 'Resource charts, wait history & baselines');
+  const findings = page.locator('summary').filter({ hasText: /^Additional findings & observed change context \(\d+\)$/ });
+  await expect(findings).toHaveCount(1);
+  if (!await findings.locator('..').evaluate(element => element.open)) await findings.click();
+}

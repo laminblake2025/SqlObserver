@@ -2,6 +2,7 @@ using System.Data;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using Microsoft.Data.SqlClient;
 using SqlObserver.Application.Ports;
 using SqlObserver.Collector.Abstractions;
@@ -152,7 +153,7 @@ public sealed class M12SqlServerPassiveCertificationTests
         if (collectorId is "queries.performance" or "sql-agent.failures") Assert.DoesNotContain("TOP (@maximum_rows)", sql, StringComparison.OrdinalIgnoreCase);
 
         // GRANT and DENY remain explicitly forbidden alongside all other mutation verbs; START EVENT SESSION and STOP EVENT SESSION are also rejected.
-        string normalized = sql.ToUpperInvariant();
+        string normalized = Regex.Replace(sql.ToUpperInvariant(), @"'(?:''|[^'])*'", "''");
         Assert.DoesNotMatch(@"\b(INSERT|UPDATE|DELETE|MERGE|CREATE|ALTER|DROP|TRUNCATE|EXEC|EXECUTE|DBCC|BACKUP|RESTORE|GRANT|REVOKE|DENY|RECONFIGURE|KILL)\b", normalized);
         Assert.DoesNotMatch(@"\b(PHYSICAL_NAME|XP_|SP_OA|OPENROWSET|OPENDATASOURCE|OPENQUERY)\b", normalized);
         Assert.DoesNotMatch(@"\b(START|STOP)\s+EVENT\s+SESSION\b", normalized);
@@ -174,6 +175,12 @@ public sealed class M12SqlServerPassiveCertificationTests
     {
         Assert.ThrowsAny<Exception>(() => ValidateSelectedQuery("engine.core", "SET NOCOUNT ON;\nSELECT name FROM sys.databases ORDER BY name;"));
         Assert.ThrowsAny<Exception>(() => ValidateSelectedQuery("engine.core", "SET NOCOUNT ON;\nSELECT TOP (@maximum_rows) name FROM sys.databases; UPDATE sys.objects SET name=name ORDER BY name;"));
+    }
+
+    [Fact]
+    public void SelectedAssetValidatorAllowsDiagnosticWordsInsideStringLiterals()
+    {
+        ValidateSelectedQuery("waits.server", "SET NOCOUNT ON;\nSELECT TOP (@maximum_rows) N'backup status' AS note FROM sys.dm_os_wait_stats ORDER BY wait_type;");
     }
 
     [Fact]
@@ -211,12 +218,12 @@ public sealed class M12SqlServerPassiveCertificationTests
 
     private static void AssertProductionCatalogBundles()
     {
-        Assert.Equal("34214cef39c56f1d984bee1da82fd40ac410552eca04f6bd64420b001bd3114c", SqlServerCollectorAssetCatalog.LoadEmbedded().BundleChecksum);
-        Assert.Equal("86b049c90409e157c06612ebd48c36435213122636c9a84637e1d79029cc959e", SqlServerActivityCollectorAssetCatalog.LoadEmbedded().BundleChecksum);
-        Assert.Equal("57fa05f859d8f1e355786b84cc0ea6c05810ace0088fe176120b6ba019a654de", SqlServerDeadlockCollectorAssetCatalog.LoadEmbedded().BundleChecksum);
-        Assert.Equal("ba28508f8b9e2c3074b3605856de963d1663a884fce8356e1f2485040aa6c78f", SqlServerQueryPerformanceCollectorAssetCatalog.LoadEmbedded().BundleChecksum);
-        Assert.Equal("5697aaf35aee3f30f339de5fd973041978b6a0d767759e30cd223eb829e74484", SqlServerOperationalHealthAssetCatalog.LoadEmbedded().BundleChecksum);
-        Assert.Equal("8fa9d8d4c8f3a8fdfb17ffe675f7642220ada826719136d5b7338372866c2b9a", SqlServerReplicationAssetCatalog.LoadEmbedded().BundleChecksum);
+        Assert.Equal("10ef6cb84001d6a3f34889cb8c2d96d51c247289582ef3fa25c3f63862399a17", SqlServerCollectorAssetCatalog.LoadEmbedded().BundleChecksum);
+        Assert.Equal("d233698a8b350ebdf805cbb65b085b0a93b64fc66f57f8f21d354c3445ee00c8", SqlServerActivityCollectorAssetCatalog.LoadEmbedded().BundleChecksum);
+        Assert.Equal("21c5911e826f945833b74b128ae499464f494cf5f0be4a59ba042d451e1ebd8d", SqlServerDeadlockCollectorAssetCatalog.LoadEmbedded().BundleChecksum);
+        Assert.Equal("5b9289da31b8051dfca4a9bfb7a0b16755253b1122897a2464e797c40a465c96", SqlServerQueryPerformanceCollectorAssetCatalog.LoadEmbedded().BundleChecksum);
+        Assert.Equal("ce5cf58bf6442b561426b7e72b7825c3e08093e80e5277f2ec6a93ddece6ba87", SqlServerOperationalHealthAssetCatalog.LoadEmbedded().BundleChecksum);
+        Assert.Equal("e9d52f49d1c728ed6968867a1caee11d6a5f288c5326da585b68a9bed0060f36", SqlServerReplicationAssetCatalog.LoadEmbedded().BundleChecksum);
     }
 
     private static CollectorOutputContract ProductionOutputContract(ISqlServerCollector collector) => collector.Manifest.Id.Value switch

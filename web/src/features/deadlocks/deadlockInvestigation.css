@@ -1,0 +1,118 @@
+.deadlock-screen,
+.deadlock-screen .health-heading-row > div,
+.deadlock-screen .detail-heading > div,
+.deadlock-screen .section-heading > div {
+  min-width: 0;
+}
+
+.deadlock-screen .health-heading-row,
+.deadlock-screen .detail-heading,
+.deadlock-screen .section-heading {
+  flex-wrap: wrap;
+}
+
+.deadlock-screen .screen-subtitle,
+.deadlock-screen .status-message,
+.deadlock-screen .activity-evidence,
+.deadlock-screen .table-note,
+.deadlock-screen .detail-heading p,
+.deadlock-screen .detail-heading code,
+.deadlock-screen .event-card strong {
+  overflow-wrap: anywhere;
+}
+
+.deadlock-investigation-controls {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  min-width: 0;
+  margin-block: 12px;
+}
+
+.deadlock-investigation-controls > * {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.deadlock-investigation-controls button,
+.deadlock-screen .pager button,
+.deadlock-screen .deadlock-detail > button {
+  min-height: 44px;
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.deadlock-investigation-receipt,
+.deadlock-investigation-note {
+  min-width: 0;
+  max-width: 100%;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
+.deadlock-investigation-mode {
+  display: inline-block;
+  max-width: 100%;
+  padding: 5px 9px;
+  color: var(--teal-deep);
+  background: var(--teal-soft);
+  border: 1px solid var(--border-teal);
+  border-radius: 6px;
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.deadlock-screen .event-card:focus-visible,
+.deadlock-screen .event-list:focus-visible,
+.deadlock-screen .deadlock-diagram-scroll:focus-visible,
+.deadlock-screen .table-scroll:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: -3px;
+}
+
+.deadlock-screen .event-list {
+  max-height: 600px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.deadlock-investigation-controls :focus-visible,
+.deadlock-screen .deadlock-detail > button:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 3px;
+}
+
+@media (max-width: 480px) {
+  .deadlock-screen .event-list {
+    max-height: 420px;
+  }
+  .deadlock-investigation-controls {
+    align-items: stretch;
+  }
+  .deadlock-investigation-controls button {
+    flex: 1 1 140px;
+  }
+  .deadlock-screen .deadlock-detail {
+    padding: 14px;
+  }
+}
+
+@media (forced-colors: active) {
+  .deadlock-investigation-mode {
+    color: CanvasText;
+    border-color: CanvasText;
+  }
+  .deadlock-screen .event-card:focus-visible,
+  .deadlock-screen .event-list:focus-visible,
+  .deadlock-screen .deadlock-diagram-scroll:focus-visible,
+  .deadlock-screen .table-scroll:focus-visible,
+  .deadlock-investigation-controls :focus-visible,
+  .deadlock-screen .deadlock-detail > button:focus-visible {
+    outline-color: Highlight;
+  }
+}

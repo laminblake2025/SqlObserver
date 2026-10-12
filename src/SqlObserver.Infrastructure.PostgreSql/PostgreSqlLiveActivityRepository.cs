@@ -30,6 +30,35 @@ internal sealed class PostgreSqlLiveActivityRepository(NpgsqlDataSource source) 
         return targets;
     }
 
+    public async Task<LeaseAcquisitionResult> ClaimAsync(LiveActivityTarget target, WorkerExecutionId owner,
+        WorkerLeaseDuration duration, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(target);
+        ArgumentNullException.ThrowIfNull(owner);
+        ArgumentNullException.ThrowIfNull(duration);
+        var key=new WorkerLeaseKey("collector/live-activity/"+target.Id.ToString("D"));
+        await using var command=source.CreateCommand("""
+            SELECT acquired,fencing_token,acquired_at,renewed_at,expires_at,repository_time
+            FROM live_activity.claim_target(@target,@revision,@owner,@ttl)
+            """);
+        command.CommandTimeout=5;
+        command.Parameters.AddWithValue("target",target.Id);
+        command.Parameters.AddWithValue("revision",target.Revision);
+        command.Parameters.AddWithValue("owner",owner.Value);
+        command.Parameters.AddWithValue("ttl",duration.Value);
+        await using var reader=await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+        if(!await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+            throw new InvalidOperationException("Live activity claim returned no result row.");
+        DateTimeOffset repositoryTime=PostgreSqlRuntimeSupport.ReadUtcTimestamp(reader,5);
+        if(!reader.GetBoolean(0)) return LeaseAcquisitionResult.Contended(repositoryTime);
+        var identity=new WorkerLeaseIdentity(key,owner,new FencingToken(reader.GetInt64(1)));
+        var lease=new WorkerLease(identity,
+            PostgreSqlRuntimeSupport.ReadUtcTimestamp(reader,2),
+            PostgreSqlRuntimeSupport.ReadUtcTimestamp(reader,3),
+            PostgreSqlRuntimeSupport.ReadUtcTimestamp(reader,4));
+        return LeaseAcquisitionResult.Acquired(lease,repositoryTime);
+    }
+
     public async Task CommitAsync(LiveActivityTarget target, WorkerLeaseIdentity lease, LiveActivityCapture capture, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(target);

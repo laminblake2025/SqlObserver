@@ -12,7 +12,8 @@ public sealed class CollectorEngineResult
     public CollectorEngineResult(
         CollectorRunSummary summary,
         CollectorPayload payload,
-        CollectorCircuitSnapshot nextCircuit)
+        CollectorCircuitSnapshot nextCircuit,
+        DeadlockReadSourceProof? deadlockReadProof = null)
     {
         ArgumentNullException.ThrowIfNull(summary);
         ArgumentNullException.ThrowIfNull(payload);
@@ -36,11 +37,13 @@ public sealed class CollectorEngineResult
         Summary = summary;
         Payload = payload;
         NextCircuit = nextCircuit;
+        DeadlockReadProof = deadlockReadProof;
     }
 
     public CollectorRunSummary Summary { get; }
     public CollectorPayload Payload { get; }
     public CollectorCircuitSnapshot NextCircuit { get; }
+    public DeadlockReadSourceProof? DeadlockReadProof { get; }
 }
 
 /// <summary>Executes at most two attempts inside one monotonic deadline and validates all output.</summary>
@@ -68,7 +71,8 @@ public sealed class CollectorExecutionEngine
         CollectorRegistration registration,
         CollectorDueWorkItem work,
         CollectorRunId runId,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        DeadlockReadExecutionContext? deadlockReadContext = null)
     {
         ArgumentNullException.ThrowIfNull(registration);
         ArgumentNullException.ThrowIfNull(work);
@@ -124,7 +128,7 @@ public sealed class CollectorExecutionEngine
                 work.ConnectionPolicy,
                 profile,
                 new CollectorAttemptNumber(attempt),
-                new CollectorExecutionTimeout(remaining));
+                new CollectorExecutionTimeout(remaining), deadlockReadContext);
             try
             {
                 attemptedResult = await registration.Collector.CollectAsync(
@@ -238,7 +242,7 @@ public sealed class CollectorExecutionEngine
                 new KeyValuePair<string, object?>("loss.kind", finalResult.Loss.Kind.ToString()));
         }
 
-        return new CollectorEngineResult(summary, finalResult.Payload, nextCircuit);
+        return new CollectorEngineResult(summary, finalResult.Payload, nextCircuit, finalResult.DeadlockReadProof);
     }
 
     private static string BoundAttribute(string value) =>

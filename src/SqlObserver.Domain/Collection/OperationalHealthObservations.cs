@@ -56,6 +56,20 @@ public sealed record SqlAgentFailureObservation(
     DateTimeOffset DetectedAtUtc,
     string FailureFingerprint)
 {
+    private DateTime? sourceLocalStart;
+
+    /// <summary>Source wall-clock execution start; no UTC offset or time zone is implied.</summary>
+    public DateTime? SourceLocalStart
+    {
+        get => sourceLocalStart;
+        init
+        {
+            if (value is { } local && (local.Kind != DateTimeKind.Unspecified || local.Ticks % TimeSpan.TicksPerSecond != 0))
+                throw new ArgumentException("Agent source start must be an offset-free whole-second timestamp.", nameof(value));
+            sourceLocalStart = value;
+        }
+    }
+
     // Source-compatible adapter for pre-privacy test fixtures; the two local
     // wall-clock arguments are intentionally discarded and never become part
     // of the domain state.

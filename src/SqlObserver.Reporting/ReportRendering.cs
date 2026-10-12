@@ -13,7 +13,7 @@ public static class ReportRenderer
     {
         ArgumentNullException.ThrowIfNull(run); ArgumentNullException.ThrowIfNull(definition); ArgumentNullException.ThrowIfNull(sections);
         var html = new StringBuilder("<!doctype html><html><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width\"><title>");
-        html.Append(WebUtility.HtmlEncode(definition.Title)).Append("</title></head><body><main><h1>").Append(WebUtility.HtmlEncode(definition.Title)).Append("</h1>");
+        html.Append(WebUtility.HtmlEncode(definition.Title)).Append("</title><style>td{white-space:pre-wrap;overflow-wrap:anywhere;vertical-align:top}table{border-collapse:collapse}td,th{padding:.4rem;border:1px solid #ddd}</style></head><body><main><h1>").Append(WebUtility.HtmlEncode(definition.Title)).Append("</h1>");
         html.Append("<p>Snapshot: ").Append(WebUtility.HtmlEncode(run.SnapshotUtc.ToString("O", CultureInfo.InvariantCulture))).Append("</p>");
         int total = 0;
         foreach (ReportSectionDefinition section in definition.Sections)
@@ -42,19 +42,21 @@ public static class ReportRenderer
     {
         var csv = new StringBuilder();
         AppendCsvRow(csv, section.Columns);
-        foreach (ReportRow row in rows.Take(ReportContract.TotalRows)) AppendCsvRow(csv, section.Columns.Select(column => row.Values.TryGetValue(column, out string? value) ? value : null));
+        foreach (ReportRow row in rows.Take(ReportContract.TotalRows)) AppendCsvRow(csv,
+            section.Columns.Select(column => row.Values.TryGetValue(column, out string? value) ? value : null),
+            preserveText: definition.Kind == ReportKind.SavedInvestigation);
         byte[] bytes = Encoding.UTF8.GetBytes(csv.ToString());
         if (bytes.Length > ReportContract.MaterializationBytes) throw new ReportLimitException("The CSV export exceeds its response bound.");
         return bytes;
     }
 
-    private static void AppendCsvRow(StringBuilder output, IEnumerable<string?> values)
+    private static void AppendCsvRow(StringBuilder output, IEnumerable<string?> values, bool preserveText = false)
     {
         bool first = true;
         foreach (string? original in values)
         {
             if (!first) output.Append(','); first = false;
-            string value = Normalize(original ?? string.Empty);
+            string value = Normalize(original ?? string.Empty, preserveText);
             int firstNonWhitespace = 0;
             while (firstNonWhitespace < value.Length && char.IsWhiteSpace(value[firstNonWhitespace])) firstNonWhitespace++;
             if (firstNonWhitespace < value.Length && "=+-@".Contains(value[firstNonWhitespace])) value = value.Insert(firstNonWhitespace, "'");
@@ -63,11 +65,11 @@ public static class ReportRenderer
         output.Append("\r\n");
     }
 
-    private static string Normalize(string value)
+    private static string Normalize(string value, bool preserveText)
     {
         var result = new StringBuilder(value.Length);
-        foreach (char c in value.Normalize(NormalizationForm.FormC))
-            if (c is '\r' or '\n' or '\t' || !char.IsControl(c)) result.Append(c is '\r' or '\n' ? ' ' : c);
+        foreach (char c in preserveText ? value : value.Normalize(NormalizationForm.FormC))
+            if (c is '\r' or '\n' or '\t' || !char.IsControl(c)) result.Append(!preserveText && c is ('\r' or '\n') ? ' ' : c);
         return result.ToString();
     }
 }

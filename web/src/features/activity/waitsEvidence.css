@@ -1,0 +1,2 @@
+.waits-evidence-panel { min-width: 0; padding: 20px; }
+@media (max-width: 560px) { .waits-evidence-panel { padding: 14px; } }

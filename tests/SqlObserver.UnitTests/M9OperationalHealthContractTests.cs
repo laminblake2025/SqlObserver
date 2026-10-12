@@ -15,6 +15,25 @@ namespace SqlObserver.UnitTests;
 public sealed class M9OperationalHealthContractTests
 {
     private static readonly string[] ServerMajors = ["15", "16", "17"];
+
+    [Fact]
+    public void StagedAvailabilityGroupV2BundlePreservesReplicaDatabaseIdentity()
+    {
+        SqlServerAvailabilityGroupV2AssetCatalog assets = SqlServerAvailabilityGroupV2AssetCatalog.LoadEmbedded();
+        using JsonDocument manifest = JsonDocument.Parse(assets.Manifest);
+        Assert.Equal(2, manifest.RootElement.GetProperty("collectorVersion").GetInt32());
+        Assert.Equal(2, manifest.RootElement.GetProperty("outputSchemaVersion").GetInt32());
+        foreach (string major in ServerMajors)
+        {
+            string query = assets.GetQuery(int.Parse(major, CultureInfo.InvariantCulture));
+            Assert.Contains("drs.replica_id = ar.replica_id", query, StringComparison.Ordinal);
+            Assert.Contains("drs.group_database_id = adc.group_database_id", query, StringComparison.Ordinal);
+            Assert.Contains("observer_replica_fingerprint, replica_is_local", query, StringComparison.Ordinal);
+            Assert.Contains("drs.last_commit_time", query, StringComparison.Ordinal);
+            Assert.Contains("sys.availability_databases_cluster", query, StringComparison.Ordinal);
+            Assert.DoesNotContain("drs.is_local=1", query, StringComparison.OrdinalIgnoreCase);
+        }
+    }
     [Fact]
     public void BackupTimestampConvertsOnlyQuarterHourOffsets()
     {
@@ -72,7 +91,7 @@ public sealed class M9OperationalHealthContractTests
     }
 
     [Fact]
-    public void M9BundleDigestMatchesEmbeddedManifestRuntimeAllowlistAndMigration()
+    public void M9BundleDigestMatchesEmbeddedManifestAndRuntimeAllowlist()
     {
         string root = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../../"));
         string checksumPath = Path.Combine(root, "collectors/manifests/m9-operational-health.assets.sha256");
@@ -81,12 +100,18 @@ public sealed class M9OperationalHealthContractTests
 
         FieldInfo field = typeof(PostgreSqlCollectorRuntimeRepositoryPort).GetField("RequiredBundleDigests", BindingFlags.NonPublic | BindingFlags.Static)!;
         string[] runtime = (string[])field.GetValue(null)!;
-        Assert.Equal(15, runtime.Length);
+        FieldInfo idsField = typeof(PostgreSqlCollectorRuntimeRepositoryPort).GetField("RequiredCollectorIds", BindingFlags.NonPublic | BindingFlags.Static)!;
+        string[] ids = (string[])idsField.GetValue(null)!;
+        Assert.Equal(ids.Length, runtime.Length);
+        Assert.Equal("availability-groups.health", ids[12]);
         Assert.All(runtime.Skip(9).Take(4), digest => Assert.Equal(expected, digest));
         Assert.DoesNotContain(runtime.Skip(13), digest => digest == expected);
+        string stagedV2 = Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(
+            Path.Combine(root, "collectors/manifests/m9-ag-v2.assets.sha256")))).ToLowerInvariant();
+        Assert.DoesNotContain(stagedV2, runtime);
 
-        string migration = File.ReadAllText(Path.Combine(root, "database/migrations/0013_backups_jobs_tempdb_availability_groups.sql"));
-        Assert.Equal(4, Regex.Count(migration, $"'{Regex.Escape(expected)}'"));
+        // Forward bundle upgrades are exercised against real PostgreSQL;
+        // the originally applied 0013 migration retains its original digest.
     }
 
     [Fact]
@@ -176,10 +201,11 @@ public sealed class M9OperationalHealthContractTests
     }
 
     [Fact]
-    public void AgentSourceTimeRemainsUnresolvedAndCoverageHasNoFabricatedWindow()
+    public void LegacyAgentObservationHasUnknownSourceTimeAndNoFabricatedWindow()
     {
         var target = new MonitoredInstanceId(Guid.NewGuid());
         var observation = new SqlAgentFailureObservation(target, new ObservationTargetRevision(1), Guid.NewGuid(), 4, 1, 0, AgentFailureKind.Failed, null, null, 0, 1, DateTimeOffset.UtcNow, new string('a', 64));
+        Assert.Null(observation.SourceLocalStart);
         Assert.Equal(observation.DetectedAtUtc, observation.FirstObservedAtUtc);
         var snapshot = new SqlAgentFailureSnapshot(target, new ObservationTargetRevision(1), null, observation.FirstObservedAtUtc, OperationalObservationState.Complete, [observation], 1, false, null, null);
         Assert.Null(snapshot.CoverageFromUtc);
@@ -259,10 +285,17 @@ public sealed class M9OperationalHealthContractTests
     }
 
     [Fact]
-    public void VisibilityIncompleteIsReservedForDegradedAvailabilityGroups()
+    public void LegacyBackupsCannotManufacturePartialOutputWithTheVisibilityMarker()
     {
-        string validator = File.ReadAllText(Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../../src/SqlObserver.Collectors/CollectorOutputValidator.cs")));
-        Assert.Contains("VisibilityIncomplete is reserved for a degraded availability-groups observation", validator, StringComparison.Ordinal);
-        Assert.Contains("OperationalObservationState.Degraded", validator, StringComparison.Ordinal);
+        var request = M4TestData.CreateExecutionRequest();
+        var collector = new SqlServerBackupsStatusCollector(SqlServerOperationalHealthAssetCatalog.LoadEmbedded());
+        var snapshot = new BackupStatusSnapshot(request.TargetId, request.TargetRevision, request.RunId,
+            M4TestData.RepositoryTime, OperationalObservationState.Partial, [], 0, false);
+        var payload = new CollectorPayload(operationalHealth: new OperationalHealthPayload(snapshot, 0, 256));
+        var result = new CollectorExecutionResult(request.TargetId, request.TargetRevision, collector.Manifest.Id, 1, 1,
+            CollectorRunOutcome.Partial, CollectorRunReason.VisibilityIncomplete, payload, new CollectorRunAccounting(0, 0, 256, 256),
+            new CollectorLossEvidence(CollectorLossKind.VisibilityIncomplete, 1, false));
+        Assert.Throws<InvalidDataException>(() => new SqlObserver.Collectors.CollectorOutputValidator(M9Manifest.OutputContract(2048))
+            .Validate(collector.Manifest, request, result));
     }
 }

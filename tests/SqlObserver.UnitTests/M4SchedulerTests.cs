@@ -6,7 +6,7 @@ using SqlObserver.Domain.Coordination;
 
 namespace SqlObserver.UnitTests;
 
-public sealed class M4SchedulerTests
+public sealed partial class M4SchedulerTests
 {
     private static readonly RepositoryCallTimeout RepositoryTimeout = new(TimeSpan.FromSeconds(1));
 
@@ -174,6 +174,77 @@ public sealed class M4SchedulerTests
         Assert.Equal(0, leases.ReleaseCalls);
     }
 
+    [Fact]
+    public async Task ContinuousDispatchRefillsAFreeSlotWhileAnotherCollectorRemainsBlocked()
+    {
+        var slowManifest=M4TestData.CreateManifest("engine.core");
+        var fastManifest=M4TestData.CreateManifest("engine.fast");
+        var nextManifest=M4TestData.CreateManifest("engine.next");
+        var slowEntered=new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var allowSlow=new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var nextEntered=new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        CollectorRegistration slow=M4TestData.CreateRegistration(slowManifest,async (request,token)=>
+        {
+            slowEntered.TrySetResult();
+            await allowSlow.Task.WaitAsync(token);
+            return M4TestData.CreateSuccessResult(slowManifest,request);
+        });
+        CollectorRegistration fast=M4TestData.CreateRegistration(fastManifest,
+            (request,_)=>ValueTask.FromResult(M4TestData.CreateSuccessResult(fastManifest,request)),order:2);
+        CollectorRegistration next=M4TestData.CreateRegistration(nextManifest,(request,_)=>
+        {
+            nextEntered.TrySetResult();
+            return ValueTask.FromResult(M4TestData.CreateSuccessResult(nextManifest,request));
+        },order:3);
+        var repository=new FakeRuntimeRepository(M4TestData.CreateWork(slowManifest));
+        var owner=new WorkerExecutionId(Guid.NewGuid());
+        foreach(var manifest in new[] {slowManifest,fastManifest,nextManifest})
+        {
+            CollectorDueWorkItem work=M4TestData.CreateWork(manifest);
+            var identity=new WorkerLeaseIdentity(new WorkerLeaseKey(
+                "collector/run/"+manifest.Id.Value+"/"+work.TargetId.Value.ToString("N")),owner,new FencingToken(1));
+            var lease=new WorkerLease(identity,M4TestData.RepositoryTime,M4TestData.RepositoryTime,
+                M4TestData.RepositoryTime.AddSeconds(5));
+            repository.Claims.Enqueue(new CollectorClaimedWork(work,lease,M4TestData.RepositoryTime));
+        }
+        var leases=new FakeLeasePort();
+        var scheduler=new CollectorScheduler(new CollectorRegistry([slow,fast,next]),repository,leases,
+            new CollectorExecutionEngine(),owner,new CollectorSchedulerOptions(1,2,
+                new WorkerLeaseDuration(TimeSpan.FromSeconds(5)),RepositoryTimeout));
+
+        Assert.Equal(2,await scheduler.DispatchAvailableAsync(CancellationToken.None));
+        await slowEntered.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        await WaitForCommitCountAsync(repository,1);
+        using(var refillTimeout=new CancellationTokenSource(TimeSpan.FromSeconds(2)))
+        {
+            int refilled=0;
+            while(refilled==0)
+            {
+                refilled=await scheduler.DispatchAvailableAsync(refillTimeout.Token);
+                if(refilled==0) await Task.Delay(10,refillTimeout.Token);
+            }
+            Assert.Equal(1,refilled);
+        }
+        await nextEntered.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        await WaitForCommitCountAsync(repository,2);
+        Assert.DoesNotContain(repository.Commits,commit=>commit.Work.CollectorId==slowManifest.Id);
+        allowSlow.TrySetResult();
+        await scheduler.DrainAsync();
+        Assert.Equal(3,repository.Commits.Count);
+        Assert.Equal(3,leases.ReleaseCalls);
+        Assert.Equal(0,leases.AcquireCalls);
+    }
+
+    private static async Task WaitForCommitCountAsync(FakeRuntimeRepository repository,int count)
+    {
+        using var timeout=new CancellationTokenSource(TimeSpan.FromSeconds(2));
+        while(true)
+        {
+            lock(repository.Commits) if(repository.Commits.Count>=count) return;
+            await Task.Delay(10,timeout.Token);
+        }
+    }
+
     private static CollectorScheduler CreateScheduler(
         CollectorRegistration registration,
         ICollectorRuntimeRepositoryPort repository,
@@ -190,13 +261,32 @@ public sealed class M4SchedulerTests
                 new WorkerLeaseDuration(TimeSpan.FromSeconds(5)),
                 RepositoryTimeout));
 
-    private sealed class FakeRuntimeRepository : ICollectorRuntimeRepositoryPort
+    private sealed class FakeRuntimeRepository : ICollectorRuntimeRepositoryPort, IDeadlockReadRepositoryPort
     {
         private readonly CollectorDueWorkItem _work;
 
         internal FakeRuntimeRepository(CollectorDueWorkItem work) => _work = work;
 
         internal List<CommitCollectorRunRequest> Commits { get; } = [];
+        internal List<DeadlockReadSourceProof> DeadlockProofs { get; } = [];
+        internal int DeadlockReads { get; private set; }
+        internal bool FailCheckpointRead { get; init; }
+        public ValueTask<DeadlockReadCheckpointResult> ReadDeadlockCheckpointAsync(BeginCollectorRunRequest request, CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            DeadlockReads++;
+            lock (Starts) Assert.Contains(Starts, start => start.RunId == request.RunId);
+            if (FailCheckpointRead) throw new InvalidDataException("Checkpoint is unavailable.");
+            return ValueTask.FromResult(new DeadlockReadCheckpointResult(request, M4TestData.RepositoryTime, new(new string('a', 64)), null, false));
+        }
+        public ValueTask<CollectorRunCommitResult> CommitDeadlockReadAsync(CommitCollectorRunRequest request, DeadlockReadSourceProof proof, CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            DeadlockProofs.Add(proof);
+            Commits.Add(request);
+            return ValueTask.FromResult(new CollectorRunCommitResult(CollectorRunCommitStatus.Committed, request.Payload.ItemCount, 0, 0, request.Payload.EstimatedSizeBytes, M4TestData.RepositoryTime));
+        }
+
         internal List<BeginCollectorRunRequest> Starts { get; } = [];
         internal CollectorRunStartStatus StartStatus { get; init; } = CollectorRunStartStatus.Started;
         internal bool BlockCommit { get; init; }
@@ -206,6 +296,8 @@ public sealed class M4SchedulerTests
             TaskCreationOptions.RunContinuationsAsynchronously);
         private readonly TaskCompletionSource _commitRelease = new(
             TaskCreationOptions.RunContinuationsAsynchronously);
+
+        internal Queue<CollectorClaimedWork> Claims { get; } = new();
 
         internal void AllowCommit() => _commitRelease.TrySetResult();
 
@@ -225,6 +317,11 @@ public sealed class M4SchedulerTests
             cancellationToken.ThrowIfCancellationRequested();
             return ValueTask.FromResult(new CollectorDueWorkBatch([_work], hasMore: false));
         }
+
+        public ValueTask<CollectorClaimedWork?> ClaimDueAsync(
+            ClaimDueCollectorWorkRequest request,
+            CancellationToken cancellationToken) => ValueTask.FromResult<CollectorClaimedWork?>(
+                Claims.Count>0 ? Claims.Dequeue() : null);
 
         public ValueTask<CollectorRunStartResult> BeginRunAsync(
             BeginCollectorRunRequest request,
@@ -250,6 +347,8 @@ public sealed class M4SchedulerTests
             CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            if (request.Work.CollectorId.Value == "deadlocks.system-health" && request.Work.CollectorManifestVersion == 2)
+                throw new InvalidOperationException("Incremental deadlocks cannot use the generic commit.");
             _commitEntered.TrySetResult();
             if (BlockCommit)
             {

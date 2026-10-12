@@ -1,0 +1,75 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { canAcknowledgeAlert, canManageAlertDestinations, canManageAlertRules, canReadQueryText, canRegisterTarget, getMyAccess, parseMyAccess } from "../src/features/targets/meApi.ts";
+
+const target = "11111111-1111-4111-8111-111111111111";
+const other = "22222222-2222-4222-8222-222222222222";
+const scoped = { active: true, grantedRoles: ["TargetAdministrator", "Viewer"], allTargetRoles: [], targetId: target, targetRoles: ["Viewer"] };
+
+test("server access is bound to the selected target and only an all-target administrator can register", () => {
+  assert.equal(canRegisterTarget(parseMyAccess(scoped, target)), false);
+  assert.equal(canRegisterTarget(parseMyAccess({ ...scoped, allTargetRoles: ["TargetAdministrator"] }, target)), true);
+  assert.throws(() => parseMyAccess(scoped, other), /Access information/);
+  assert.throws(() => parseMyAccess({ ...scoped, targetRoles: ["Auditor"] }, target), /Access information/);
+  assert.throws(() => parseMyAccess({ ...scoped, active: false }, target), /Access information/);
+  assert.throws(() => parseMyAccess({ ...scoped, scope: "all" }, target), /Access information/);
+  assert.deepEqual(parseMyAccess({ active: true, grantedRoles: [], allTargetRoles: [], targetId: null, targetRoles: [] }, null).targetRoles, []);
+});
+
+test("alert acknowledgement uses the exact target role, not a grant on another server", () => {
+  const viewer = parseMyAccess({ ...scoped, grantedRoles: ["Viewer", "Operator"], targetRoles: ["Viewer"] }, target);
+  assert.equal(canAcknowledgeAlert(viewer, target), false);
+  assert.equal(canAcknowledgeAlert(viewer, other), false);
+  const operator = parseMyAccess({ ...scoped, grantedRoles: ["Viewer", "Operator"], targetRoles: ["Viewer", "Operator"] }, target);
+  assert.equal(canAcknowledgeAlert(operator, target), true);
+  assert.equal(canAcknowledgeAlert(operator, other), false);
+  const administrator = parseMyAccess({ ...scoped, targetRoles: ["TargetAdministrator"] }, target);
+  assert.equal(canAcknowledgeAlert(administrator, target), true);
+  assert.equal(canAcknowledgeAlert(undefined, target), false);
+});
+
+test("query text action requires both read and QueryTextReader on the exact target", () => {
+  const mixed = parseMyAccess({ ...scoped, grantedRoles: ["Viewer", "QueryTextReader"], targetRoles: ["Viewer"] }, target);
+  assert.equal(canReadQueryText(mixed, target), false);
+  const queryOnly = parseMyAccess({ ...scoped, grantedRoles: ["Viewer", "QueryTextReader"], targetRoles: ["QueryTextReader"] }, target);
+  assert.equal(canReadQueryText(queryOnly, target), false);
+  const allowed = parseMyAccess({ ...scoped, grantedRoles: ["Viewer", "QueryTextReader"], targetRoles: ["Viewer", "QueryTextReader"] }, target);
+  assert.equal(canReadQueryText(allowed, target), true);
+  assert.equal(canReadQueryText(allowed, other), false);
+  assert.equal(canReadQueryText(undefined, target), false);
+});
+
+test("rule administration requires TargetAdministrator on the exact target", () => {
+  const mixed = parseMyAccess(scoped, target);
+  assert.equal(canManageAlertRules(mixed, target), false);
+  const allowed = parseMyAccess({ ...scoped, targetRoles: ["TargetAdministrator"] }, target);
+  assert.equal(canManageAlertRules(allowed, target), true);
+  assert.equal(canManageAlertRules(allowed, other), false);
+  assert.equal(canManageAlertRules(undefined, target), false);
+});
+
+test("destination administration requires SecurityAdministrator on the exact target", () => {
+  const mixed = parseMyAccess({ ...scoped, grantedRoles: ["SecurityAdministrator", "Viewer"], targetRoles: ["Viewer"] }, target);
+  assert.equal(canManageAlertDestinations(mixed, target), false);
+  const allowed = parseMyAccess({ ...scoped, grantedRoles: ["SecurityAdministrator", "Viewer"], targetRoles: ["SecurityAdministrator"] }, target);
+  assert.equal(canManageAlertDestinations(allowed, target), true);
+  assert.equal(canManageAlertDestinations(allowed, other), false);
+  assert.equal(canManageAlertDestinations(undefined, target), false);
+});
+
+test("access lookup sends the selected target and refuses an unrelated response", async () => {
+  const previous = globalThis.fetch;
+  try {
+    let requested;
+    globalThis.fetch = async (url, options) => {
+      requested = { url, options };
+      return new Response(JSON.stringify(scoped), { status: 200, headers: { "content-type": "application/json" } });
+    };
+    const signal = new AbortController().signal;
+    assert.equal((await getMyAccess(target, signal)).targetId, target);
+    assert.equal(requested.url, `/api/v1/me?targetId=${target}`);
+    assert.equal(requested.options.credentials, "same-origin");
+    assert.ok(requested.options.signal instanceof AbortSignal); assert.equal(requested.options.signal.aborted, signal.aborted);
+    await assert.rejects(() => getMyAccess(other, signal), /Access information/);
+  } finally { globalThis.fetch = previous; }
+});

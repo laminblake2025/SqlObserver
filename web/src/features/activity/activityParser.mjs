@@ -1,19 +1,22 @@
+import { apiFetch } from "../../apiClient.ts";
 export const pageLimit = 25;
 export const maximumResponseBytes = 256 * 1024;
 
-export class ActivityRequestError extends Error {}
+export class ActivityRequestError extends Error {
+  constructor(message, status) { super(message); this.status = status; }
+}
 
-export async function getPage(url, parseItem, expectedInstanceId, signal) {
+export async function getPage(url, parseItem, expectedInstanceId, signal, maximumItems = pageLimit) {
   let response;
-  try { response = await fetch(url, { credentials: "same-origin", headers: { Accept: "application/json" }, signal }); }
+  try { response = await apiFetch(url, { credentials: "same-origin", headers: { Accept: "application/json" }, signal }, { maximumResponseBytes }); }
   catch (error) { if (signal.aborted) throw error; throw new ActivityRequestError("Activity evidence is temporarily unavailable."); }
-  if (!response.ok) throw new ActivityRequestError(safeStatusMessage(response.status));
+  if (!response.ok) throw new ActivityRequestError(safeStatusMessage(response.status), response.status);
   const declaredLength = response.headers.get("content-length");
   if (declaredLength !== null && (!/^\d+$/u.test(declaredLength) || Number(declaredLength) > maximumResponseBytes)) throw invalidResponse();
   let value;
   try { value = JSON.parse(await readBoundedBody(response, signal)); }
   catch (error) { if (error instanceof ActivityRequestError) throw error; throw invalidResponse(); }
-  return parsePage(value, parseItem, expectedInstanceId);
+  return parsePage(value, parseItem, expectedInstanceId, maximumItems);
 }
 
 export async function readBoundedBody(response, signal, maximumBytes = maximumResponseBytes) {
@@ -35,12 +38,13 @@ export async function readBoundedBody(response, signal, maximumBytes = maximumRe
   return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
 }
 
-export function parsePage(value, parseItem, expectedInstanceId) {
+export function parsePage(value, parseItem, expectedInstanceId, maximumItems = pageLimit) {
   const record = object(value);
   const instanceId = safeGuid(record.instanceId);
   if (expectedInstanceId !== undefined && instanceId.toLowerCase() !== expectedInstanceId.toLowerCase()) throw invalidResponse();
   const repositoryTimeUtc = safeTimestamp(record.repositoryTimeUtc);
-  if (!Array.isArray(record.items) || record.items.length > pageLimit) throw invalidResponse();
+  if (!Number.isSafeInteger(maximumItems) || maximumItems < 1 || maximumItems > 256 ||
+      !Array.isArray(record.items) || record.items.length > maximumItems) throw invalidResponse();
   const evidence = record.evidence === undefined || record.evidence === null ? undefined : parseEvidence(record.evidence);
   const fromUtc = record.fromUtc === undefined ? undefined : safeTimestamp(record.fromUtc);
   const toUtc = record.toUtc === undefined ? undefined : safeTimestamp(record.toUtc);
@@ -59,6 +63,7 @@ export function parseRequest(value) { const r = object(value); return { sessionI
 export function parseWait(value) { const r = object(value); return { waitType: safeText(r.waitType), waitingTasksCount: safeCounter(r.waitingTasksCount), waitTimeMilliseconds: safeCounter(r.waitTimeMilliseconds), maximumWaitTimeMilliseconds: safeCounter(r.maximumWaitTimeMilliseconds), signalWaitTimeMilliseconds: safeCounter(r.signalWaitTimeMilliseconds), baselineAvailable: safeBoolean(r.baselineAvailable), resetDetected: safeBoolean(r.resetDetected), ...(r.waitingTasksDelta == null ? {} : { waitingTasksDelta: safeCounter(r.waitingTasksDelta) }), ...(r.waitTimeMillisecondsDelta == null ? {} : { waitTimeMillisecondsDelta: safeCounter(r.waitTimeMillisecondsDelta) }), ...(r.signalWaitTimeMillisecondsDelta == null ? {} : { signalWaitTimeMillisecondsDelta: safeCounter(r.signalWaitTimeMillisecondsDelta) }), observedAtUtc: safeTimestamp(r.observedAtUtc) }; }
 export function parseEdge(value) { const r = object(value); return { blockedSessionId: safeInteger(r.blockedSessionId), blockerKind: safeText(r.blockerKind), ...(r.blockerSessionId == null ? {} : { blockerSessionId: safeInteger(r.blockerSessionId) }), waitType: safeText(r.waitType), waitingTaskCount: safeCounter(r.waitingTaskCount), waitDurationMilliseconds: safeCounter(r.waitDurationMilliseconds), ...(r.rootBlockerSessionId == null ? {} : { rootBlockerSessionId: safeInteger(r.rootBlockerSessionId) }), chainDepth: safeInteger(r.chainDepth), chainState: safeText(r.chainState), observedAtUtc: safeTimestamp(r.observedAtUtc) }; }
 export function parseHistory(value) { const r = object(value); return { evidence: parseEvidence(r.evidence), edge: parseEdge(r.edge) }; }
+export function parseWaitHistory(value) { const r = object(value); return { evidence: parseEvidence(r.evidence), ...(r.baselineRunId == null ? {} : { baselineRunId: safeGuid(r.baselineRunId) }), wait: parseWait(r.wait) }; }
 function object(value) { if (typeof value !== "object" || value === null || Array.isArray(value)) throw invalidResponse(); return value; }
 export function safeText(value) { if (typeof value !== "string" || value.length === 0 || value.length > 160 || /[\u0000-\u001f\u007f]/u.test(value)) throw invalidResponse(); return value; }
 export function safeCursor(value) { if (typeof value !== "string" || value.length === 0 || value.length > 512 || /[\u0000-\u001f\u007f]/u.test(value)) throw invalidResponse(); return value; }

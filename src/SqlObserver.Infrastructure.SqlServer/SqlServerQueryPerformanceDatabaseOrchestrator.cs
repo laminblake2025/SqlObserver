@@ -17,7 +17,17 @@ public sealed class SqlServerQueryPerformanceDatabaseOrchestrator
         if (databases.Count > 256 || targetBudget <= TimeSpan.Zero || targetBudget > TimeSpan.FromMinutes(5)) throw new ArgumentOutOfRangeException(nameof(targetBudget));
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken); deadline.CancelAfter(targetBudget);
         using var gate = new SemaphoreSlim(MaximumConcurrentDatabases, MaximumConcurrentDatabases); var results = new QueryPerformanceReadResult[databases.Count]; var tasks = databases.Select(async (database, index) => { await gate.WaitAsync(deadline.Token).ConfigureAwait(false); try { results[index] = await reader.ReadDatabaseAsync(database, deadline.Token).ConfigureAwait(false); } finally { gate.Release(); } }).ToArray();
-        try { await Task.WhenAll(tasks).ConfigureAwait(false); } catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested) { throw new TimeoutException("Query performance target budget expired."); }
+        try { await Task.WhenAll(tasks).ConfigureAwait(false); }
+        // WhenAll prefers a fault over a cancelled sibling. Check the shared
+        // cancellation/deadline state before allowing a SQL fault to be retried.
+        catch (Exception) when (cancellationToken.IsCancellationRequested)
+        {
+            throw new OperationCanceledException(cancellationToken);
+        }
+        catch (Exception exception) when (deadline.IsCancellationRequested || exception is OperationCanceledException)
+        {
+            throw new TimeoutException("Query performance target budget expired.");
+        }
         return results;
     }
 }

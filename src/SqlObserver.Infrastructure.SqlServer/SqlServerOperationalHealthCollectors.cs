@@ -10,11 +10,13 @@ namespace SqlObserver.Infrastructure.SqlServer;
 public abstract class SqlServerOperationalHealthCollector : ISqlServerCollector
 {
     private readonly SqlServerOperationalHealthAssetCatalog assets;
-    private readonly SqlServerIntegratedConnectionFactory connectionFactory;
+    private readonly ISqlServerConnectionFactory connectionFactory;
     protected SqlServerOperationalHealthCollector(SqlServerOperationalHealthAssetCatalog assets)
+        : this(assets, new SqlServerIntegratedConnectionFactory(SqlServerIntegratedConnectionFactory.CollectionApplicationName)) { }
+    internal SqlServerOperationalHealthCollector(SqlServerOperationalHealthAssetCatalog assets, ISqlServerConnectionFactory connectionFactory)
     {
         this.assets = assets ?? throw new ArgumentNullException(nameof(assets));
-        this.connectionFactory = new SqlServerIntegratedConnectionFactory(SqlServerIntegratedConnectionFactory.CollectionApplicationName);
+        this.connectionFactory = connectionFactory ?? throw new ArgumentNullException(nameof(connectionFactory));
     }
     public abstract CollectorManifest Manifest { get; }
     protected abstract string QueryName { get; }
@@ -44,6 +46,7 @@ public abstract class SqlServerOperationalHealthCollector : ISqlServerCollector
         {
             string permission = request.CapabilityProfile.ServerIdentity.Version.Major == 15 ? "server.view-state" : "server.view-performance-state";
             if (request.CapabilityProfile.Permissions.FirstOrDefault(x => x.PermissionId.Value == permission)?.Outcome != PermissionEvidenceOutcome.Granted ||
+                request.CapabilityProfile.Permissions.FirstOrDefault(x => x.PermissionId.Value == "server.view-any-database")?.Outcome != PermissionEvidenceOutcome.Granted ||
                 request.CapabilityProfile.Permissions.FirstOrDefault(x => x.PermissionId.Value == "msdb.backupset.select")?.Outcome != PermissionEvidenceOutcome.Granted)
                 return Failure(request, CollectorRunOutcome.PermissionDenied, CollectorRunReason.RequiredPermissionMissing);
         }
@@ -57,7 +60,7 @@ public abstract class SqlServerOperationalHealthCollector : ISqlServerCollector
             {
                 CommandTimeout = Math.Max(1, (int)Math.Ceiling(budget.TotalSeconds))
             };
-            command.Parameters.Add("maximum_rows", SqlDbType.Int).Value = QueryName == "availability-groups.health" ? Manifest.Limits.MaxRows + 1 : Manifest.Limits.MaxRows;
+            command.Parameters.Add("maximum_rows", SqlDbType.Int).Value = QueryName is "availability-groups.health" or "backups.status" ? Manifest.Limits.MaxRows + 1 : Manifest.Limits.MaxRows;
             command.Parameters.Add("scan_rows", SqlDbType.Int).Value = QueryName == "sql-agent.failures" ? 4096 : Manifest.Limits.MaxRows;
             await using SqlDataReader reader = await command.ExecuteReaderAsync(CommandBehavior.SequentialAccess | CommandBehavior.SingleResult, deadline.Token).ConfigureAwait(false);
             var read = await ReadAsync(request, new SqlDataReaderOperationalHealthRowReader(reader), deadline.Token).ConfigureAwait(false);
@@ -67,8 +70,11 @@ public abstract class SqlServerOperationalHealthCollector : ISqlServerCollector
             CollectorLossEvidence effectiveLoss = degraded && !read.Loss.HasLoss ? new CollectorLossEvidence(CollectorLossKind.VisibilityIncomplete, 1, false) : read.Loss;
             return new CollectorExecutionResult(request.TargetId, request.TargetRevision, Manifest.Id, Manifest.ManifestVersion.Value, Manifest.OutputSchemaVersion.Value, effectiveLoss.HasLoss ? CollectorRunOutcome.Partial : CollectorRunOutcome.Succeeded, read.Loss.HasLoss ? CollectorRunReason.SourceRowLimit : degraded ? CollectorRunReason.VisibilityIncomplete : CollectorRunReason.Completed, payload, accounting, effectiveLoss);
         }
-        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested) { return Failure(request, CollectorRunOutcome.TimedOut, CollectorRunReason.DeadlineExceeded); }
-        catch (SqlException exception) when (exception.Number is 229 or 297) { return Failure(request, CollectorRunOutcome.PermissionDenied, CollectorRunReason.RequiredPermissionMissing); }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
+        catch (OperationCanceledException) { return Failure(request, CollectorRunOutcome.TimedOut, CollectorRunReason.DeadlineExceeded); }
+        catch (SqlException exception) when (SqlServerCollectorErrorClassifier.IsCommandTimeout(exception.Number)) { return Failure(request, CollectorRunOutcome.TimedOut, CollectorRunReason.DeadlineExceeded); }
+        catch (SqlException exception) when (SqlServerCollectorErrorClassifier.IsPermissionDenied(exception.Number)) { return Failure(request, CollectorRunOutcome.PermissionDenied, CollectorRunReason.RequiredPermissionMissing); }
+        catch (SqlException exception) when (SqlServerCollectorErrorClassifier.IsTransient(exception.Number)) { return Failure(request, CollectorRunOutcome.TransientFailure, CollectorRunReason.TransientTargetFailure); }
         catch (SqlException) { return Failure(request, CollectorRunOutcome.PermanentFailure, CollectorRunReason.PermanentTargetFailure); }
     }
     protected static CollectorLossEvidence Loss(int rows, int maximum) => rows > maximum ? new CollectorLossEvidence(CollectorLossKind.SourceRowLimit, 1, false) : CollectorLossEvidence.None;
@@ -133,6 +139,7 @@ public static class M9Manifest
             [
                 new CollectorPermissionRequirement(new SqlServerPermissionId("server.view-state"), PermissionEvidenceScope.Server, new SqlServerMajorVersionRange(15, 15)),
                 new CollectorPermissionRequirement(new SqlServerPermissionId("server.view-performance-state"), PermissionEvidenceScope.Server, new SqlServerMajorVersionRange(16, 17)),
+                new CollectorPermissionRequirement(new SqlServerPermissionId("server.view-any-database"), PermissionEvidenceScope.Server, supported),
                 new CollectorPermissionRequirement(new SqlServerPermissionId("msdb.backupset.select"), PermissionEvidenceScope.Database, supported),
             ];
         }

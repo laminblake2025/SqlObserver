@@ -97,8 +97,8 @@ public sealed class M6DeadlockIntegrationTests
         string runtimeSource = File.ReadAllText(Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../../src/SqlObserver.Infrastructure.PostgreSql/PostgreSqlCollectorRuntimeRepositoryPort.cs")));
         int bundleStart = runtimeSource.IndexOf("RequiredBundleDigests", StringComparison.Ordinal);
         string bundleBlock = runtimeSource[bundleStart..runtimeSource.IndexOf("];", bundleStart, StringComparison.Ordinal)];
-        Assert.Contains("86b049c90409e157c06612ebd48c36435213122636c9a84637e1d79029cc959e", bundleBlock, StringComparison.Ordinal);
-        Assert.Contains("57fa05f859d8f1e355786b84cc0ea6c05810ace0088fe176120b6ba019a654de", bundleBlock, StringComparison.Ordinal);
+        Assert.Contains("d233698a8b350ebdf805cbb65b085b0a93b64fc66f57f8f21d354c3445ee00c8", bundleBlock, StringComparison.Ordinal);
+        Assert.Contains("21c5911e826f945833b74b128ae499464f494cf5f0be4a59ba042d451e1ebd8d", bundleBlock, StringComparison.Ordinal);
     }
 
     [Fact]

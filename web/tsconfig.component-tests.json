@@ -1,0 +1,5 @@
+{
+  "extends": "./tsconfig.json",
+  "include": ["src", "component-tests/**/*.ts", "component-tests/**/*.tsx"],
+  "references": []
+}

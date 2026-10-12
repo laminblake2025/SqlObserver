@@ -29,6 +29,67 @@ public sealed record MaintenanceWriteRequest(MaintenanceWindow Window, string Id
 public sealed record MaintenanceCancellationRequest(Guid WindowId, string IdempotencyKey, AdministrativeAuditEnvelope Audit, RepositoryCallTimeout Timeout, long? ExpectedRevision = null, string? RequestDigest = null);
 public sealed record AlertDeliveryAdminCancellationRequest(Guid DeliveryId, string Reason, string IdempotencyKey, AdministrativeAuditEnvelope Audit, RepositoryCallTimeout Timeout, string? RequestDigest = null);
 public sealed record AlertAcknowledgeRequest(Guid AlertId, string IdempotencyKey, AdministrativeAuditEnvelope Audit, RepositoryCallTimeout Timeout, long? ExpectedRevision = null, string? RequestDigest = null, Guid? ExpectedEpisodeId = null);
+public sealed record AlertSnoozeWriteRequest
+{
+    public AlertSnoozeWriteRequest(Guid alertId, Guid expectedEpisodeId, long expectedRevision,
+        DateTimeOffset? endsAtUtc, string reason, string idempotencyKey,
+        AdministrativeAuditEnvelope audit, RepositoryCallTimeout timeout)
+    {
+        ArgumentNullException.ThrowIfNull(audit); ArgumentNullException.ThrowIfNull(timeout);
+        if (!AlertIdentifier.TryParseRfc4122(idempotencyKey, out _)) throw new ArgumentException("A canonical operation identity is required.", nameof(idempotencyKey));
+        if (audit.Action != (endsAtUtc is null ? AdministrativeAuditAction.UnsnoozeAlert : AdministrativeAuditAction.SnoozeAlert))
+            throw new ArgumentException("The snooze audit action does not match its payload.", nameof(audit));
+        RequestDigest = AlertSnoozeContract.ComputeRequestDigest(audit.TargetId, alertId, expectedEpisodeId, expectedRevision, endsAtUtc, reason);
+        AlertId = alertId; ExpectedEpisodeId = expectedEpisodeId; ExpectedRevision = expectedRevision;
+        EndsAtUtc = endsAtUtc; Reason = reason; IdempotencyKey = idempotencyKey; Audit = audit; Timeout = timeout;
+    }
+    public Guid AlertId { get; }
+    public Guid ExpectedEpisodeId { get; }
+    public long ExpectedRevision { get; }
+    public DateTimeOffset? EndsAtUtc { get; }
+    public string Reason { get; }
+    public string IdempotencyKey { get; }
+    public AdministrativeAuditEnvelope Audit { get; }
+    public RepositoryCallTimeout Timeout { get; }
+    public string RequestDigest { get; }
+}
+public sealed record AlertSnoozeWriteReceipt(AdministrativeAuditReceipt Audit, long Revision,
+    DateTimeOffset? EndsAtUtc, DateTimeOffset AppliedAtUtc);
+public sealed record AlertAssignmentWriteRequest
+{
+    public AlertAssignmentWriteRequest(Guid alertId, Guid expectedEpisodeId, long expectedRevision,
+        ActorSecurityIdentifier? assigneeSid, string reason, string idempotencyKey,
+        AdministrativeAuditEnvelope audit, RepositoryCallTimeout timeout)
+    {
+        ArgumentNullException.ThrowIfNull(audit); ArgumentNullException.ThrowIfNull(timeout);
+        if (!AlertIdentifier.TryParseRfc4122(idempotencyKey, out _)) throw new ArgumentException("A canonical operation identity is required.", nameof(idempotencyKey));
+        if (audit.Action != (assigneeSid is null ? AdministrativeAuditAction.UnassignAlert : AdministrativeAuditAction.AssignAlert))
+            throw new ArgumentException("The assignment audit action does not match its payload.", nameof(audit));
+        RequestDigest = AlertAssignmentContract.ComputeRequestDigest(audit.TargetId, alertId, expectedEpisodeId, expectedRevision, assigneeSid, reason);
+        AlertId = alertId; ExpectedEpisodeId = expectedEpisodeId; ExpectedRevision = expectedRevision;
+        AssigneeSid = assigneeSid; Reason = reason; IdempotencyKey = idempotencyKey; Audit = audit; Timeout = timeout;
+    }
+    public Guid AlertId { get; }
+    public Guid ExpectedEpisodeId { get; }
+    public long ExpectedRevision { get; }
+    public ActorSecurityIdentifier? AssigneeSid { get; }
+    public string Reason { get; }
+    public string IdempotencyKey { get; }
+    public AdministrativeAuditEnvelope Audit { get; }
+    public RepositoryCallTimeout Timeout { get; }
+    public string RequestDigest { get; }
+    public bool AssigneeEligible { get; init; }
+    public string? ApprovedAssigneeName { get; init; }
+}
+public sealed record AlertAssignmentWriteReceipt(AdministrativeAuditReceipt Audit, long Revision,
+    string? AssigneeSid, DateTimeOffset AppliedAtUtc);
+public sealed record AlertAssignmentView(AlertAssignmentStatus Status,
+    IReadOnlyList<AlertAssignmentCandidate> EligibleAssignees, bool CanAssign);
+public interface IAlertAssignmentEligibilityPort
+{
+    IReadOnlyList<AlertAssignmentCandidate> ListEligible(MonitoredInstanceId targetId);
+    AlertAssignmentCandidate? ResolveApproved(MonitoredInstanceId targetId, ActorSecurityIdentifier sid);
+}
 public sealed record AlertDestinationWriteRequest(Guid DestinationId, string Kind, string ConfigurationReference, bool Enabled, string IdempotencyKey, AdministrativeAuditEnvelope Audit, RepositoryCallTimeout Timeout, long? ExpectedRevision = null, string? RequestDigest = null, bool Approve = false, AlertDestinationApproval? Approval = null)
 {
     public const int MaximumReferenceLength = 256;
@@ -71,11 +132,14 @@ public sealed record AlertEvaluationOutcome(int Evaluated, int Changed, int Supp
 public sealed record AlertEvaluationWork(Guid OperationId, IReadOnlyList<AlertObservation> Observations, DateTimeOffset DueAtUtc, string? WorkKey = null, WorkerExecutionId? OwnerExecutionId = null, FencingToken? LeaseFencing = null);
 public sealed record AlertActiveCursor(MonitoredInstanceId TargetId, DateTimeOffset SortAtUtc, Guid AlertId, DateTimeOffset SnapshotUtc);
 public sealed record AlertActivePage(IReadOnlyList<AlertActiveDto> Items, DateTimeOffset SnapshotUtc, AlertActiveCursor? NextCursor);
+public sealed record FleetAlertCursor(DateTimeOffset SortAtUtc, Guid TargetId, Guid AlertId, DateTimeOffset SnapshotUtc);
+public sealed record FleetAlertItem(AlertActiveDto Alert, string TargetName);
+public sealed record FleetAlertPage(IReadOnlyList<FleetAlertItem> Items, DateTimeOffset SnapshotUtc, FleetAlertCursor? NextCursor);
 public sealed record AlertDeliveryWork(Guid DeliveryId, Guid AlertId, Guid DestinationId, string Kind, string ConfigurationReference, byte[] Payload, int Attempt, DateTimeOffset DueAtUtc, MonitoredInstanceId? TargetId = null, WorkerLeaseIdentity? Lease = null, string? WorkKey = null, long? ConfigurationRevision = null, string? ConfigurationDigest = null);
 public sealed record AlertDeliveryResult(Guid DeliveryId, bool Succeeded, bool PermanentFailure, string Reason, DateTimeOffset CompletedAtUtc, MonitoredInstanceId? TargetId = null, int? ResponseCode = null, int? ResponseBytes = null);
 public sealed record AlertDeliveryCancellation(Guid DeliveryId, string Reason);
-public enum AlertDeliveryReadiness { Active, Cancelled, Maintenance, RuleDisabled, DestinationNotApproved, LeaseLost }
-public enum AlertDeliveryLeaseOutcome { Active, DeferMaintenance, CancelDisabled, CancelUnapproved, LostFence }
+public enum AlertDeliveryReadiness { Active, Cancelled, Maintenance, RuleDisabled, DestinationNotApproved, LeaseLost, Snoozed }
+public enum AlertDeliveryLeaseOutcome { Active, DeferMaintenance, CancelDisabled, CancelUnapproved, LostFence, DeferSnooze }
 
 /// <summary>
 /// A database-backed per-target dispatch permit. The permit remains held while
@@ -102,10 +166,22 @@ public interface IAlertRepositoryPort
         IReadOnlyList<AlertActiveDto> rows = await ListActiveAsync(targetId, limit, timeout, cancellationToken).ConfigureAwait(false);
         return new AlertActivePage(rows, cursor?.SnapshotUtc ?? DateTimeOffset.UtcNow, null);
     }
+    ValueTask<FleetAlertPage> ListFleetActivePageAsync(TargetAuthorizationScope scope, int limit, FleetAlertCursor? cursor, RepositoryCallTimeout timeout, CancellationToken cancellationToken) =>
+        throw new NotSupportedException("The fleet alert read is not implemented by this repository.");
     ValueTask<AdministrativeAuditReceipt> UpsertRuleAsync(AlertRuleWriteRequest request, CancellationToken cancellationToken);
     ValueTask<AdministrativeAuditReceipt> UpsertMaintenanceAsync(MaintenanceWriteRequest request, CancellationToken cancellationToken);
     ValueTask<AdministrativeAuditReceipt> CancelMaintenanceAsync(MaintenanceCancellationRequest request, CancellationToken cancellationToken) => ValueTask.FromResult(new AdministrativeAuditReceipt(new AdministrativeAuditId(Guid.NewGuid()), DateTimeOffset.UtcNow));
     ValueTask<AdministrativeAuditReceipt> AcknowledgeAsync(AlertAcknowledgeRequest request, CancellationToken cancellationToken);
+    ValueTask<AlertSnoozeStatus?> GetSnoozeAsync(MonitoredInstanceId targetId, Guid alertId, RepositoryCallTimeout timeout, CancellationToken cancellationToken) =>
+        throw new NotSupportedException("The alert snooze read is not implemented by this repository.");
+    ValueTask<AlertSnoozeWriteReceipt> SetSnoozeAsync(AlertSnoozeWriteRequest request, CancellationToken cancellationToken) =>
+        throw new NotSupportedException("The alert snooze mutation is not implemented by this repository.");
+    ValueTask<AlertAssignmentStatus?> GetAssignmentAsync(MonitoredInstanceId targetId, Guid alertId, RepositoryCallTimeout timeout, CancellationToken cancellationToken) =>
+        throw new NotSupportedException("The alert assignment read is not implemented by this repository.");
+    ValueTask<AlertAssignmentWriteReceipt> SetAssignmentAsync(AlertAssignmentWriteRequest request, CancellationToken cancellationToken) =>
+        throw new NotSupportedException("The alert assignment mutation is not implemented by this repository.");
+    ValueTask<AlertAssignmentHistoryPage> ListAssignmentHistoryAsync(MonitoredInstanceId targetId, Guid alertId, int limit, Guid? beforeOperationId, RepositoryCallTimeout timeout, CancellationToken cancellationToken) =>
+        throw new NotSupportedException("The alert assignment history is not implemented by this repository.");
     ValueTask<AdministrativeAuditReceipt> UpsertDestinationAsync(AlertDestinationWriteRequest request, CancellationToken cancellationToken);
     ValueTask<AdministrativeAuditReceipt> CancelDeliveryAdminAsync(AlertDeliveryAdminCancellationRequest request, CancellationToken cancellationToken);
     ValueTask<IReadOnlyList<AlertDeliveryWork>> ClaimDueDeliveriesAsync(WorkerLeaseIdentity lease, int limit, RepositoryCallTimeout timeout, CancellationToken cancellationToken);
@@ -120,6 +196,7 @@ public interface IAlertRepositoryPort
         {
             AlertDeliveryReadiness.Active => AlertDeliveryLeaseOutcome.Active,
             AlertDeliveryReadiness.Maintenance => AlertDeliveryLeaseOutcome.DeferMaintenance,
+            AlertDeliveryReadiness.Snoozed => AlertDeliveryLeaseOutcome.DeferSnooze,
             AlertDeliveryReadiness.RuleDisabled or AlertDeliveryReadiness.Cancelled => AlertDeliveryLeaseOutcome.CancelDisabled,
             AlertDeliveryReadiness.DestinationNotApproved => AlertDeliveryLeaseOutcome.CancelUnapproved,
             _ => AlertDeliveryLeaseOutcome.LostFence,
@@ -137,16 +214,104 @@ public interface IAlertDestinationPort
 
 public interface IAlertQueryService
 {
+    ValueTask<AlertAssignmentView?> GetAssignmentAsync(AuthorizationContext authorization, MonitoredInstanceId targetId, Guid alertId, CancellationToken cancellationToken) =>
+        throw new NotSupportedException("The alert assignment read is not implemented by this service.");
+    ValueTask<AlertAssignmentHistoryPage> ListAssignmentHistoryAsync(AuthorizationContext authorization, MonitoredInstanceId targetId, Guid alertId, int limit, Guid? beforeOperationId, CancellationToken cancellationToken) =>
+        throw new NotSupportedException("The alert assignment history is not implemented by this service.");
+    ValueTask<AlertSnoozeStatus?> GetSnoozeAsync(AuthorizationContext authorization, MonitoredInstanceId targetId, Guid alertId, CancellationToken cancellationToken) =>
+        throw new NotSupportedException("The alert snooze read is not implemented by this service.");
     ValueTask<IReadOnlyList<AlertActiveDto>> ListActiveAsync(AuthorizationContext authorization, MonitoredInstanceId targetId, int limit, CancellationToken cancellationToken);
     async ValueTask<AlertActivePage> ListActivePageAsync(AuthorizationContext authorization, MonitoredInstanceId targetId, int limit, AlertActiveCursor? cursor, CancellationToken cancellationToken)
     {
         IReadOnlyList<AlertActiveDto> rows = await ListActiveAsync(authorization, targetId, limit, cancellationToken).ConfigureAwait(false);
         return new AlertActivePage(rows, cursor?.SnapshotUtc ?? DateTimeOffset.UtcNow, null);
     }
+    ValueTask<FleetAlertPage> ListFleetActivePageAsync(AuthorizationContext authorization, int limit, FleetAlertCursor? cursor, CancellationToken cancellationToken) =>
+        throw new NotSupportedException("The fleet alert read is not implemented by this service.");
+}
+
+public sealed record AlertRuleListItem(
+    Guid RuleId, string Name, AlertRuleKind Kind, string? MetricId,
+    AlertComparison Comparison, double Threshold, double Hysteresis,
+    int ConfirmationCount, int ConfirmationSeconds, int EvaluationSeconds,
+    int ClearConfirmationCount, bool Enabled, long Revision, DateTimeOffset UpdatedAtUtc);
+
+public sealed record AlertRuleListCursor(MonitoredInstanceId TargetId, DateTimeOffset ListingStartedUtc, Guid AfterRuleId);
+
+public sealed record AlertRuleListPage(
+    MonitoredInstanceId TargetId, DateTimeOffset ListingStartedUtc,
+    IReadOnlyList<AlertRuleListItem> Items, AlertRuleListCursor? NextCursor);
+
+public interface IAlertRuleReadPort
+{
+    ValueTask<AlertRuleListPage> ListRulesForAdminAsync(
+        MonitoredInstanceId targetId, int limit, AlertRuleListCursor? cursor,
+        RepositoryCallTimeout timeout, CancellationToken cancellationToken);
+}
+
+public interface IAlertRuleQueryService
+{
+    ValueTask<AlertRuleListPage> ListRulesForAdminAsync(
+        AuthorizationContext authorization, MonitoredInstanceId targetId, int limit,
+        AlertRuleListCursor? cursor, CancellationToken cancellationToken);
+}
+
+public sealed record MaintenanceWindowListItem(
+    Guid WindowId, DateTimeOffset StartsAtUtc, DateTimeOffset EndsAtUtc,
+    string Reason, long Revision, DateTimeOffset? CancelledAtUtc);
+
+public sealed record MaintenanceWindowListCursor(
+    MonitoredInstanceId TargetId, DateTimeOffset ListingStartedUtc,
+    DateTimeOffset AfterStartsAtUtc, Guid AfterWindowId);
+
+public sealed record MaintenanceWindowListPage(
+    MonitoredInstanceId TargetId, DateTimeOffset ListingStartedUtc,
+    IReadOnlyList<MaintenanceWindowListItem> Items, MaintenanceWindowListCursor? NextCursor);
+
+public interface IMaintenanceWindowReadPort
+{
+    ValueTask<MaintenanceWindowListPage> ListMaintenanceForAdminAsync(
+        MonitoredInstanceId targetId, int limit, MaintenanceWindowListCursor? cursor,
+        RepositoryCallTimeout timeout, CancellationToken cancellationToken);
+}
+
+public interface IMaintenanceWindowQueryService
+{
+    ValueTask<MaintenanceWindowListPage> ListMaintenanceForAdminAsync(
+        AuthorizationContext authorization, MonitoredInstanceId targetId, int limit,
+        MaintenanceWindowListCursor? cursor, CancellationToken cancellationToken);
+}
+
+public sealed record AlertDestinationListItem(
+    Guid DestinationId, string Kind, bool Enabled, bool Approved, long Revision);
+
+public sealed record AlertDestinationListCursor(
+    MonitoredInstanceId TargetId, DateTimeOffset ListingStartedUtc, Guid AfterDestinationId);
+
+public sealed record AlertDestinationListPage(
+    MonitoredInstanceId TargetId, DateTimeOffset ListingStartedUtc,
+    IReadOnlyList<AlertDestinationListItem> Items, AlertDestinationListCursor? NextCursor);
+
+public interface IAlertDestinationReadPort
+{
+    ValueTask<AlertDestinationListPage> ListDestinationsForAdminAsync(
+        MonitoredInstanceId targetId, int limit, AlertDestinationListCursor? cursor,
+        RepositoryCallTimeout timeout, CancellationToken cancellationToken);
+}
+
+public interface IAlertDestinationQueryService
+{
+    ValueTask<AlertDestinationListPage> ListDestinationsForAdminAsync(
+        AuthorizationContext authorization, MonitoredInstanceId targetId, int limit,
+        AlertDestinationListCursor? cursor, CancellationToken cancellationToken);
 }
 
 public interface IAlertAdministrationService
 {
+    ValueTask<AlertAssignmentWriteReceipt> SetAssignmentAsync(AuthorizationContext authorization, AlertAssignmentWriteRequest request, CancellationToken cancellationToken) =>
+        throw new NotSupportedException("The alert assignment mutation is not implemented by this service.");
+    ValueTask<AlertSnoozeWriteReceipt> SetSnoozeAsync(AuthorizationContext authorization, AlertSnoozeWriteRequest request, CancellationToken cancellationToken) =>
+        throw new NotSupportedException("The alert snooze mutation is not implemented by this service.");
     ValueTask<AdministrativeAuditReceipt> UpsertRuleAsync(AuthorizationContext authorization, AlertRuleWriteRequest request, CancellationToken cancellationToken);
     ValueTask<AdministrativeAuditReceipt> UpsertMaintenanceAsync(AuthorizationContext authorization, MaintenanceWriteRequest request, CancellationToken cancellationToken);
     ValueTask<AdministrativeAuditReceipt> CancelMaintenanceAsync(AuthorizationContext authorization, MaintenanceCancellationRequest request, CancellationToken cancellationToken);

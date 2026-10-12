@@ -1,6 +1,7 @@
 using Npgsql;
 using SqlObserver.Analytics;
 using SqlObserver.Application.Ports;
+using SqlObserver.Application.Services;
 using SqlObserver.Domain.Security;
 using SqlObserver.Reporting;
 
@@ -18,19 +19,65 @@ public sealed class PostgreSqlTargetControlPlane : IAsyncDisposable
         _dataSource = dataSource;
         LiveActivity = new PostgreSqlLiveActivityRepository(dataSource);
         Targets = new PostgreSqlObservationTargetPort(dataSource);
+        TargetGrouping = new PostgreSqlObservationTargetGroupingPort(dataSource);
         CapabilityProfiles = new PostgreSqlCapabilityProfilePort(dataSource);
         AdministrativeAudit = new PostgreSqlAdministrativeAuditPort(dataSource);
         McpInvocationAudit = new PostgreSqlMcpInvocationAuditPort(dataSource);
         WorkerLeases = new PostgreSqlWorkerLeasePort(dataSource);
         HealthProjections = new PostgreSqlHealthProjectionPort(dataSource);
+        DatabaseOptionChanges = new PostgreSqlDatabaseOptionChangePort(dataSource);
+        ServerConfigurationChanges = new PostgreSqlServerConfigurationChangePort(dataSource);
+        ServerConfigurationSnapshots = new PostgreSqlServerConfigurationSnapshotPort(dataSource);
+        CpuComponentsCollectionAdministration = new PostgreSqlCpuComponentsCollectionAdministrationPort(dataSource);
+        ConfigurationCollectionAdministration =
+            new PostgreSqlConfigurationCollectionAdministrationPort(dataSource);
+        BackupZoneQualifications = new PostgreSqlBackupZoneQualificationPort(dataSource);
+        SqlAgentModuleEnrollments = new PostgreSqlSqlAgentModuleEnrollmentPort(dataSource);
+        BackupFreshnessPolicies = new PostgreSqlBackupFreshnessPolicyPort(dataSource);
+        BackupEvidence = new PostgreSqlBackupEvidencePort(dataSource);
+        BackupFleetLatest = new PostgreSqlBackupFleetCachePort(dataSource);
+        SqlVolumeReads = new PostgreSqlSqlVolumeReadPort(dataSource);
+        SqlVolumeWindowHistory = new PostgreSqlSqlVolumeWindowHistoryRepositoryPort(dataSource);
+        SqlVolumePlanningWindow = new PostgreSqlSqlVolumePlanningWindowRepositoryPort(dataSource);
+        ServerLifecycleHistory = new PostgreSqlServerLifecycleHistoryRepositoryPort(dataSource);
+        ServerLifecycleCollectionAdministration = new PostgreSqlServerLifecycleCollectionAdministrationPort(dataSource);
+        SqlAgentActivityObservationsCollectionAdministration = new PostgreSqlSqlAgentActivityObservationsCollectionAdministrationPort(dataSource);
+        DatabaseFileIoTrends = new PostgreSqlDatabaseFileIoTrendPort(dataSource);
+        DatabaseFileWindowHistory = new PostgreSqlDatabaseFileWindowHistoryRepositoryPort(dataSource);
+        CpuComponentWindowHistory = new PostgreSqlCpuComponentWindowHistoryRepositoryPort(dataSource);
+        CpuCaptureWindowHistory = new PostgreSqlCpuCaptureWindowHistoryRepositoryPort(dataSource);
+        SqlAgentActivityWindowHistory = new PostgreSqlSqlAgentActivityWindowHistoryRepositoryPort(dataSource);
+        TempDbWindowHistory = new PostgreSqlTempDbWindowHistoryRepositoryPort(dataSource);
+        ReplicationWindowHistory = new PostgreSqlReplicationWindowHistoryRepositoryPort(dataSource);
+        BackupAvailabilityWindowHistory = new PostgreSqlBackupAvailabilityWindowHistoryRepositoryPort(dataSource);
+        BufferNodePleWindows = new PostgreSqlBufferNodePleWindowPort(dataSource);
         OverviewHistory = new PostgreSqlOverviewHistoryPort(dataSource);
+        OverviewLatestStatus = new PostgreSqlOverviewLatestStatusPort(dataSource);
         ActivityProjections = new PostgreSqlActivityProjectionPort(dataSource);
         DeadlockProjections = new PostgreSqlDeadlockProjectionPort(dataSource);
         QueryPerformanceApiProjections = new PostgreSqlQueryPerformanceApiProjectionPort(dataSource);
+        QueryTextReads = new PostgreSqlQueryTextReadRepositoryPort(dataSource);
+        QueryPlanReads = new PostgreSqlQueryPlanReadRepositoryPort(dataSource);
+        QueryPlanWaitReads = new PostgreSqlQueryPlanWaitReadRepositoryPort(dataSource);
+        QueryStoreGroupPlanTrends = new PostgreSqlQueryStoreGroupPlanTrendPort(dataSource);
+        QueryStoreWaitRankings = new PostgreSqlQueryStoreWaitRankingPort(dataSource);
+        QueryStorePlanRegressions = new PostgreSqlQueryStorePlanRegressionPort(dataSource);
+        PlanCacheIntervalHistory = new PostgreSqlPlanCacheIntervalHistoryPort(dataSource);
+        PlanCacheContentReads = new PostgreSqlPlanCacheContentReadRepositoryPort(dataSource);
+        PlanCacheIntervalRankings = new PostgreSqlPlanCacheIntervalRankingPort(dataSource);
         CollectorRuntime = new PostgreSqlCollectorRuntimeRepositoryPort(dataSource, fingerprintKey);
-        Alerts = new PostgreSqlAlertRepositoryPort(dataSource);
+        var alertRepository = new PostgreSqlAlertRepositoryPort(dataSource);
+        Alerts = alertRepository;
+        AlertLifecycle = new PostgreSqlAlertLifecycleRepositoryPort(dataSource);
+        AlertRuleReads = alertRepository;
+        MaintenanceWindowReads = alertRepository;
+        MaintenanceSeries = new PostgreSqlMaintenanceSeriesRepositoryPort(dataSource);
+        RuleTemplates = new PostgreSqlAlertRuleTemplateRepositoryPort(dataSource);
+        AlertDestinationReads = alertRepository;
         OperationalHealth = new PostgreSqlOperationalHealthProjectionPort(dataSource);
+        AvailabilityGroupEvidence = new PostgreSqlAvailabilityGroupEvidencePort(dataSource);
         Analytics = new PostgreSqlAnalyticsRepositoryPort(dataSource, fingerprintKey);
+        SavedIncidents = new PostgreSqlSavedIncidentPort(dataSource);
         AnalyticsDerivation = (IAnalyticsDerivationStore)Analytics;
         AnalyticsBackfill = new PostgreSqlAnalyticsBackfillStore(dataSource);
         ReplicationDistributionBindings = new PostgreSqlReplicationDistributionBindingResolver(dataSource);
@@ -40,6 +87,7 @@ public sealed class PostgreSqlTargetControlPlane : IAsyncDisposable
     }
 
     public IObservationTargetRepositoryPort Targets { get; }
+    public IObservationTargetGroupingPort TargetGrouping { get; }
     public ILiveActivityRepository LiveActivity { get; }
 
     public ICapabilityProfileRepositoryPort CapabilityProfiles { get; }
@@ -54,18 +102,62 @@ public sealed class PostgreSqlTargetControlPlane : IAsyncDisposable
     public IWorkerLeasePort WorkerLeases { get; }
 
     public IHealthProjectionRepositoryPort HealthProjections { get; }
+    public IDatabaseOptionChangeRepositoryPort DatabaseOptionChanges { get; }
+    public IServerConfigurationChangeRepositoryPort ServerConfigurationChanges { get; }
+    public IServerConfigurationSnapshotRepositoryPort ServerConfigurationSnapshots { get; }
+    public ICpuComponentsCollectionAdministrationPort CpuComponentsCollectionAdministration { get; }
+    public IConfigurationCollectionAdministrationPort ConfigurationCollectionAdministration { get; }
+    public IBackupZoneQualificationAdministrationPort BackupZoneQualifications { get; }
+    public ISqlAgentModuleEnrollmentAdministrationPort SqlAgentModuleEnrollments { get; }
+    public IBackupFreshnessPolicyPort BackupFreshnessPolicies { get; }
+    public IBackupEvidencePort BackupEvidence { get; }
+    public IBackupFleetLatestRepositoryPort BackupFleetLatest { get; }
+    public ISqlVolumeReadRepositoryPort SqlVolumeReads { get; }
+    public ISqlVolumeWindowHistoryRepositoryPort SqlVolumeWindowHistory { get; }
+    public ISqlVolumePlanningWindowReadPort SqlVolumePlanningWindow { get; }
+    public IServerLifecycleHistoryReadPort ServerLifecycleHistory { get; }
+    public IServerLifecycleCollectionAdministrationPort ServerLifecycleCollectionAdministration { get; }
+    public ISqlAgentActivityObservationsCollectionAdministrationPort SqlAgentActivityObservationsCollectionAdministration { get; }
+    public IDatabaseFileIoTrendRepositoryPort DatabaseFileIoTrends { get; }
+    public IDatabaseFileWindowHistoryReadPort DatabaseFileWindowHistory { get; }
+    public ICpuComponentWindowHistoryReadPort CpuComponentWindowHistory { get; }
+    public ICpuCaptureWindowHistoryReadPort CpuCaptureWindowHistory { get; }
+    public ISqlAgentActivityWindowHistoryReadPort SqlAgentActivityWindowHistory { get; }
+    public ITempDbWindowHistoryReadPort TempDbWindowHistory { get; }
+    public IReplicationWindowHistoryReadPort ReplicationWindowHistory { get; }
+    public IBackupAvailabilityWindowHistoryReadPort BackupAvailabilityWindowHistory { get; }
+    public IBufferNodePleWindowRepositoryPort BufferNodePleWindows { get; }
     public IOverviewHistoryRepositoryPort OverviewHistory { get; }
+    public IOverviewLatestStatusRepositoryPort OverviewLatestStatus { get; }
 
     public IActivityProjectionRepositoryPort ActivityProjections { get; }
 
     public IDeadlockProjectionRepositoryPort DeadlockProjections { get; }
     public IQueryPerformanceApiRepositoryPort QueryPerformanceApiProjections { get; }
+    public IQueryTextReadRepositoryPort QueryTextReads { get; }
+    public IQueryPlanReadRepositoryPort QueryPlanReads { get; }
+    public IQueryPlanWaitReadRepositoryPort QueryPlanWaitReads { get; }
+    public IQueryStoreGroupPlanTrendRepositoryPort QueryStoreGroupPlanTrends { get; }
+    public IQueryStoreWaitRankingRepositoryPort QueryStoreWaitRankings { get; }
+    public IQueryStorePlanRegressionRepositoryPort QueryStorePlanRegressions { get; }
+    public IPlanCacheIntervalHistoryRepositoryPort PlanCacheIntervalHistory { get; }
+    public IPlanCacheContentReadRepositoryPort PlanCacheContentReads { get; }
+    public IPlanCacheIntervalRankingRepositoryPort PlanCacheIntervalRankings { get; }
 
     public ICollectorRuntimeRepositoryPort CollectorRuntime { get; }
     public IAlertRepositoryPort Alerts { get; }
+    public IAlertLifecycleReadPort AlertLifecycle { get; }
+    public IAlertRuleReadPort AlertRuleReads { get; }
+    public IMaintenanceWindowReadPort MaintenanceWindowReads { get; }
+    public IMaintenanceSeriesRepositoryPort MaintenanceSeries { get; }
+    public IAlertRuleTemplateRepositoryPort RuleTemplates { get; }
+    public IAlertDestinationReadPort AlertDestinationReads { get; }
     public IOperationalHealthRepositoryPort OperationalHealth { get; }
+    public IAvailabilityGroupEvidenceRepositoryPort AvailabilityGroupEvidence { get; }
 
     public IAnalyticsRepositoryPort Analytics { get; }
+
+    public ISavedIncidentRepositoryPort SavedIncidents { get; }
 
     // Narrow MCP read projections share the analytics data source but remain
     // separate application ports so the composition root cannot accidentally
@@ -74,6 +166,7 @@ public sealed class PostgreSqlTargetControlPlane : IAsyncDisposable
     public IStorageForecastProjectionRepositoryPort StorageForecastProjections => (IStorageForecastProjectionRepositoryPort)Analytics;
     public IDiagnosticEventProjectionRepositoryPort DiagnosticEventProjections => (IDiagnosticEventProjectionRepositoryPort)Analytics;
     public IIncidentEvidenceProjectionRepositoryPort IncidentEvidenceProjections => (IIncidentEvidenceProjectionRepositoryPort)Analytics;
+    public IIncidentListProjectionRepositoryPort IncidentListProjections => (IIncidentListProjectionRepositoryPort)Analytics;
 
     public IAnalyticsDerivationStore AnalyticsDerivation { get; }
 

@@ -8,6 +8,34 @@ namespace SqlObserver.UnitTests;
 
 public sealed class M12LifecycleAssessmentContractTests
 {
+    [Fact]
+    public void AssessmentAndApplyAcceptHistoryBeyondFormerBatchCap()
+    {
+        var request = new MigrationAssessmentRequest(257, new RepositoryCallTimeout(TimeSpan.FromSeconds(1)));
+        var apply = new MigrationApplyRequest(257, new RepositoryCallTimeout(TimeSpan.FromSeconds(1)));
+        DateTimeOffset completed = new(2026, 9, 24, 12, 0, 0, TimeSpan.Zero);
+        MigrationHistoryEntry[] history = Enumerable.Range(1, 257)
+            .Select(number => new MigrationHistoryEntry(number, $"{number:D4}_example.sql", new string('a', 64)))
+            .ToArray();
+        MigrationExecutionResult[] executions = Enumerable.Range(1, 257)
+            .Select(number => new MigrationExecutionResult(
+                new MigrationDescriptor(new MigrationNumber(number), "example", new MigrationChecksum(new byte[32]), true),
+                MigrationOutcome.AlreadyApplied, completed, completed))
+            .ToArray();
+        var batch = new MigrationBatchResult(executions, completed);
+        var result = new MigrationAssessmentResult(MigrationAssessmentStatus.Pending, history,
+            completed, "pending_migrations", nextMigrationNumber: 258);
+
+        Assert.Equal(257, request.MaxHistory);
+        Assert.Equal(257, apply.MaxMigrations);
+        Assert.Throws<ArgumentOutOfRangeException>(() => new MigrationApplyRequest(
+            MigrationNumber.MaximumValue + 1, new RepositoryCallTimeout(TimeSpan.FromSeconds(1))));
+        Assert.Equal(257, batch.Results.Count);
+        Assert.Equal(257, result.ObservedHistoryCount);
+        Assert.Equal(257, result.History.Count);
+        Assert.Equal(MigrationNumber.MaximumValue, MigrationBatchResult.MaximumResults);
+    }
+
     // Production-default options; enum attributes and null-property attributes
     // must make the wire shape conform without test-local converters.
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);

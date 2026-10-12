@@ -22,6 +22,11 @@ never overwrites its protected bytes or key metadata. The repository cannot safe
 distinguish an exact retry from a cryptographic fingerprint collision without comparing
 plaintext, so collision investigation belongs outside this persistence boundary.
 
+For query text and execution plans, compute the fingerprint as a keyed digest that
+also includes the target identity. Authenticate the same target and payload kind
+when encrypting, so identical SQL on different targets cannot share a protected
+repository row or be decrypted under the wrong target.
+
 Treat content as inert data. Use safe XML parsers with DTDs, external entities, and network resolution disabled. Bound input bytes, decompression, depth, parse time, result rows, and response bytes. Encode for the output context, sanitize any derived visual form, prevent spreadsheet-formula execution in exports, and never use captured content as a command, template, log format, HTML, or instruction to an MCP/AI client.
 
 APIs and MCP expose only the minimum authorized projection. List/summary operations prefer metadata and identifiers; content-bearing retrieval is explicit, bounded, attributable, and separately authorized where policy requires it.

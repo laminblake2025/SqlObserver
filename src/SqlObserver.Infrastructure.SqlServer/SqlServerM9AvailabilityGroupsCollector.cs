@@ -47,7 +47,16 @@ public sealed class SqlServerAvailabilityGroupsHealthCollector : SqlServerOperat
     {
         if (reader.IsDBNull(ordinal)) return "unknown";
         string value = reader.GetString(ordinal);
-        return value is "PRIMARY" or "SECONDARY" or "RESOLVING" or "ONLINE" or "CONNECTED" or "DISCONNECTED" or "NOT_CONNECTED" or "FAILED" or "OFFLINE" or "SYNCHRONIZED" or "SYNCHRONIZING" or "NOT SYNCHRONIZING" or "RESTORING" or "RECOVERING" ? value : "unknown";
+        bool allowed = ordinal switch
+        {
+            3 => value is "PRIMARY" or "SECONDARY" or "RESOLVING",
+            4 => value is "PENDING_FAILOVER" or "PENDING" or "ONLINE" or "OFFLINE" or "FAILED" or "FAILED_NO_QUORUM",
+            5 => value is "CONNECTED" or "DISCONNECTED",
+            8 => value is "NOT SYNCHRONIZING" or "SYNCHRONIZING" or "SYNCHRONIZED" or "REVERTING" or "INITIALIZING",
+            9 => value is "ONLINE" or "RESTORING" or "RECOVERING" or "RECOVERY_PENDING" or "SUSPECT" or "EMERGENCY" or "OFFLINE",
+            _ => false,
+        };
+        return allowed ? value : "unknown";
     }
 
     private static AvailabilityVisibilityScope ReadVisibilityScope(IOperationalHealthRowReader reader, int ordinal, string fallback)

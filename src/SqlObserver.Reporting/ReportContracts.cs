@@ -24,7 +24,7 @@ public static class ReportContract
     public static readonly TimeSpan MaterializationRetention = TimeSpan.FromHours(24);
 }
 
-public enum ReportKind { InstanceHealth, PerformanceWindow, IncidentEvidence, CapacityReadiness }
+public enum ReportKind { InstanceHealth, PerformanceWindow, IncidentEvidence, CapacityReadiness, SavedInvestigation }
 
 public static class ReportKindExtensions
 {
@@ -34,6 +34,7 @@ public static class ReportKindExtensions
         ReportKind.PerformanceWindow => "performance-window",
         ReportKind.IncidentEvidence => "incident-evidence",
         ReportKind.CapacityReadiness => "capacity-readiness",
+        ReportKind.SavedInvestigation => "saved-investigation",
         _ => throw new ArgumentOutOfRangeException(nameof(value))
     };
 
@@ -45,6 +46,7 @@ public static class ReportKindExtensions
             "performance-window" => ReportKind.PerformanceWindow,
             "incident-evidence" => ReportKind.IncidentEvidence,
             "capacity-readiness" => ReportKind.CapacityReadiness,
+            "saved-investigation" => ReportKind.SavedInvestigation,
             _ => (ReportKind)(-1)
         };
         return (int)kind >= 0;
@@ -72,14 +74,22 @@ public static class ReportCatalog
         new ReportDefinition(ReportKind.IncidentEvidence, ReportContract.Version, "Incident Evidence", new[]
         { new ReportSectionDefinition("incidents", "Incidents", "occurredAtUtc", "severity", "eventKind", "visibility") }),
         new ReportDefinition(ReportKind.CapacityReadiness, ReportContract.Version, "Capacity/Readiness", new[]
-        { new ReportSectionDefinition("capacity", "Capacity", "observedAtUtc", "metric", "value", "state") })
+        { new ReportSectionDefinition("capacity", "Capacity", "observedAtUtc", "metric", "value", "state") }),
+        new ReportDefinition(ReportKind.SavedInvestigation, ReportContract.Version, "Saved Investigation", new[]
+        {
+            new ReportSectionDefinition("investigation", "Saved window, notes and capture limits", "field", "part", "value"),
+            new ReportSectionDefinition("saved-evidence", "Saved evidence (decode JSON strings, then concatenate ordered parts per packet)",
+                "packetId", "occurredAtUtc", "evidenceKind", "visibility", "confidence", "sourceRunId",
+                "sourceSha256", "identitySha256", "sourceCutoffSha256", "sourceCutoffUtc", "part", "evidenceJson"),
+        })
     });
 
     public static IReadOnlyList<ReportDefinition> All => Definitions;
     public static ReportDefinition Get(ReportKind kind) => Definitions.Single(x => x.Kind == kind);
 }
 
-public sealed record ReportRequest(string ReportKind, Guid OperationId, DateTimeOffset? FromUtc = null, DateTimeOffset? ToUtc = null)
+public sealed record ReportRequest(string ReportKind, Guid OperationId, DateTimeOffset? FromUtc = null,
+    DateTimeOffset? ToUtc = null, Guid? ThreadId = null)
 {
     public ReportKind ParsedKind => ReportKindExtensions.TryParse(ReportKind, out ReportKind value) ? value : throw new ArgumentException("Unknown report kind.", nameof(ReportKind));
 }
@@ -119,6 +129,14 @@ public static class ReportRequestValidation
         if (request.TargetId == Guid.Empty || request.Request.OperationId == Guid.Empty) throw new ArgumentException("Target and operation identifiers are required.");
         if (!ReportKindExtensions.TryParse(request.Request.ReportKind, out ReportKind kind)) throw new ArgumentException("Unknown report kind.");
         DateTimeOffset? from = request.Request.FromUtc; DateTimeOffset? to = request.Request.ToUtc;
+        if (kind == ReportKind.SavedInvestigation)
+        {
+            if (request.Request.ThreadId is null || request.Request.ThreadId == Guid.Empty || from is not null || to is not null)
+                throw new ArgumentException("A saved investigation report requires its thread identity and uses its saved window.");
+            if (!ReportAuthorization.CanAccess(request.TargetId, request.Authorization)) throw new UnauthorizedAccessException();
+            return;
+        }
+        if (request.Request.ThreadId is not null) throw new ArgumentException("This report does not accept a saved investigation identity.");
         if (kind == ReportKind.InstanceHealth && (from is not null || to is not null)) throw new ArgumentException("Instance health does not accept a window.");
         if (kind != ReportKind.InstanceHealth && (from is null || to is null || from.Value.Offset != TimeSpan.Zero || to!.Value.Offset != TimeSpan.Zero || to <= from)) throw new ArgumentException("Reports require a UTC half-open window.");
         if (from is not null && to is not null)
@@ -134,7 +152,9 @@ public static class ReportRequestValidation
         ArgumentNullException.ThrowIfNull(request);
         // Deliberately omit operationId: retries with a different id are the same
         // logical request and are rejected only when the idempotency key conflicts.
-        string canonical = request.FromUtc is { } from && request.ToUtc is { } to
+        string canonical = request.ParsedKind == ReportKind.SavedInvestigation
+            ? $"{{\"reportKind\":\"saved-investigation\",\"threadId\":\"{request.ThreadId:D}\"}}"
+            : request.FromUtc is { } from && request.ToUtc is { } to
             ? $"{{\"fromUtc\":\"{from:O}\",\"reportKind\":\"{request.ReportKind}\",\"toUtc\":\"{to:O}\"}}"
             : $"{{\"reportKind\":\"{request.ReportKind}\"}}";
         return SHA256.HashData(Encoding.UTF8.GetBytes(canonical));

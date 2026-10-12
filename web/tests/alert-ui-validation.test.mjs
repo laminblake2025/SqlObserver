@@ -1,5 +1,4 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { alertMatchesFilter } from "../src/features/alerts/alertFilter.ts";
 
@@ -11,10 +10,5 @@ test("alert filters keep all loaded states distinct from active and firing", () 
   assert.deepEqual(states.filter((state) => alertMatchesFilter("firing", state)), ["firing"]);
 });
 
-test("alert panel exposes loading/error states and protects pending load-more", async () => {
-  const panel = await readFile(new URL("../src/features/alerts/TargetAlertsPanel.tsx", import.meta.url), "utf8");
-  assert.match(panel, /Loading target-scoped alerts/);
-  assert.match(panel, /role="alert"/);
-  assert.match(panel, /disabled=\{!nextCursor \|\| loadingMore\}/);
-  assert.match(panel, /setError\(undefined\)/);
-});
+// Mounted loading, accessible error/retry and pending pagination behavior lives
+// in component-tests/AlertPanel.spec.mjs; this file retains the runtime filter contract.

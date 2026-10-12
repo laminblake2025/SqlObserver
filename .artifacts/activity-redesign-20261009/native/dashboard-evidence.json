@@ -1,0 +1,21 @@
+{
+  "runId": "5ef3afa1e954407388fdaa988d61f47b",
+  "verifiedAtUtc": "2026-10-09T17:37:59.520Z",
+  "retainedCaptureReplay": true,
+  "target": "dfb2b72c-4ad4-4765-9523-528c798482f0",
+  "syntheticData": false,
+  "tls": "validated",
+  "snapshotId": "0a40ec84-9005-44fb-9d55-78771ff872dc",
+  "observedUtc": "2026-10-09T17:17:02.679Z",
+  "pagesRead": 2,
+  "requestRows": 76,
+  "distinctSessions": 76,
+  "blockedSession": 76,
+  "blockerSession": 75,
+  "priorityFirst": 75,
+  "identityPinned": true,
+  "deliberateSqlRead": true,
+  "queryHttpStatus": 200,
+  "knownGuardedStatement": true,
+  "protectedTextStored": false
+}

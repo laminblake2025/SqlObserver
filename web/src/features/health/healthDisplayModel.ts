@@ -46,6 +46,12 @@ const definitions = {
     unit: "GiB",
     format: "bytes",
   },
+  "engine.memory_grants_pending": {
+    metricId: "engine.memory_grants_pending",
+    label: "SQL memory grants pending",
+    unit: "grants",
+    format: "count",
+  },
   "engine.committed_memory_bytes": {
     metricId: "engine.committed_memory_bytes",
     label: "Committed memory",

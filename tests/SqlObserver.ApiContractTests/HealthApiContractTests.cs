@@ -73,6 +73,7 @@ public sealed class HealthApiContractTests
         "CompatibilityLevel",
         "DatabaseId",
         "IsReadOnly",
+        "LogReuseWaitDescription",
         "Name",
         "ObservedAtUtc",
         "RecoveryModel",
@@ -104,9 +105,11 @@ public sealed class HealthApiContractTests
         "MaximumSizeBytes",
         "ObservedAtUtc",
         "ReadCount",
+        "ReadStallMilliseconds",
         "SizeBytes",
         "State",
         "WriteCount",
+        "WriteStallMilliseconds",
     ];
 
     [Fact]

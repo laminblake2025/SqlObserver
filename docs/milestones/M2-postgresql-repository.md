@@ -46,10 +46,15 @@ already matches and it is not a member of another role; the migration never rewr
 an unrelated pre-existing role. Service LOGIN roles and all authentication material
 are provisioned outside the repository and receive only one appropriate group role.
 
-The migration runner, not the SQL file, owns one transaction per migration. It sets a
+The migration runner, not the SQL file, owns transaction boundaries. Ordinary
+migrations run in one transaction; the narrowly declared concurrent-index mode
+added in migration `0088` runs outside it and records its ledger row after the
+index is valid. It sets a
 bounded command timeout, executes the complete file, inserts the verified filename and
-checksum into `system.schema_migration`, and commits both changes atomically. Every
-file uses `SET LOCAL`, so executing it as unrelated autocommit statements is invalid.
+checksum into `system.schema_migration`, and commits both changes atomically for
+ordinary migrations. Concurrent-index migrations use runner-managed session settings
+and can be retried if a build finishes before its ledger row is committed. SQL
+files must be applied through the runner, not as unrelated autocommit statements.
 The runner must reject a PostgreSQL major version other than 18 before applying any
 file and must also honor the server-side assertion in migration `0001`.
 
@@ -66,6 +71,8 @@ gap-free four-digit sequence and `checksums.sha256` contains exactly one lowerca
 SHA-256 followed by two spaces and the filename for every migration. Checksums are
 computed from committed LF bytes. A released file and its historical checksum are
 never edited; repair uses a new numbered forward migration.
+The catalog and ledger can hold the full four-digit sequence (up to 9,999
+migrations); each apply request still returns at most 256 migration results.
 
 Files under `database/functions` and `database/views` are non-deployable review indexes
 pointing to the matching numbered migration, not a runtime discovery or execution

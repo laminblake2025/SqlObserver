@@ -5,13 +5,14 @@ using SqlObserver.Alerting;
 using SqlObserver.Application.Ports;
 using SqlObserver.Domain.Alerting;
 using SqlObserver.Domain.Auditing;
+using SqlObserver.Domain.Authorization;
 using SqlObserver.Domain.Coordination;
 using SqlObserver.Domain.Telemetry;
 
 namespace SqlObserver.Infrastructure.PostgreSql;
 
 /// <summary>Restricted alert repository. SQL functions own authorization, RLS, leases and idempotency.</summary>
-public sealed class PostgreSqlAlertRepositoryPort : IAlertRepositoryPort
+public sealed class PostgreSqlAlertRepositoryPort : IAlertRepositoryPort, IAlertRuleReadPort, IMaintenanceWindowReadPort, IAlertDestinationReadPort
 {
     private sealed record ObservationWire(Guid TargetId, Guid RuleId, DateTimeOffset ObservedAtUtc, double? Value, bool? CollectorHealthy, string? Reason, Guid OperationId, string EvidenceDigest, string? SampleId = null, Guid? RunId = null, string? SourceKind = null, string? MetricId = null, string? SourceCollector = null, string? SourceVersion = null, int? SourceSchemaVersion = null, string? SourceDigest = null);
     private sealed record DestinationPayload(Guid DestinationId, string Kind, string ConfigurationReference, bool Enabled, long? ExpectedRevision, string? RequestDigest, bool Approve, AlertDestinationApproval? Approval, string Action);
@@ -71,7 +72,7 @@ public sealed class PostgreSqlAlertRepositoryPort : IAlertRepositoryPort
         await using NpgsqlTransaction transaction = await c.BeginTransactionAsync(deadline.Token).ConfigureAwait(false);
         await PostgreSqlRuntimeSupport.ConfigureTransactionAsync(c, transaction, timeout, deadline.Token).ConfigureAwait(false);
         await SetTargetScopeAsync(c, targetId.Value, transaction, timeout, deadline.Token).ConfigureAwait(false);
-        await using var cmd = new NpgsqlCommand("SELECT rule_id,name,kind,metric_id,comparison,threshold,hysteresis,confirmation_count,confirmation_window,evaluation_interval,enabled FROM alerting.list_rules(@target_id);", c);
+        await using var cmd = new NpgsqlCommand("SELECT rule_id,name,kind,metric_id,comparison,threshold,hysteresis,confirmation_count,confirmation_window,evaluation_interval,enabled,clear_confirmation_count FROM alerting.list_rules_v2(@target_id);", c);
         cmd.Transaction = transaction;
         cmd.CommandTimeout = PostgreSqlRuntimeSupport.GetCommandTimeoutSeconds(timeout);
         cmd.Parameters.AddWithValue("target_id", targetId.Value);
@@ -79,11 +80,161 @@ public sealed class PostgreSqlAlertRepositoryPort : IAlertRepositoryPort
         await using NpgsqlDataReader r = await cmd.ExecuteReaderAsync(deadline.Token).ConfigureAwait(false);
         while (await r.ReadAsync(deadline.Token).ConfigureAwait(false))
         {
-            result.Add(new AlertRuleDefinition(r.GetGuid(0), r.GetString(1), (AlertRuleKind)r.GetInt32(2), r.IsDBNull(3) ? null : new MetricId(r.GetString(3)), (AlertComparison)r.GetInt32(4), r.GetDouble(5), r.GetDouble(6), r.GetInt32(7), r.GetTimeSpan(8), r.GetTimeSpan(9), r.GetBoolean(10)));
+            result.Add(new AlertRuleDefinition(r.GetGuid(0), r.GetString(1), (AlertRuleKind)r.GetInt32(2), r.IsDBNull(3) ? null : new MetricId(r.GetString(3)), (AlertComparison)r.GetInt32(4), r.GetDouble(5), r.GetDouble(6), r.GetInt32(7), r.GetTimeSpan(8), r.GetTimeSpan(9), r.GetBoolean(10), r.GetInt32(11)));
         }
         await r.DisposeAsync().ConfigureAwait(false);
         await transaction.CommitAsync(deadline.Token).ConfigureAwait(false);
         return result;
+    }
+
+    public async ValueTask<AlertRuleListPage> ListRulesForAdminAsync(
+        MonitoredInstanceId targetId, int limit, AlertRuleListCursor? cursor,
+        RepositoryCallTimeout timeout, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(targetId);
+        ArgumentNullException.ThrowIfNull(timeout);
+        if (limit is < 1 or > 100 || cursor is not null &&
+            (cursor.TargetId.Value != targetId.Value || cursor.ListingStartedUtc.Offset != TimeSpan.Zero ||
+             cursor.AfterRuleId == Guid.Empty))
+            throw new ArgumentException("Invalid alert rule page request.");
+        using CancellationTokenSource deadline = PostgreSqlRuntimeSupport.CreateTimeoutScope(timeout, cancellationToken);
+        await using NpgsqlConnection connection = await _dataSource.OpenConnectionAsync(deadline.Token).ConfigureAwait(false);
+        await using NpgsqlTransaction transaction = await connection.BeginTransactionAsync(deadline.Token).ConfigureAwait(false);
+        await PostgreSqlRuntimeSupport.ConfigureTransactionAsync(connection, transaction, timeout, deadline.Token).ConfigureAwait(false);
+        await SetTargetScopeAsync(connection, targetId.Value, transaction, timeout, deadline.Token).ConfigureAwait(false);
+        DateTimeOffset listingStartedUtc;
+        if (cursor is null)
+        {
+            await using var clock = new NpgsqlCommand("SELECT transaction_timestamp();", connection, transaction)
+            { CommandTimeout = PostgreSqlRuntimeSupport.GetCommandTimeoutSeconds(timeout) };
+            DateTime repositoryTime = (DateTime)(await clock.ExecuteScalarAsync(deadline.Token).ConfigureAwait(false)
+                ?? throw new InvalidDataException("Repository time is unavailable."));
+            listingStartedUtc = new DateTimeOffset(repositoryTime);
+        }
+        else listingStartedUtc = cursor.ListingStartedUtc;
+        await using var command = new NpgsqlCommand(
+            "SELECT * FROM alerting.list_rules_for_admin(@target,@started,@after,@limit);", connection, transaction)
+        { CommandTimeout = PostgreSqlRuntimeSupport.GetCommandTimeoutSeconds(timeout) };
+        command.Parameters.AddWithValue("target", targetId.Value);
+        command.Parameters.AddWithValue("started", listingStartedUtc);
+        command.Parameters.Add("after", NpgsqlDbType.Uuid).Value = (object?)cursor?.AfterRuleId ?? DBNull.Value;
+        command.Parameters.AddWithValue("limit", limit + 1);
+        var rows = new List<AlertRuleListItem>(limit + 1);
+        await using (NpgsqlDataReader reader = await command.ExecuteReaderAsync(deadline.Token).ConfigureAwait(false))
+        {
+            while (await reader.ReadAsync(deadline.Token).ConfigureAwait(false))
+                rows.Add(new AlertRuleListItem(
+                    reader.GetGuid(0), reader.GetString(1), (AlertRuleKind)reader.GetInt32(2),
+                    reader.IsDBNull(3) ? null : reader.GetString(3), (AlertComparison)reader.GetInt32(4),
+                    reader.GetDouble(5), reader.GetDouble(6), reader.GetInt32(7), reader.GetInt32(8),
+                    reader.GetInt32(9), reader.GetInt32(10), reader.GetBoolean(11), reader.GetInt64(12),
+                    reader.GetFieldValue<DateTimeOffset>(13)));
+        }
+        await transaction.CommitAsync(deadline.Token).ConfigureAwait(false);
+        bool hasMore = rows.Count > limit;
+        if (hasMore) rows.RemoveAt(limit);
+        return new AlertRuleListPage(targetId, listingStartedUtc, rows,
+            hasMore ? new AlertRuleListCursor(targetId, listingStartedUtc, rows[^1].RuleId) : null);
+    }
+
+    public async ValueTask<MaintenanceWindowListPage> ListMaintenanceForAdminAsync(
+        MonitoredInstanceId targetId, int limit, MaintenanceWindowListCursor? cursor,
+        RepositoryCallTimeout timeout, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(targetId);
+        ArgumentNullException.ThrowIfNull(timeout);
+        if (limit is < 1 or > 100 || cursor is not null &&
+            (cursor.TargetId.Value != targetId.Value || cursor.ListingStartedUtc.Offset != TimeSpan.Zero ||
+             cursor.AfterStartsAtUtc.Offset != TimeSpan.Zero || cursor.AfterWindowId == Guid.Empty))
+            throw new ArgumentException("Invalid maintenance page request.");
+        using CancellationTokenSource deadline = PostgreSqlRuntimeSupport.CreateTimeoutScope(timeout, cancellationToken);
+        await using NpgsqlConnection connection = await _dataSource.OpenConnectionAsync(deadline.Token).ConfigureAwait(false);
+        await using NpgsqlTransaction transaction = await connection.BeginTransactionAsync(deadline.Token).ConfigureAwait(false);
+        await PostgreSqlRuntimeSupport.ConfigureTransactionAsync(connection, transaction, timeout, deadline.Token).ConfigureAwait(false);
+        await SetTargetScopeAsync(connection, targetId.Value, transaction, timeout, deadline.Token).ConfigureAwait(false);
+        DateTimeOffset listingStartedUtc;
+        if (cursor is null)
+        {
+            await using var clock = new NpgsqlCommand("SELECT transaction_timestamp();", connection, transaction)
+            { CommandTimeout = PostgreSqlRuntimeSupport.GetCommandTimeoutSeconds(timeout) };
+            DateTime repositoryTime = (DateTime)(await clock.ExecuteScalarAsync(deadline.Token).ConfigureAwait(false)
+                ?? throw new InvalidDataException("Repository time is unavailable."));
+            listingStartedUtc = new DateTimeOffset(repositoryTime);
+        }
+        else listingStartedUtc = cursor.ListingStartedUtc;
+        await using var command = new NpgsqlCommand(
+            "SELECT * FROM alerting.list_maintenance_for_admin(@target,@started,@after_starts,@after_id,@limit);",
+            connection, transaction) { CommandTimeout = PostgreSqlRuntimeSupport.GetCommandTimeoutSeconds(timeout) };
+        command.Parameters.AddWithValue("target", targetId.Value);
+        command.Parameters.AddWithValue("started", listingStartedUtc);
+        command.Parameters.Add("after_starts", NpgsqlDbType.TimestampTz).Value =
+            (object?)cursor?.AfterStartsAtUtc ?? DBNull.Value;
+        command.Parameters.Add("after_id", NpgsqlDbType.Uuid).Value =
+            (object?)cursor?.AfterWindowId ?? DBNull.Value;
+        command.Parameters.AddWithValue("limit", limit + 1);
+        var rows = new List<MaintenanceWindowListItem>(limit + 1);
+        await using (NpgsqlDataReader reader = await command.ExecuteReaderAsync(deadline.Token).ConfigureAwait(false))
+        {
+            while (await reader.ReadAsync(deadline.Token).ConfigureAwait(false))
+                rows.Add(new MaintenanceWindowListItem(reader.GetGuid(0),
+                    reader.GetFieldValue<DateTimeOffset>(1), reader.GetFieldValue<DateTimeOffset>(2),
+                    reader.GetString(3), reader.GetInt64(4),
+                    reader.IsDBNull(5) ? null : reader.GetFieldValue<DateTimeOffset>(5)));
+        }
+        await transaction.CommitAsync(deadline.Token).ConfigureAwait(false);
+        bool hasMore = rows.Count > limit;
+        if (hasMore) rows.RemoveAt(limit);
+        return new MaintenanceWindowListPage(targetId, listingStartedUtc, rows,
+            hasMore ? new MaintenanceWindowListCursor(targetId, listingStartedUtc,
+                rows[^1].StartsAtUtc, rows[^1].WindowId) : null);
+    }
+
+    public async ValueTask<AlertDestinationListPage> ListDestinationsForAdminAsync(
+        MonitoredInstanceId targetId, int limit, AlertDestinationListCursor? cursor,
+        RepositoryCallTimeout timeout, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(targetId);
+        ArgumentNullException.ThrowIfNull(timeout);
+        if (limit is < 1 or > 100 || cursor is not null &&
+            (cursor.TargetId.Value != targetId.Value || cursor.ListingStartedUtc.Offset != TimeSpan.Zero ||
+             cursor.AfterDestinationId == Guid.Empty))
+            throw new ArgumentException("Invalid destination page request.");
+        using CancellationTokenSource deadline = PostgreSqlRuntimeSupport.CreateTimeoutScope(timeout, cancellationToken);
+        await using NpgsqlConnection connection = await _dataSource.OpenConnectionAsync(deadline.Token).ConfigureAwait(false);
+        await using NpgsqlTransaction transaction = await connection.BeginTransactionAsync(deadline.Token).ConfigureAwait(false);
+        await PostgreSqlRuntimeSupport.ConfigureTransactionAsync(connection, transaction, timeout, deadline.Token).ConfigureAwait(false);
+        await SetTargetScopeAsync(connection, targetId.Value, transaction, timeout, deadline.Token).ConfigureAwait(false);
+        DateTimeOffset listingStartedUtc;
+        if (cursor is null)
+        {
+            await using var clock = new NpgsqlCommand("SELECT transaction_timestamp();", connection, transaction)
+            { CommandTimeout = PostgreSqlRuntimeSupport.GetCommandTimeoutSeconds(timeout) };
+            DateTime repositoryTime = (DateTime)(await clock.ExecuteScalarAsync(deadline.Token).ConfigureAwait(false)
+                ?? throw new InvalidDataException("Repository time is unavailable."));
+            listingStartedUtc = new DateTimeOffset(repositoryTime);
+        }
+        else listingStartedUtc = cursor.ListingStartedUtc;
+        await using var command = new NpgsqlCommand(
+            "SELECT * FROM alerting.list_destinations_for_admin(@target,@started,@after,@limit);",
+            connection, transaction) { CommandTimeout = PostgreSqlRuntimeSupport.GetCommandTimeoutSeconds(timeout) };
+        command.Parameters.AddWithValue("target", targetId.Value);
+        command.Parameters.AddWithValue("started", listingStartedUtc);
+        command.Parameters.Add("after", NpgsqlDbType.Uuid).Value =
+            (object?)cursor?.AfterDestinationId ?? DBNull.Value;
+        command.Parameters.AddWithValue("limit", limit + 1);
+        var rows = new List<AlertDestinationListItem>(limit + 1);
+        await using (NpgsqlDataReader reader = await command.ExecuteReaderAsync(deadline.Token).ConfigureAwait(false))
+        {
+            while (await reader.ReadAsync(deadline.Token).ConfigureAwait(false))
+                rows.Add(new AlertDestinationListItem(reader.GetGuid(0), reader.GetString(1),
+                    reader.GetBoolean(2), reader.GetBoolean(3), reader.GetInt64(4)));
+        }
+        await transaction.CommitAsync(deadline.Token).ConfigureAwait(false);
+        bool hasMore = rows.Count > limit;
+        if (hasMore) rows.RemoveAt(limit);
+        return new AlertDestinationListPage(targetId, listingStartedUtc, rows,
+            hasMore ? new AlertDestinationListCursor(targetId, listingStartedUtc,
+                rows[^1].DestinationId) : null);
     }
 
     public async ValueTask<bool> RecoverDeliveryClaimsAsync(MonitoredInstanceId targetId, WorkerLeaseIdentity lease, RepositoryCallTimeout timeout, CancellationToken cancellationToken)
@@ -100,7 +251,7 @@ public sealed class PostgreSqlAlertRepositoryPort : IAlertRepositoryPort
         command.Parameters.AddWithValue("work_key", lease.Key.Value);
         command.Parameters.AddWithValue("owner_id", lease.Owner.Value);
         command.Parameters.AddWithValue("fencing", lease.FencingToken.Value);
-        bool recovered = (bool)(await command.ExecuteScalarAsync(deadline.Token).ConfigureAwait(false) ?? false);
+        bool recovered = ScalarOrDefault(await command.ExecuteScalarAsync(deadline.Token).ConfigureAwait(false), false);
         await transaction.CommitAsync(deadline.Token).ConfigureAwait(false);
         return recovered;
     }
@@ -111,13 +262,13 @@ public sealed class PostgreSqlAlertRepositoryPort : IAlertRepositoryPort
         await using NpgsqlTransaction transaction = await c.BeginTransactionAsync(deadline.Token).ConfigureAwait(false);
         await PostgreSqlRuntimeSupport.ConfigureTransactionAsync(c, transaction, timeout, deadline.Token).ConfigureAwait(false);
         await SetTargetScopeAsync(c, targetId.Value, transaction, timeout, deadline.Token).ConfigureAwait(false);
-        await using var cmd = new NpgsqlCommand("SELECT rule_id,instance_id,state,consecutive_matches,first_match_at,last_observed_at,fired_at,acknowledged_at,resolved_at,episode_started_at,alert_id,alert_episode_id,last_operation_id,evidence_digest,reason,last_reason,delivery_suppressed,acknowledged_by,revision,last_value FROM alerting.get_rule_state(@target_id,@rule_id);", c);
+        await using var cmd = new NpgsqlCommand("SELECT rule_id,instance_id,state,consecutive_matches,first_match_at,last_observed_at,fired_at,acknowledged_at,resolved_at,episode_started_at,alert_id,alert_episode_id,last_operation_id,evidence_digest,reason,last_reason,delivery_suppressed,acknowledged_by,revision,last_value,consecutive_clears FROM alerting.get_rule_state_v2(@target_id,@rule_id);", c);
         cmd.Transaction = transaction;
         cmd.CommandTimeout = PostgreSqlRuntimeSupport.GetCommandTimeoutSeconds(timeout);
         cmd.Parameters.AddWithValue("target_id", targetId.Value); cmd.Parameters.AddWithValue("rule_id", ruleId);
         await using NpgsqlDataReader r = await cmd.ExecuteReaderAsync(deadline.Token).ConfigureAwait(false);
         if (!await r.ReadAsync(deadline.Token).ConfigureAwait(false)) { await r.DisposeAsync().ConfigureAwait(false); await transaction.CommitAsync(deadline.Token).ConfigureAwait(false); return null; }
-        AlertRuleState state = new(r.GetGuid(0), new MonitoredInstanceId(r.GetGuid(1)), (AlertState)r.GetInt32(2), r.GetInt32(3), r.IsDBNull(4) ? null : r.GetFieldValue<DateTimeOffset>(4), r.IsDBNull(5) ? null : r.GetFieldValue<DateTimeOffset>(5), r.IsDBNull(6) ? null : r.GetFieldValue<DateTimeOffset>(6), r.IsDBNull(7) ? null : r.GetFieldValue<DateTimeOffset>(7), r.IsDBNull(10) ? null : r.GetGuid(10), r.IsDBNull(11) ? null : r.GetGuid(11), r.IsDBNull(12) ? null : r.GetGuid(12), r.IsDBNull(13) ? null : Convert.ToHexString(r.GetFieldValue<byte[]>(13)).ToLowerInvariant(), r.IsDBNull(14) ? null : r.GetString(14), r.IsDBNull(15) ? null : r.GetString(15), !r.IsDBNull(16) && r.GetBoolean(16), r.IsDBNull(8) ? null : r.GetFieldValue<DateTimeOffset>(8), r.IsDBNull(9) ? null : r.GetFieldValue<DateTimeOffset>(9), r.IsDBNull(17) ? null : r.GetString(17), r.GetInt64(18), r.IsDBNull(19) ? null : r.GetDouble(19));
+        AlertRuleState state = new(r.GetGuid(0), new MonitoredInstanceId(r.GetGuid(1)), (AlertState)r.GetInt32(2), r.GetInt32(3), r.IsDBNull(4) ? null : r.GetFieldValue<DateTimeOffset>(4), r.IsDBNull(5) ? null : r.GetFieldValue<DateTimeOffset>(5), r.IsDBNull(6) ? null : r.GetFieldValue<DateTimeOffset>(6), r.IsDBNull(7) ? null : r.GetFieldValue<DateTimeOffset>(7), r.IsDBNull(10) ? null : r.GetGuid(10), r.IsDBNull(11) ? null : r.GetGuid(11), r.IsDBNull(12) ? null : r.GetGuid(12), r.IsDBNull(13) ? null : Convert.ToHexString(r.GetFieldValue<byte[]>(13)).ToLowerInvariant(), r.IsDBNull(14) ? null : r.GetString(14), r.IsDBNull(15) ? null : r.GetString(15), !r.IsDBNull(16) && r.GetBoolean(16), r.IsDBNull(8) ? null : r.GetFieldValue<DateTimeOffset>(8), r.IsDBNull(9) ? null : r.GetFieldValue<DateTimeOffset>(9), r.IsDBNull(17) ? null : r.GetString(17), r.GetInt64(18), r.IsDBNull(19) ? null : r.GetDouble(19), r.GetInt32(20));
         await r.DisposeAsync().ConfigureAwait(false); await transaction.CommitAsync(deadline.Token).ConfigureAwait(false); return state;
     }
     public async ValueTask<MaintenanceWindow?> GetMaintenanceAsync(MonitoredInstanceId targetId, DateTimeOffset atUtc, RepositoryCallTimeout timeout, CancellationToken cancellationToken)
@@ -189,24 +340,263 @@ public sealed class PostgreSqlAlertRepositoryPort : IAlertRepositoryPort
                 ?? throw new InvalidOperationException("Repository snapshot was not returned.");
             snapshot = PostgreSqlRuntimeSupport.ConvertUtcTimestamp(repositorySnapshot);
         }
-        await using var cmd = new NpgsqlCommand("SELECT alert_id,rule_id,target_id,rule_name,state,first_observed_at,fired_at,acknowledged_at,value,reason,delivery_suppressed FROM reporting.list_active_alerts(@target_id,@max_results,@after_fired,@after_alert_id,@snapshot_utc);", c, transaction) { CommandTimeout = PostgreSqlRuntimeSupport.GetCommandTimeoutSeconds(timeout) };
+        await using var cmd = new NpgsqlCommand("SELECT alert_id,rule_id,target_id,rule_name,state,first_observed_at,fired_at,acknowledged_at,value,reason,delivery_suppressed,episode_id,revision,snoozed_until,snooze_reason,snoozed_by,snoozed_at,snoozed FROM reporting.list_active_alerts_v2(@target_id,@max_results,@after_fired,@after_alert_id,@snapshot_utc);", c, transaction) { CommandTimeout = PostgreSqlRuntimeSupport.GetCommandTimeoutSeconds(timeout) };
         cmd.Parameters.AddWithValue("target_id", targetId.Value); cmd.Parameters.AddWithValue("max_results", limit); cmd.Parameters.AddWithValue("after_fired", (object?)cursor?.SortAtUtc ?? DBNull.Value); cmd.Parameters.AddWithValue("after_alert_id", (object?)cursor?.AlertId ?? DBNull.Value); cmd.Parameters.AddWithValue("snapshot_utc", snapshot);
         var rows = new List<AlertActiveDto>(limit + 1); await using NpgsqlDataReader r = await cmd.ExecuteReaderAsync(deadline.Token).ConfigureAwait(false);
-        while (await r.ReadAsync(deadline.Token).ConfigureAwait(false)) rows.Add(new AlertActiveDto(r.GetGuid(0), r.GetGuid(1), new MonitoredInstanceId(r.GetGuid(2)), r.GetString(3), (AlertState)r.GetInt32(4), r.GetFieldValue<DateTimeOffset>(5), r.IsDBNull(6) ? null : r.GetFieldValue<DateTimeOffset>(6), r.IsDBNull(7) ? null : r.GetFieldValue<DateTimeOffset>(7), r.IsDBNull(8) ? null : r.GetDouble(8), r.IsDBNull(9) ? null : r.GetString(9), r.GetBoolean(10)));
+        while (await r.ReadAsync(deadline.Token).ConfigureAwait(false)) rows.Add(WithSnoozeMetadata(new AlertActiveDto(r.GetGuid(0), r.GetGuid(1), new MonitoredInstanceId(r.GetGuid(2)), r.GetString(3), (AlertState)r.GetInt32(4), r.GetFieldValue<DateTimeOffset>(5), r.IsDBNull(6) ? null : r.GetFieldValue<DateTimeOffset>(6), r.IsDBNull(7) ? null : r.GetFieldValue<DateTimeOffset>(7), r.IsDBNull(8) ? null : r.GetDouble(8), r.IsDBNull(9) ? null : r.GetString(9), r.GetBoolean(10)), r, 11));
         await r.DisposeAsync().ConfigureAwait(false);
         bool more = rows.Count > limit; if (more) rows.RemoveAt(rows.Count - 1);
         AlertActiveCursor? next = more && rows.Count > 0 ? new AlertActiveCursor(targetId, rows[^1].FiredUtc ?? rows[^1].FirstObservedUtc, rows[^1].AlertId, snapshot) : null;
         await transaction.CommitAsync(deadline.Token).ConfigureAwait(false); return new AlertActivePage(rows, snapshot, next);
     }
+
+    public async ValueTask<FleetAlertPage> ListFleetActivePageAsync(TargetAuthorizationScope scope, int limit, FleetAlertCursor? cursor, RepositoryCallTimeout timeout, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(scope);
+        if (limit is <= 0 or > 100) throw new ArgumentOutOfRangeException(nameof(limit));
+        using CancellationTokenSource deadline = PostgreSqlRuntimeSupport.CreateTimeoutScope(timeout, cancellationToken);
+        await using NpgsqlConnection connection = await _dataSource.OpenConnectionAsync(deadline.Token).ConfigureAwait(false);
+        await using NpgsqlTransaction transaction = await connection.BeginTransactionAsync(deadline.Token).ConfigureAwait(false);
+        await PostgreSqlRuntimeSupport.ConfigureTransactionAsync(connection, transaction, timeout, deadline.Token).ConfigureAwait(false);
+        DateTimeOffset snapshot;
+        if (cursor is not null) snapshot = cursor.SnapshotUtc;
+        else
+        {
+            await using var snapshotCommand = new NpgsqlCommand("SELECT clock_timestamp();", connection, transaction)
+            {
+                CommandTimeout = PostgreSqlRuntimeSupport.GetCommandTimeoutSeconds(timeout),
+            };
+            snapshot = PostgreSqlRuntimeSupport.ConvertUtcTimestamp(
+                await snapshotCommand.ExecuteScalarAsync(deadline.Token).ConfigureAwait(false)
+                ?? throw new InvalidOperationException("Repository snapshot was not returned."));
+        }
+        await using var command = new NpgsqlCommand("""
+            SELECT alert_id,rule_id,target_id,target_name,rule_name,state,first_observed_at,
+                   fired_at,acknowledged_at,value,reason,delivery_suppressed,
+                   episode_id,revision,snoozed_until,snooze_reason,snoozed_by,snoozed_at,snoozed
+            FROM reporting.list_fleet_active_alerts_v2(@target_ids,@all_targets,@max_results,
+                 @after_at,@after_target,@after_alert_id,@snapshot_utc);
+            """, connection, transaction)
+        {
+            CommandTimeout = PostgreSqlRuntimeSupport.GetCommandTimeoutSeconds(timeout),
+        };
+        command.Parameters.Add("target_ids", NpgsqlDbType.Array | NpgsqlDbType.Uuid).Value = scope.TargetIds.Select(static target => target.Value).ToArray();
+        command.Parameters.AddWithValue("all_targets", scope.AllTargets);
+        command.Parameters.AddWithValue("max_results", limit);
+        command.Parameters.AddWithValue("after_at", (object?)cursor?.SortAtUtc ?? DBNull.Value);
+        command.Parameters.AddWithValue("after_target", (object?)cursor?.TargetId ?? DBNull.Value);
+        command.Parameters.AddWithValue("after_alert_id", (object?)cursor?.AlertId ?? DBNull.Value);
+        command.Parameters.AddWithValue("snapshot_utc", snapshot);
+        var rows = new List<FleetAlertItem>(limit + 1);
+        await using NpgsqlDataReader reader = await command.ExecuteReaderAsync(deadline.Token).ConfigureAwait(false);
+        while (await reader.ReadAsync(deadline.Token).ConfigureAwait(false))
+        {
+            var alert = new AlertActiveDto(reader.GetGuid(0), reader.GetGuid(1),
+                new MonitoredInstanceId(reader.GetGuid(2)), reader.GetString(4),
+                (AlertState)reader.GetInt16(5), reader.GetFieldValue<DateTimeOffset>(6),
+                reader.IsDBNull(7) ? null : reader.GetFieldValue<DateTimeOffset>(7),
+                reader.IsDBNull(8) ? null : reader.GetFieldValue<DateTimeOffset>(8),
+                reader.IsDBNull(9) ? null : reader.GetDouble(9),
+                reader.IsDBNull(10) ? null : reader.GetString(10), reader.GetBoolean(11));
+            rows.Add(new FleetAlertItem(WithSnoozeMetadata(alert, reader, 12), reader.GetString(3)));
+        }
+        await reader.DisposeAsync().ConfigureAwait(false);
+        bool more = rows.Count > limit;
+        if (more) rows.RemoveAt(rows.Count - 1);
+        FleetAlertCursor? next = more && rows.Count > 0
+            ? new FleetAlertCursor(rows[^1].Alert.FiredUtc ?? rows[^1].Alert.FirstObservedUtc,
+                rows[^1].Alert.TargetId.Value, rows[^1].Alert.AlertId, snapshot)
+            : null;
+        await transaction.CommitAsync(deadline.Token).ConfigureAwait(false);
+        return new FleetAlertPage(rows, snapshot, next);
+    }
     public ValueTask<AdministrativeAuditReceipt> UpsertRuleAsync(AlertRuleWriteRequest request, CancellationToken cancellationToken)
     {
         if (!AlertCatalog.IsApproved(request.Rule)) throw new InvalidDataException("The requested alert rule is not present in the validated catalog.");
         AlertCatalogEntry catalog = AlertCatalog.Entries.Single(x => x.Kind == request.Rule.Kind && x.Metric == request.Rule.MetricId?.Value);
-        return ExecuteAdminAsync("alerting.upsert_rule(@rule,@idempotency_key,@actor_sid,@correlation_id)", request.Audit, request.IdempotencyKey, JsonSerializer.Serialize(new { Action = request.Audit.Action.ToString(), RuleId = request.Rule.RuleId, TargetId = request.Audit.TargetId.Value, request.Rule.Name, Kind = (int)request.Rule.Kind, MetricId = request.Rule.MetricId?.Value, Comparison = (int)request.Rule.Comparison, request.Rule.Threshold, request.Rule.Hysteresis, request.Rule.ConfirmationCount, ConfirmationWindow = request.Rule.ConfirmationWindow, EvaluationInterval = request.Rule.EvaluationInterval, request.Rule.Enabled, SourceCollector = catalog.SourceCollector, SourceSchemaVersion = catalog.SourceSchemaVersion, CatalogDigest = AlertCatalog.Digest, request.ExpectedRevision, request.RequestDigest }), request.Timeout, cancellationToken);
+        return ExecuteAdminAsync("alerting.upsert_rule(@rule,@idempotency_key,@actor_sid,@correlation_id)", request.Audit, request.IdempotencyKey, JsonSerializer.Serialize(new { Action = request.Audit.Action.ToString(), RuleId = request.Rule.RuleId, TargetId = request.Audit.TargetId.Value, request.Rule.Name, Kind = (int)request.Rule.Kind, MetricId = request.Rule.MetricId?.Value, Comparison = (int)request.Rule.Comparison, request.Rule.Threshold, request.Rule.Hysteresis, request.Rule.ConfirmationCount, request.Rule.ClearConfirmationCount, ConfirmationWindow = request.Rule.ConfirmationWindow, EvaluationInterval = request.Rule.EvaluationInterval, request.Rule.Enabled, SourceCollector = catalog.SourceCollector, SourceSchemaVersion = catalog.SourceSchemaVersion, CatalogDigest = AlertCatalog.Digest, request.ExpectedRevision, request.RequestDigest }), request.Timeout, cancellationToken);
     }
     public ValueTask<AdministrativeAuditReceipt> UpsertMaintenanceAsync(MaintenanceWriteRequest request, CancellationToken cancellationToken) => ExecuteAdminAsync("alerting.upsert_maintenance(@window,@idempotency_key,@actor_sid,@correlation_id)", request.Audit, request.IdempotencyKey, JsonSerializer.Serialize(new { Action = request.Audit.Action.ToString(), Id = request.Window.Id, TargetId = request.Window.TargetId.Value, request.Window.StartsAtUtc, request.Window.EndsAtUtc, request.Window.Reason, request.ExpectedRevision, request.RequestDigest }), request.Timeout, cancellationToken);
     public ValueTask<AdministrativeAuditReceipt> CancelMaintenanceAsync(MaintenanceCancellationRequest request, CancellationToken cancellationToken) => ExecuteAdminAsync("alerting.cancel_maintenance(@window_id,@target_id,@idempotency_key,@actor_sid,@correlation_id,@expected_revision,@request_digest)", request.Audit, request.IdempotencyKey, new MaintenanceCancellationPayload(request.WindowId, request.ExpectedRevision, request.RequestDigest), request.Timeout, cancellationToken);
     public ValueTask<AdministrativeAuditReceipt> AcknowledgeAsync(AlertAcknowledgeRequest request, CancellationToken cancellationToken) => ExecuteAdminAsync("alerting.acknowledge(@alert_id,@target_id,@idempotency_key,@actor_sid,@correlation_id,@expected_revision,@expected_episode_id,@request_digest)", request.Audit, request.IdempotencyKey, new AcknowledgePayload(request.AlertId, request.ExpectedRevision, request.RequestDigest, request.ExpectedEpisodeId), request.Timeout, cancellationToken);
+    public async ValueTask<AlertSnoozeStatus?> GetSnoozeAsync(MonitoredInstanceId targetId, Guid alertId, RepositoryCallTimeout timeout, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(targetId);
+        if (alertId == Guid.Empty) throw new ArgumentException("An alert identity is required.", nameof(alertId));
+        using CancellationTokenSource deadline = PostgreSqlRuntimeSupport.CreateTimeoutScope(timeout, cancellationToken);
+        try
+        {
+            await using NpgsqlConnection connection = await _dataSource.OpenConnectionAsync(deadline.Token).ConfigureAwait(false);
+            await using NpgsqlTransaction transaction = await connection.BeginTransactionAsync(deadline.Token).ConfigureAwait(false);
+            await PostgreSqlRuntimeSupport.ConfigureTransactionAsync(connection, transaction, timeout, deadline.Token).ConfigureAwait(false);
+            await SetTargetScopeAsync(connection, targetId.Value, transaction, timeout, deadline.Token).ConfigureAwait(false);
+            await using var command = new NpgsqlCommand("SELECT target_id,alert_id,episode_id,revision,state,server_now,ends_at,reason,actor_sid,applied_at,snoozed,delivery_suppressed FROM alerting.get_episode_snooze(@target_id,@alert_id);", connection, transaction)
+            { CommandTimeout = PostgreSqlRuntimeSupport.GetCommandTimeoutSeconds(timeout) };
+            command.Parameters.AddWithValue("target_id", targetId.Value);
+            command.Parameters.AddWithValue("alert_id", alertId);
+            await using NpgsqlDataReader reader = await command.ExecuteReaderAsync(deadline.Token).ConfigureAwait(false);
+            AlertSnoozeStatus? status = await reader.ReadAsync(deadline.Token).ConfigureAwait(false)
+                ? new AlertSnoozeStatus(new MonitoredInstanceId(reader.GetGuid(0)), reader.GetGuid(1), reader.GetGuid(2),
+                    reader.GetInt64(3), (AlertState)reader.GetInt16(4), reader.GetFieldValue<DateTimeOffset>(5),
+                    reader.IsDBNull(6) ? null : reader.GetFieldValue<DateTimeOffset>(6),
+                    reader.IsDBNull(7) ? null : reader.GetString(7), reader.IsDBNull(8) ? null : reader.GetString(8),
+                    reader.IsDBNull(9) ? null : reader.GetFieldValue<DateTimeOffset>(9), reader.GetBoolean(10), reader.GetBoolean(11))
+                : null;
+            await reader.DisposeAsync().ConfigureAwait(false);
+            await transaction.CommitAsync(deadline.Token).ConfigureAwait(false);
+            return status;
+        }
+        catch (PostgresException exception) { throw MapAlertException(exception); }
+    }
+
+    public async ValueTask<AlertSnoozeWriteReceipt> SetSnoozeAsync(AlertSnoozeWriteRequest request, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        using CancellationTokenSource deadline = PostgreSqlRuntimeSupport.CreateTimeoutScope(request.Timeout, cancellationToken);
+        try
+        {
+            await using NpgsqlConnection connection = await _dataSource.OpenConnectionAsync(deadline.Token).ConfigureAwait(false);
+            await using NpgsqlTransaction transaction = await connection.BeginTransactionAsync(deadline.Token).ConfigureAwait(false);
+            await PostgreSqlRuntimeSupport.ConfigureTransactionAsync(connection, transaction, request.Timeout, deadline.Token).ConfigureAwait(false);
+            await SetTargetScopeAsync(connection, request.Audit.TargetId.Value, transaction, request.Timeout, deadline.Token).ConfigureAwait(false);
+            await using var command = new NpgsqlCommand("SELECT audit_id,recorded_at,revision,ends_at,applied_at FROM alerting.set_episode_snooze(@target_id,@alert_id,@episode_id,@revision,@ends_at,@reason,@idempotency_key,@actor_sid,@correlation_id,@request_digest);", connection, transaction)
+            { CommandTimeout = PostgreSqlRuntimeSupport.GetCommandTimeoutSeconds(request.Timeout) };
+            command.Parameters.AddWithValue("target_id", request.Audit.TargetId.Value);
+            command.Parameters.AddWithValue("alert_id", request.AlertId);
+            command.Parameters.AddWithValue("episode_id", request.ExpectedEpisodeId);
+            command.Parameters.AddWithValue("revision", request.ExpectedRevision);
+            command.Parameters.Add("ends_at", NpgsqlDbType.TimestampTz).Value = (object?)request.EndsAtUtc ?? DBNull.Value;
+            command.Parameters.AddWithValue("reason", request.Reason);
+            command.Parameters.AddWithValue("idempotency_key", request.IdempotencyKey);
+            command.Parameters.AddWithValue("actor_sid", request.Audit.ActorSid.Value);
+            command.Parameters.AddWithValue("correlation_id", request.Audit.CorrelationId.Value);
+            command.Parameters.AddWithValue("request_digest", request.RequestDigest);
+            await using NpgsqlDataReader reader = await command.ExecuteReaderAsync(deadline.Token).ConfigureAwait(false);
+            if (!await reader.ReadAsync(deadline.Token).ConfigureAwait(false)) throw new InvalidDataException("Alert snooze returned no immutable receipt.");
+            var receipt = new AlertSnoozeWriteReceipt(
+                new AdministrativeAuditReceipt(new AdministrativeAuditId(reader.GetGuid(0)), reader.GetFieldValue<DateTimeOffset>(1)),
+                reader.GetInt64(2), reader.IsDBNull(3) ? null : reader.GetFieldValue<DateTimeOffset>(3), reader.GetFieldValue<DateTimeOffset>(4));
+            await reader.DisposeAsync().ConfigureAwait(false);
+            await transaction.CommitAsync(deadline.Token).ConfigureAwait(false);
+            return receipt;
+        }
+        catch (PostgresException exception) { throw MapAlertException(exception); }
+    }
+
+    public async ValueTask<AlertAssignmentStatus?> GetAssignmentAsync(MonitoredInstanceId targetId, Guid alertId, RepositoryCallTimeout timeout, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(targetId);
+        if (alertId == Guid.Empty) throw new ArgumentException("An alert identity is required.", nameof(alertId));
+        using CancellationTokenSource deadline = PostgreSqlRuntimeSupport.CreateTimeoutScope(timeout, cancellationToken);
+        try
+        {
+            await using NpgsqlConnection connection = await _dataSource.OpenConnectionAsync(deadline.Token).ConfigureAwait(false);
+            await using NpgsqlTransaction transaction = await connection.BeginTransactionAsync(deadline.Token).ConfigureAwait(false);
+            await PostgreSqlRuntimeSupport.ConfigureTransactionAsync(connection, transaction, timeout, deadline.Token).ConfigureAwait(false);
+            await SetTargetScopeAsync(connection, targetId.Value, transaction, timeout, deadline.Token).ConfigureAwait(false);
+            await using var command = new NpgsqlCommand("SELECT target_id,alert_id,episode_id,revision,state,server_now,assignee_sid,assignee_name,assignment_reason,assigned_by,assigned_at FROM alerting.get_episode_assignment(@target_id,@alert_id);", connection, transaction)
+            { CommandTimeout = PostgreSqlRuntimeSupport.GetCommandTimeoutSeconds(timeout) };
+            command.Parameters.AddWithValue("target_id", targetId.Value);
+            command.Parameters.AddWithValue("alert_id", alertId);
+            await using NpgsqlDataReader reader = await command.ExecuteReaderAsync(deadline.Token).ConfigureAwait(false);
+            AlertAssignmentStatus? status = await reader.ReadAsync(deadline.Token).ConfigureAwait(false)
+                ? new AlertAssignmentStatus(new MonitoredInstanceId(reader.GetGuid(0)), reader.GetGuid(1), reader.GetGuid(2),
+                    reader.GetInt64(3), (AlertState)reader.GetInt16(4), reader.GetFieldValue<DateTimeOffset>(5),
+                    reader.IsDBNull(6) ? null : reader.GetString(6), reader.IsDBNull(7) ? null : reader.GetString(7),
+                    reader.IsDBNull(8) ? null : reader.GetString(8), reader.IsDBNull(9) ? null : reader.GetString(9),
+                    reader.IsDBNull(10) ? null : reader.GetFieldValue<DateTimeOffset>(10))
+                : null;
+            await reader.DisposeAsync().ConfigureAwait(false);
+            await transaction.CommitAsync(deadline.Token).ConfigureAwait(false);
+            return status;
+        }
+        catch (PostgresException exception) { throw MapAlertException(exception); }
+    }
+
+    public async ValueTask<AlertAssignmentWriteReceipt> SetAssignmentAsync(AlertAssignmentWriteRequest request, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        using CancellationTokenSource deadline = PostgreSqlRuntimeSupport.CreateTimeoutScope(request.Timeout, cancellationToken);
+        try
+        {
+            await using NpgsqlConnection connection = await _dataSource.OpenConnectionAsync(deadline.Token).ConfigureAwait(false);
+            await using NpgsqlTransaction transaction = await connection.BeginTransactionAsync(deadline.Token).ConfigureAwait(false);
+            await PostgreSqlRuntimeSupport.ConfigureTransactionAsync(connection, transaction, request.Timeout, deadline.Token).ConfigureAwait(false);
+            await SetTargetScopeAsync(connection, request.Audit.TargetId.Value, transaction, request.Timeout, deadline.Token).ConfigureAwait(false);
+            await using var command = new NpgsqlCommand("SELECT audit_id,recorded_at,revision,assignee_sid,applied_at FROM alerting.set_episode_assignment(@target_id,@alert_id,@episode_id,@revision,@assignee_sid,@assignee_name,@assignee_eligible,@reason,@idempotency_key,@actor_sid,@correlation_id,@request_digest);", connection, transaction)
+            { CommandTimeout = PostgreSqlRuntimeSupport.GetCommandTimeoutSeconds(request.Timeout) };
+            command.Parameters.AddWithValue("target_id", request.Audit.TargetId.Value);
+            command.Parameters.AddWithValue("alert_id", request.AlertId);
+            command.Parameters.AddWithValue("episode_id", request.ExpectedEpisodeId);
+            command.Parameters.AddWithValue("revision", request.ExpectedRevision);
+            command.Parameters.Add("assignee_sid", NpgsqlDbType.Text).Value = (object?)request.AssigneeSid?.Value ?? DBNull.Value;
+            command.Parameters.Add("assignee_name", NpgsqlDbType.Text).Value = (object?)request.ApprovedAssigneeName ?? DBNull.Value;
+            command.Parameters.AddWithValue("assignee_eligible", request.AssigneeEligible);
+            command.Parameters.AddWithValue("reason", request.Reason);
+            command.Parameters.AddWithValue("idempotency_key", request.IdempotencyKey);
+            command.Parameters.AddWithValue("actor_sid", request.Audit.ActorSid.Value);
+            command.Parameters.AddWithValue("correlation_id", request.Audit.CorrelationId.Value);
+            command.Parameters.AddWithValue("request_digest", request.RequestDigest);
+            await using NpgsqlDataReader reader = await command.ExecuteReaderAsync(deadline.Token).ConfigureAwait(false);
+            if (!await reader.ReadAsync(deadline.Token).ConfigureAwait(false)) throw new InvalidDataException("Alert assignment returned no immutable receipt.");
+            var receipt = new AlertAssignmentWriteReceipt(
+                new AdministrativeAuditReceipt(new AdministrativeAuditId(reader.GetGuid(0)), reader.GetFieldValue<DateTimeOffset>(1)),
+                reader.GetInt64(2), reader.IsDBNull(3) ? null : reader.GetString(3), reader.GetFieldValue<DateTimeOffset>(4));
+            await reader.DisposeAsync().ConfigureAwait(false);
+            await transaction.CommitAsync(deadline.Token).ConfigureAwait(false);
+            return receipt;
+        }
+        catch (PostgresException exception) { throw MapAlertException(exception); }
+    }
+
+    public async ValueTask<AlertAssignmentHistoryPage> ListAssignmentHistoryAsync(MonitoredInstanceId targetId, Guid alertId,
+        int limit, Guid? beforeOperationId, RepositoryCallTimeout timeout, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(targetId);
+        if (alertId == Guid.Empty || beforeOperationId == Guid.Empty) throw new ArgumentException("Valid alert and history anchor identities are required.");
+        if (limit is <= 0 or > AlertAssignmentContract.MaximumHistoryPageSize) throw new ArgumentOutOfRangeException(nameof(limit));
+        using CancellationTokenSource deadline = PostgreSqlRuntimeSupport.CreateTimeoutScope(timeout, cancellationToken);
+        try
+        {
+            await using NpgsqlConnection connection = await _dataSource.OpenConnectionAsync(deadline.Token).ConfigureAwait(false);
+            await using NpgsqlTransaction transaction = await connection.BeginTransactionAsync(deadline.Token).ConfigureAwait(false);
+            await PostgreSqlRuntimeSupport.ConfigureTransactionAsync(connection, transaction, timeout, deadline.Token).ConfigureAwait(false);
+            await SetTargetScopeAsync(connection, targetId.Value, transaction, timeout, deadline.Token).ConfigureAwait(false);
+            await using var command = new NpgsqlCommand("SELECT operation_id,episode_id,revision,assignee_sid,assignee_name,previous_assignee_sid,previous_assignee_name,reason,actor_sid,applied_at FROM alerting.list_assignment_history(@target_id,@alert_id,@max_results,@before_operation_id);", connection, transaction)
+            { CommandTimeout = PostgreSqlRuntimeSupport.GetCommandTimeoutSeconds(timeout) };
+            command.Parameters.AddWithValue("target_id", targetId.Value);
+            command.Parameters.AddWithValue("alert_id", alertId);
+            command.Parameters.AddWithValue("max_results", limit);
+            command.Parameters.Add("before_operation_id", NpgsqlDbType.Uuid).Value = (object?)beforeOperationId ?? DBNull.Value;
+            var items = new List<AlertAssignmentHistoryItem>(limit + 1);
+            await using NpgsqlDataReader reader = await command.ExecuteReaderAsync(deadline.Token).ConfigureAwait(false);
+            while (await reader.ReadAsync(deadline.Token).ConfigureAwait(false))
+                items.Add(new AlertAssignmentHistoryItem(reader.GetGuid(0), reader.GetGuid(1), reader.GetInt64(2),
+                    reader.IsDBNull(3) ? null : reader.GetString(3), reader.IsDBNull(4) ? null : reader.GetString(4),
+                    reader.IsDBNull(5) ? null : reader.GetString(5), reader.IsDBNull(6) ? null : reader.GetString(6),
+                    reader.GetString(7), reader.GetString(8), reader.GetFieldValue<DateTimeOffset>(9)));
+            await reader.DisposeAsync().ConfigureAwait(false);
+            bool more = items.Count > limit;
+            if (more) items.RemoveAt(items.Count - 1);
+            Guid? next = more && items.Count > 0 ? items[^1].OperationId : null;
+            await transaction.CommitAsync(deadline.Token).ConfigureAwait(false);
+            return new AlertAssignmentHistoryPage(items, next);
+        }
+        catch (PostgresException exception) { throw MapAlertException(exception); }
+    }
+
+    private static AlertActiveDto WithSnoozeMetadata(AlertActiveDto alert, NpgsqlDataReader reader, int start) => alert with
+    {
+        EpisodeId = reader.IsDBNull(start) ? null : reader.GetGuid(start),
+        // Legacy active rows may have no episode identity. They remain readable
+        // but cannot supply the paired precondition required for a snooze write.
+        Revision = reader.IsDBNull(start) ? null : reader.GetInt64(start + 1),
+        SnoozedUntilUtc = reader.IsDBNull(start + 2) ? null : reader.GetFieldValue<DateTimeOffset>(start + 2),
+        SnoozeReason = reader.IsDBNull(start + 3) ? null : reader.GetString(start + 3),
+        SnoozedBy = reader.IsDBNull(start + 4) ? null : reader.GetString(start + 4),
+        SnoozedAtUtc = reader.IsDBNull(start + 5) ? null : reader.GetFieldValue<DateTimeOffset>(start + 5),
+        Snoozed = reader.GetBoolean(start + 6),
+    };
     public ValueTask<AdministrativeAuditReceipt> UpsertDestinationAsync(AlertDestinationWriteRequest request, CancellationToken cancellationToken) => ExecuteAdminAsync("alerting.upsert_destination(@destination_id,@kind,@configuration_reference,@enabled,@idempotency_key,@actor_sid,@correlation_id,@expected_revision,@request_digest,@approve,@approval_revision,@approval_scope,@approval_digest,@action)", request.Audit, request.IdempotencyKey, new DestinationPayload(request.DestinationId, request.Kind, request.ConfigurationReference, request.Enabled, request.ExpectedRevision, request.RequestDigest, request.Approve, request.Approval, request.Action switch { AdministrativeAuditAction.ConfigureAlertDestination => "alert.destination.configure", AdministrativeAuditAction.ApproveAlertDestination => "alert.destination.approve", AdministrativeAuditAction.UpdateAlertDestination => "alert.destination.update", AdministrativeAuditAction.RetireAlertDestination => "alert.destination.retire", _ => throw new InvalidDataException("Destination action is not allowlisted.") }), request.Timeout, cancellationToken);
     public ValueTask<AdministrativeAuditReceipt> CancelDeliveryAdminAsync(AlertDeliveryAdminCancellationRequest request, CancellationToken cancellationToken) => ExecuteAdminAsync("alerting.cancel_delivery_admin(@delivery_id,@target_id,@idempotency_key,@actor_sid,@correlation_id,@reason,@request_digest)", request.Audit, request.IdempotencyKey, new DeliveryAdminCancellationPayload(request.DeliveryId, request.Reason, request.RequestDigest), request.Timeout, cancellationToken);
     public async ValueTask<IReadOnlyList<AlertDeliveryWork>> ClaimDueDeliveriesAsync(WorkerLeaseIdentity lease, int limit, RepositoryCallTimeout timeout, CancellationToken cancellationToken)
@@ -295,7 +685,7 @@ public sealed class PostgreSqlAlertRepositoryPort : IAlertRepositoryPort
         cmd.Transaction = transaction;
         cmd.CommandTimeout = PostgreSqlRuntimeSupport.GetCommandTimeoutSeconds(timeout);
         cmd.Parameters.AddWithValue("delivery_id", result.DeliveryId); cmd.Parameters.AddWithValue("target_id", result.TargetId.Value); cmd.Parameters.AddWithValue("succeeded", result.Succeeded); cmd.Parameters.AddWithValue("permanent", result.PermanentFailure); cmd.Parameters.AddWithValue("reason", result.Reason); cmd.Parameters.AddWithValue("response_code", (object?)result.ResponseCode ?? DBNull.Value); cmd.Parameters.AddWithValue("response_bytes", (object?)result.ResponseBytes ?? DBNull.Value); cmd.Parameters.AddWithValue("work_key", lease.Key.Value); cmd.Parameters.AddWithValue("owner_id", lease.Owner.Value); cmd.Parameters.AddWithValue("fencing", lease.FencingToken.Value);
-        bool applied = (bool)(await cmd.ExecuteScalarAsync(deadline.Token).ConfigureAwait(false) ?? false);
+        bool applied = ScalarOrDefault(await cmd.ExecuteScalarAsync(deadline.Token).ConfigureAwait(false), false);
         await transaction.CommitAsync(deadline.Token).ConfigureAwait(false);
         return applied ? result : result with { Succeeded = false, PermanentFailure = false, Reason = "lease_lost" };
     }
@@ -308,7 +698,7 @@ public sealed class PostgreSqlAlertRepositoryPort : IAlertRepositoryPort
         await SetTargetScopeAsync(c, targetId.Value, transaction, timeout, deadline.Token).ConfigureAwait(false);
         await using var cmd = new NpgsqlCommand("SELECT alerting.renew_delivery(@delivery_id,@target_id,@work_key,@owner_id,@fencing);", c, transaction) { CommandTimeout = PostgreSqlRuntimeSupport.GetCommandTimeoutSeconds(timeout) };
         cmd.Parameters.AddWithValue("delivery_id", deliveryId); cmd.Parameters.AddWithValue("target_id", targetId.Value); cmd.Parameters.AddWithValue("work_key", lease.Key.Value); cmd.Parameters.AddWithValue("owner_id", lease.Owner.Value); cmd.Parameters.AddWithValue("fencing", lease.FencingToken.Value);
-        bool renewed = (bool)(await cmd.ExecuteScalarAsync(deadline.Token).ConfigureAwait(false) ?? false); await transaction.CommitAsync(deadline.Token).ConfigureAwait(false); return renewed;
+        bool renewed = ScalarOrDefault(await cmd.ExecuteScalarAsync(deadline.Token).ConfigureAwait(false), false); await transaction.CommitAsync(deadline.Token).ConfigureAwait(false); return renewed;
     }
     public async ValueTask<bool> CancelDeliveryAsync(AlertDeliveryCancellation request, MonitoredInstanceId targetId, WorkerLeaseIdentity lease, RepositoryCallTimeout timeout, CancellationToken cancellationToken)
     {
@@ -319,7 +709,7 @@ public sealed class PostgreSqlAlertRepositoryPort : IAlertRepositoryPort
         await SetTargetScopeAsync(c, targetId.Value, transaction, timeout, deadline.Token).ConfigureAwait(false);
         await using var cmd = new NpgsqlCommand("SELECT alerting.cancel_delivery(@delivery_id,@target_id,@reason,@work_key,@owner_id,@fencing);", c, transaction) { CommandTimeout = PostgreSqlRuntimeSupport.GetCommandTimeoutSeconds(timeout) };
         cmd.Parameters.AddWithValue("delivery_id", request.DeliveryId); cmd.Parameters.AddWithValue("target_id", targetId.Value); cmd.Parameters.AddWithValue("reason", request.Reason); cmd.Parameters.AddWithValue("work_key", lease.Key.Value); cmd.Parameters.AddWithValue("owner_id", lease.Owner.Value); cmd.Parameters.AddWithValue("fencing", lease.FencingToken.Value);
-        bool cancelled = (bool)(await cmd.ExecuteScalarAsync(deadline.Token).ConfigureAwait(false) ?? false); await transaction.CommitAsync(deadline.Token).ConfigureAwait(false); return cancelled;
+        bool cancelled = ScalarOrDefault(await cmd.ExecuteScalarAsync(deadline.Token).ConfigureAwait(false), false); await transaction.CommitAsync(deadline.Token).ConfigureAwait(false); return cancelled;
     }
     public async ValueTask<bool> DeferDeliveryAsync(AlertDeliveryWork work, WorkerLeaseIdentity lease, RepositoryCallTimeout timeout, CancellationToken cancellationToken)
     {
@@ -331,7 +721,7 @@ public sealed class PostgreSqlAlertRepositoryPort : IAlertRepositoryPort
         await SetTargetScopeAsync(c, work.TargetId.Value, transaction, timeout, deadline.Token).ConfigureAwait(false);
         await using var cmd = new NpgsqlCommand("SELECT alerting.defer_delivery(@delivery_id,@target_id,@reason,@work_key,@owner_id,@fencing);", c, transaction) { CommandTimeout = PostgreSqlRuntimeSupport.GetCommandTimeoutSeconds(timeout) };
         cmd.Parameters.AddWithValue("delivery_id", work.DeliveryId); cmd.Parameters.AddWithValue("target_id", work.TargetId.Value); cmd.Parameters.AddWithValue("reason", "maintenance"); cmd.Parameters.AddWithValue("work_key", lease.Key.Value); cmd.Parameters.AddWithValue("owner_id", lease.Owner.Value); cmd.Parameters.AddWithValue("fencing", lease.FencingToken.Value);
-        bool result = (bool)(await cmd.ExecuteScalarAsync(deadline.Token).ConfigureAwait(false) ?? false);
+        bool result = ScalarOrDefault(await cmd.ExecuteScalarAsync(deadline.Token).ConfigureAwait(false), false);
         await transaction.CommitAsync(deadline.Token).ConfigureAwait(false);
         return result;
     }
@@ -346,7 +736,7 @@ public sealed class PostgreSqlAlertRepositoryPort : IAlertRepositoryPort
         await SetTargetScopeAsync(c, work.TargetId.Value, transaction, timeout, deadline.Token).ConfigureAwait(false);
         await using var cmd = new NpgsqlCommand("SELECT alerting.renew_delivery_with_outcome(@delivery_id,@target_id,@work_key,@owner_id,@fencing);", c, transaction) { CommandTimeout = PostgreSqlRuntimeSupport.GetCommandTimeoutSeconds(timeout) };
         cmd.Parameters.AddWithValue("delivery_id", work.DeliveryId); cmd.Parameters.AddWithValue("target_id", work.TargetId.Value); cmd.Parameters.AddWithValue("work_key", lease.Key.Value); cmd.Parameters.AddWithValue("owner_id", lease.Owner.Value); cmd.Parameters.AddWithValue("fencing", lease.FencingToken.Value);
-        string outcome = (string)(await cmd.ExecuteScalarAsync(deadline.Token).ConfigureAwait(false) ?? "LostFence");
+        string outcome = ScalarOrDefault(await cmd.ExecuteScalarAsync(deadline.Token).ConfigureAwait(false), "LostFence");
         await transaction.CommitAsync(deadline.Token).ConfigureAwait(false);
         return Enum.TryParse(outcome, ignoreCase: false, out AlertDeliveryLeaseOutcome typed) ? typed : AlertDeliveryLeaseOutcome.LostFence;
     }
@@ -404,10 +794,14 @@ public sealed class PostgreSqlAlertRepositoryPort : IAlertRepositoryPort
         await SetTargetScopeAsync(c, work.TargetId.Value, transaction, timeout, deadline.Token).ConfigureAwait(false);
         await using var cmd = new NpgsqlCommand("SELECT alerting.recheck_delivery(@delivery_id,@target_id);", c, transaction) { CommandTimeout = PostgreSqlRuntimeSupport.GetCommandTimeoutSeconds(timeout) };
         cmd.Parameters.AddWithValue("delivery_id", work.DeliveryId); cmd.Parameters.AddWithValue("target_id", work.TargetId.Value);
-        string status = (string)(await cmd.ExecuteScalarAsync(deadline.Token).ConfigureAwait(false) ?? "lease_lost");
+        string status = ScalarOrDefault(await cmd.ExecuteScalarAsync(deadline.Token).ConfigureAwait(false), "lease_lost");
         await transaction.CommitAsync(deadline.Token).ConfigureAwait(false);
         return Enum.TryParse(status, ignoreCase: true, out AlertDeliveryReadiness readiness) ? readiness : AlertDeliveryReadiness.LeaseLost;
     }
+    // Npgsql returns DBNull for SQL NULL and null when no scalar row exists.
+    // Other runtime types still violate the typed repository contract.
+    private static T ScalarOrDefault<T>(object? value, T fallback) => value is null or DBNull ? fallback : (T)value;
+
     private async ValueTask<AdministrativeAuditReceipt> ExecuteAdminAsync(string sql, AdministrativeAuditEnvelope audit, string key, object payload, RepositoryCallTimeout timeout, CancellationToken token)
     {
         try
@@ -459,6 +853,7 @@ public sealed class PostgreSqlAlertRepositoryPort : IAlertRepositoryPort
 
     private static AlertRepositoryOperationException MapAlertException(PostgresException exception) => exception.SqlState switch
     {
+        "P0422" => new AlertRepositoryOperationException("assignee_not_approved", "The requested responder is not approved for this target.", 422, exception),
         "22023" or "22P02" or "23502" => new AlertRepositoryOperationException("invalid_request", "The alert request is invalid.", 400, exception),
         "P0002" => new AlertRepositoryOperationException("target_not_found", "The requested alert target or resource was not found.", 404, exception),
         "42501" => new AlertRepositoryOperationException("forbidden", "The alert operation is not authorized for this target.", 403, exception),
@@ -526,7 +921,7 @@ public sealed class PostgreSqlAlertRepositoryPort : IAlertRepositoryPort
     private static string SerializeDecisions(IEnumerable<AlertEvaluationDecision> decisions) => JsonSerializer.Serialize(decisions.Select(static d => new
     {
         Observation = new ObservationWire(d.Observation.TargetId.Value, d.Observation.RuleId, d.Observation.ObservedAtUtc, d.Observation.Value, d.Observation.CollectorHealthy, d.Observation.Reason, d.Observation.OperationId, d.Observation.EvidenceDigest, d.Observation.SampleId, d.Observation.RunId, d.Observation.SourceKind, d.Observation.MetricId, d.Observation.SourceCollector, d.Observation.SourceVersion, d.Observation.SourceSchemaVersion, d.Observation.SourceDigest),
-        State = new { d.State.RuleId, TargetId = d.State.TargetId.Value, State = (int)d.State.State, d.State.ConsecutiveMatches, d.State.FirstMatchUtc, d.State.LastObservedUtc, d.State.FiredUtc, d.State.AcknowledgedUtc, d.State.ResolvedUtc, d.State.EpisodeStartedUtc, d.State.AlertId, EpisodeId = d.State.EpisodeId, d.State.LastOperationId, d.State.EvidenceDigest, d.State.Reason, d.State.LastReason, d.State.DeliverySuppressed, d.State.AcknowledgedBy, d.State.Revision, d.State.LastValue },
+        State = new { d.State.RuleId, TargetId = d.State.TargetId.Value, State = (int)d.State.State, d.State.ConsecutiveMatches, d.State.ConsecutiveClears, d.State.FirstMatchUtc, d.State.LastObservedUtc, d.State.FiredUtc, d.State.AcknowledgedUtc, d.State.ResolvedUtc, d.State.EpisodeStartedUtc, d.State.AlertId, EpisodeId = d.State.EpisodeId, d.State.LastOperationId, d.State.EvidenceDigest, d.State.Reason, d.State.LastReason, d.State.DeliverySuppressed, d.State.AcknowledgedBy, d.State.Revision, d.State.LastValue },
         Event = d.Event is null ? null : (int?)d.Event.Value,
         d.DeliverySuppressed,
         d.Reason,

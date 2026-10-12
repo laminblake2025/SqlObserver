@@ -4,14 +4,64 @@
     <AssemblyName>SqlObserver.Infrastructure.SqlServer</AssemblyName>
   </PropertyGroup>
   <ItemGroup>
+    <EmbeddedResource Include="../../collectors/sql/sql-agent.activity.module-metadata.sqlserver17-windows.v1.sql" LogicalName="SqlObserver.Infrastructure.SqlServer.AgentModuleAssets.sql-agent.activity.module-metadata.sqlserver17-windows.v1.sql" />
+    <EmbeddedResource Include="../../collectors/sql/sql-agent.activity.module-identity.sqlserver17-windows.v1.sql" LogicalName="SqlObserver.Infrastructure.SqlServer.AgentModuleAssets.sql-agent.activity.module-identity.sqlserver17-windows.v1.sql" />
+    <EmbeddedResource Include="../../collectors/sql/sql-agent.activity.sqlserver15-windows.v1.sql" LogicalName="SqlObserver.Infrastructure.SqlServer.AgentActivitySourceAssets.sql-agent.activity.sqlserver15-windows.v1.sql" />
+    <EmbeddedResource Include="../../collectors/sql/sql-agent.activity.sqlserver16-windows.v1.sql" LogicalName="SqlObserver.Infrastructure.SqlServer.AgentActivitySourceAssets.sql-agent.activity.sqlserver16-windows.v1.sql" />
+    <EmbeddedResource Include="../../collectors/sql/sql-agent.activity.sqlserver17-windows.v1.sql" LogicalName="SqlObserver.Infrastructure.SqlServer.AgentActivitySourceAssets.sql-agent.activity.sqlserver17-windows.v1.sql" />
+    <EmbeddedResource Include="../../collectors/sql/sql-agent.activity.sqlserver15-windows.v2.sql" LogicalName="SqlObserver.Infrastructure.SqlServer.AgentActivitySourceAssets.sql-agent.activity.sqlserver15-windows.v2.sql" />
+    <EmbeddedResource Include="../../collectors/sql/sql-agent.activity.sqlserver16-windows.v2.sql" LogicalName="SqlObserver.Infrastructure.SqlServer.AgentActivitySourceAssets.sql-agent.activity.sqlserver16-windows.v2.sql" />
+    <EmbeddedResource Include="../../collectors/sql/sql-agent.activity.sqlserver17-windows.v2.sql" LogicalName="SqlObserver.Infrastructure.SqlServer.AgentActivitySourceAssets.sql-agent.activity.sqlserver17-windows.v2.sql" />
+    <EmbeddedResource Include="../../collectors/sql/sql-agent.activity.service-projection.v2.sql" LogicalName="SqlObserver.Infrastructure.SqlServer.AgentActivitySourceAssets.sql-agent.activity.service-projection.v2.sql" />
+    <EmbeddedResource Include="../../collectors/sql/server.lifecycle.sqlserver15-17-windows.v1.sql" LogicalName="SqlObserver.Infrastructure.SqlServer.LifecycleSourceAssets.server.lifecycle.sqlserver15-17-windows.v1.sql" />
+    <EmbeddedResource Include="../../collectors/sql/cpu.target-witness.sqlserver15-17-windows.v1.sql" LogicalName="SqlObserver.Infrastructure.SqlServer.CpuWitnessSourceAssets.cpu.target-witness.sqlserver15-17-windows.v1.sql" />
+    <EmbeddedResource Include="../../collectors/sql/cpu.target-witness.sqlserver15-17-windows.v2.sql" LogicalName="SqlObserver.Infrastructure.SqlServer.CpuWitnessSourceAssets.cpu.target-witness.sqlserver15-17-windows.v2.sql" />
+    <EmbeddedResource Include="../../collectors/manifests/m7-query-performance-v2.assets.sha256" LogicalName="SqlObserver.Infrastructure.SqlServer.QueryPerformanceV2Assets.m7-query-performance-v2.assets.sha256" />
+    <EmbeddedResource Include="../../collectors/manifests/queries.performance.v2.json" LogicalName="SqlObserver.Infrastructure.SqlServer.QueryPerformanceV2Assets.queries.performance.v2.json" />
+    <EmbeddedResource Include="../../collectors/manifests/queries.performance.v2.schema.json" LogicalName="SqlObserver.Infrastructure.SqlServer.QueryPerformanceV2Assets.queries.performance.v2.schema.json" />
+  </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="../../collectors/sql/engine.configurations.sqlserver15-windows.v1.sql"><LogicalName>SqlObserver.Infrastructure.SqlServer.ConfigurationSourceAssets.engine.configurations.sqlserver15-windows.v1.sql</LogicalName></EmbeddedResource>
+    <EmbeddedResource Include="../../collectors/sql/engine.configurations.sqlserver16-windows.v1.sql"><LogicalName>SqlObserver.Infrastructure.SqlServer.ConfigurationSourceAssets.engine.configurations.sqlserver16-windows.v1.sql</LogicalName></EmbeddedResource>
+    <EmbeddedResource Include="../../collectors/sql/engine.configurations.sqlserver17-windows.v1.sql"><LogicalName>SqlObserver.Infrastructure.SqlServer.ConfigurationSourceAssets.engine.configurations.sqlserver17-windows.v1.sql</LogicalName></EmbeddedResource>
+    <EmbeddedResource Include="../../collectors/manifests/engine.configurations.assets-v1.sha256"><LogicalName>SqlObserver.Infrastructure.SqlServer.ConfigurationAssets.engine.configurations.assets-v1.sha256</LogicalName></EmbeddedResource>
+    <EmbeddedResource Include="../../collectors/manifests/engine.configurations.v1.schema.json"><LogicalName>SqlObserver.Infrastructure.SqlServer.ConfigurationAssets.engine.configurations.v1.schema.json</LogicalName></EmbeddedResource>
+    <EmbeddedResource Include="../../collectors/manifests/engine.configurations.v1.json"><LogicalName>SqlObserver.Infrastructure.SqlServer.ConfigurationAssets.engine.configurations.v1.json</LogicalName></EmbeddedResource>
+    <EmbeddedResource Include="../../collectors/query-store-groups/collector.assets-v1.sha256">
+      <LogicalName>SqlObserver.Infrastructure.SqlServer.QueryStoreGroupedSourceAssets.collector.assets-v1.sha256</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="../../collectors/manifests/queries.performance-groups.v1.schema.json">
+      <LogicalName>SqlObserver.Infrastructure.SqlServer.QueryStoreGroupedSourceAssets.queries.performance-groups.v1.schema.json</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="../../collectors/manifests/queries.performance-groups.v1.json">
+      <LogicalName>SqlObserver.Infrastructure.SqlServer.QueryStoreGroupedSourceAssets.queries.performance-groups.v1.json</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="../../collectors/query-store-groups/assets.sha256">
+      <LogicalName>SqlObserver.Infrastructure.SqlServer.QueryStoreGroupedSourceAssets.assets.sha256</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="../../collectors/query-store-groups/runtime.sqlserver16-windows.v1.sql">
+      <LogicalName>SqlObserver.Infrastructure.SqlServer.QueryStoreGroupedSourceAssets.runtime.sqlserver16-windows.v1.sql</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="../../collectors/query-store-groups/waits.sqlserver16-windows.v1.sql">
+      <LogicalName>SqlObserver.Infrastructure.SqlServer.QueryStoreGroupedSourceAssets.waits.sqlserver16-windows.v1.sql</LogicalName>
+    </EmbeddedResource>
     <EmbeddedResource Include="../../collectors/sql/activity.live.v1.sql" LogicalName="SqlObserver.LiveActivity.sql" />
     <EmbeddedResource Include="../../collectors/manifests/activity.live.v1.sha256" LogicalName="SqlObserver.LiveActivity.sha256" />
+    <EmbeddedResource Include="../../collectors/manifests/capability.connection.assets-v4.sha256"><LogicalName>SqlObserver.Infrastructure.SqlServer.CapabilityV4Assets.capability.connection.assets-v4.sha256</LogicalName></EmbeddedResource>
+    <EmbeddedResource Include="../../collectors/manifests/capability.connection.v4.schema.json"><LogicalName>SqlObserver.Infrastructure.SqlServer.CapabilityV4Assets.capability.connection.v4.schema.json</LogicalName></EmbeddedResource>
+    <EmbeddedResource Include="../../collectors/manifests/capability.connection.v4.json"><LogicalName>SqlObserver.Infrastructure.SqlServer.CapabilityV4Assets.capability.connection.v4.json</LogicalName></EmbeddedResource>
     <EmbeddedResource Include="../../collectors/manifests/capability.connection.assets-v3.sha256"><LogicalName>SqlObserver.Infrastructure.SqlServer.CapabilityV3Assets.capability.connection.assets-v3.sha256</LogicalName></EmbeddedResource>
     <EmbeddedResource Include="../../collectors/manifests/capability.connection.v3.schema.json"><LogicalName>SqlObserver.Infrastructure.SqlServer.CapabilityV3Assets.capability.connection.v3.schema.json</LogicalName></EmbeddedResource>
     <EmbeddedResource Include="../../collectors/manifests/capability.connection.v3.json"><LogicalName>SqlObserver.Infrastructure.SqlServer.CapabilityV3Assets.capability.connection.v3.json</LogicalName></EmbeddedResource>
     <EmbeddedResource Include="../../collectors/sql/capability.connection.sqlserver15-windows.v3.sql"><LogicalName>SqlObserver.Infrastructure.SqlServer.CapabilityV3Assets.capability.connection.sqlserver15-windows.v3.sql</LogicalName></EmbeddedResource>
     <EmbeddedResource Include="../../collectors/sql/capability.connection.sqlserver16-windows.v3.sql"><LogicalName>SqlObserver.Infrastructure.SqlServer.CapabilityV3Assets.capability.connection.sqlserver16-windows.v3.sql</LogicalName></EmbeddedResource>
     <EmbeddedResource Include="../../collectors/sql/capability.connection.sqlserver17-windows.v3.sql"><LogicalName>SqlObserver.Infrastructure.SqlServer.CapabilityV3Assets.capability.connection.sqlserver17-windows.v3.sql</LogicalName></EmbeddedResource>
+    <EmbeddedResource Include="../../collectors/manifests/m9-backups-v2.assets.sha256"><LogicalName>SqlObserver.Infrastructure.SqlServer.M9BackupV2Assets.m9-backups-v2.assets.sha256</LogicalName></EmbeddedResource>
+    <EmbeddedResource Include="../../collectors/manifests/collector-manifest.v7.schema.json"><LogicalName>SqlObserver.Infrastructure.SqlServer.M9BackupV2Assets.collector-manifest.v7.schema.json</LogicalName></EmbeddedResource>
+    <EmbeddedResource Include="../../collectors/manifests/backups.status.v2.json"><LogicalName>SqlObserver.Infrastructure.SqlServer.M9BackupV2Assets.backups.status.v2.json</LogicalName></EmbeddedResource>
+    <EmbeddedResource Include="../../collectors/sql/backups.status.sqlserver15-windows.v2.sql"><LogicalName>SqlObserver.Infrastructure.SqlServer.M9BackupV2Assets.backups.status.sqlserver15-windows.v2.sql</LogicalName></EmbeddedResource>
+    <EmbeddedResource Include="../../collectors/sql/backups.status.sqlserver16-windows.v2.sql"><LogicalName>SqlObserver.Infrastructure.SqlServer.M9BackupV2Assets.backups.status.sqlserver16-windows.v2.sql</LogicalName></EmbeddedResource>
+    <EmbeddedResource Include="../../collectors/sql/backups.status.sqlserver17-windows.v2.sql"><LogicalName>SqlObserver.Infrastructure.SqlServer.M9BackupV2Assets.backups.status.sqlserver17-windows.v2.sql</LogicalName></EmbeddedResource>
   </ItemGroup>
   <ItemGroup>
     <EmbeddedResource Include="../../collectors/manifests/m10-replication.assets.sha256"><LogicalName>SqlObserver.Infrastructure.SqlServer.M10ReplicationAssets.m10-replication.assets.sha256</LogicalName></EmbeddedResource>
@@ -50,6 +100,12 @@
     <EmbeddedResource Include="../../collectors/sql/availability-groups.health.sqlserver15-windows.v1.sql"><LogicalName>SqlObserver.Infrastructure.SqlServer.M9OperationalHealthAssets.availability-groups.health.sqlserver15-windows.v1.sql</LogicalName></EmbeddedResource>
     <EmbeddedResource Include="../../collectors/sql/availability-groups.health.sqlserver16-windows.v1.sql"><LogicalName>SqlObserver.Infrastructure.SqlServer.M9OperationalHealthAssets.availability-groups.health.sqlserver16-windows.v1.sql</LogicalName></EmbeddedResource>
     <EmbeddedResource Include="../../collectors/sql/availability-groups.health.sqlserver17-windows.v1.sql"><LogicalName>SqlObserver.Infrastructure.SqlServer.M9OperationalHealthAssets.availability-groups.health.sqlserver17-windows.v1.sql</LogicalName></EmbeddedResource>
+    <EmbeddedResource Include="../../collectors/manifests/m9-ag-v2.assets.sha256"><LogicalName>SqlObserver.Infrastructure.SqlServer.M9AvailabilityGroupV2Assets.m9-ag-v2.assets.sha256</LogicalName></EmbeddedResource>
+    <EmbeddedResource Include="../../collectors/manifests/collector-manifest.v6.schema.json"><LogicalName>SqlObserver.Infrastructure.SqlServer.M9AvailabilityGroupV2Assets.collector-manifest.v6.schema.json</LogicalName></EmbeddedResource>
+    <EmbeddedResource Include="../../collectors/manifests/availability-groups.health.v2.json"><LogicalName>SqlObserver.Infrastructure.SqlServer.M9AvailabilityGroupV2Assets.availability-groups.health.v2.json</LogicalName></EmbeddedResource>
+    <EmbeddedResource Include="../../collectors/sql/availability-groups.health.sqlserver15-windows.v2.sql"><LogicalName>SqlObserver.Infrastructure.SqlServer.M9AvailabilityGroupV2Assets.availability-groups.health.sqlserver15-windows.v2.sql</LogicalName></EmbeddedResource>
+    <EmbeddedResource Include="../../collectors/sql/availability-groups.health.sqlserver16-windows.v2.sql"><LogicalName>SqlObserver.Infrastructure.SqlServer.M9AvailabilityGroupV2Assets.availability-groups.health.sqlserver16-windows.v2.sql</LogicalName></EmbeddedResource>
+    <EmbeddedResource Include="../../collectors/sql/availability-groups.health.sqlserver17-windows.v2.sql"><LogicalName>SqlObserver.Infrastructure.SqlServer.M9AvailabilityGroupV2Assets.availability-groups.health.sqlserver17-windows.v2.sql</LogicalName></EmbeddedResource>
     <EmbeddedResource Include="../../collectors/manifests/queries.performance.v1.json">
       <LogicalName>SqlObserver.Infrastructure.SqlServer.M7QueryPerformanceCollectorAssets.queries.performance.v1.json</LogicalName>
     </EmbeddedResource>
@@ -64,6 +120,33 @@
     </EmbeddedResource>
     <EmbeddedResource Include="../../collectors/sql/queries.performance.sqlserver17-windows.v1.sql">
       <LogicalName>SqlObserver.Infrastructure.SqlServer.M7QueryPerformanceCollectorAssets.queries.performance.sqlserver17-windows.v1.sql</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="../../collectors/sql/queries.performance.text.sqlserver15-windows.v1.sql">
+      <LogicalName>SqlObserver.Infrastructure.SqlServer.M7QueryPerformanceCollectorAssets.queries.performance.text.sqlserver15-windows.v1.sql</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="../../collectors/sql/queries.performance.text.sqlserver16-windows.v1.sql">
+      <LogicalName>SqlObserver.Infrastructure.SqlServer.M7QueryPerformanceCollectorAssets.queries.performance.text.sqlserver16-windows.v1.sql</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="../../collectors/sql/queries.performance.text.sqlserver17-windows.v1.sql">
+      <LogicalName>SqlObserver.Infrastructure.SqlServer.M7QueryPerformanceCollectorAssets.queries.performance.text.sqlserver17-windows.v1.sql</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="../../collectors/sql/queries.performance.plan.sqlserver15-windows.v1.sql">
+      <LogicalName>SqlObserver.Infrastructure.SqlServer.M7QueryPerformanceCollectorAssets.queries.performance.plan.sqlserver15-windows.v1.sql</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="../../collectors/sql/queries.performance.plan.sqlserver16-windows.v1.sql">
+      <LogicalName>SqlObserver.Infrastructure.SqlServer.M7QueryPerformanceCollectorAssets.queries.performance.plan.sqlserver16-windows.v1.sql</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="../../collectors/sql/queries.performance.plan.sqlserver17-windows.v1.sql">
+      <LogicalName>SqlObserver.Infrastructure.SqlServer.M7QueryPerformanceCollectorAssets.queries.performance.plan.sqlserver17-windows.v1.sql</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="../../collectors/sql/queries.performance.waits.sqlserver15-windows.v1.sql">
+      <LogicalName>SqlObserver.Infrastructure.SqlServer.M7QueryPerformanceCollectorAssets.queries.performance.waits.sqlserver15-windows.v1.sql</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="../../collectors/sql/queries.performance.waits.sqlserver16-windows.v1.sql">
+      <LogicalName>SqlObserver.Infrastructure.SqlServer.M7QueryPerformanceCollectorAssets.queries.performance.waits.sqlserver16-windows.v1.sql</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="../../collectors/sql/queries.performance.waits.sqlserver17-windows.v1.sql">
+      <LogicalName>SqlObserver.Infrastructure.SqlServer.M7QueryPerformanceCollectorAssets.queries.performance.waits.sqlserver17-windows.v1.sql</LogicalName>
     </EmbeddedResource>
     <ProjectReference Include="../SqlObserver.Application/SqlObserver.Application.csproj" />
     <ProjectReference Include="../SqlObserver.Collector.Abstractions/SqlObserver.Collector.Abstractions.csproj" />
@@ -106,11 +189,17 @@
     <EmbeddedResource Include="../../collectors/manifests/database.inventory.v1.json">
       <LogicalName>SqlObserver.Infrastructure.SqlServer.M4CollectorAssets.database.inventory.v1.json</LogicalName>
     </EmbeddedResource>
+    <EmbeddedResource Include="../../collectors/manifests/database.inventory.v2.json">
+      <LogicalName>SqlObserver.Infrastructure.SqlServer.M4CollectorAssets.database.inventory.v2.json</LogicalName>
+    </EmbeddedResource>
     <EmbeddedResource Include="../../collectors/manifests/database.files.v1.json">
       <LogicalName>SqlObserver.Infrastructure.SqlServer.M4CollectorAssets.database.files.v1.json</LogicalName>
     </EmbeddedResource>
     <EmbeddedResource Include="../../collectors/manifests/m4-core-health.assets.sha256">
       <LogicalName>SqlObserver.Infrastructure.SqlServer.M4CollectorAssets.m4-core-health.assets.sha256</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="../../collectors/manifests/m4-core-health.assets-v2.sha256">
+      <LogicalName>SqlObserver.Infrastructure.SqlServer.M4CollectorAssets.m4-core-health.assets-v2.sha256</LogicalName>
     </EmbeddedResource>
     <EmbeddedResource Include="../../collectors/sql/engine.core.sqlserver15-windows.v1.sql">
       <LogicalName>SqlObserver.Infrastructure.SqlServer.M4CollectorAssets.engine.core.sqlserver15-windows.v1.sql</LogicalName>
@@ -130,6 +219,15 @@
     <EmbeddedResource Include="../../collectors/sql/database.inventory.sqlserver17-windows.v1.sql">
       <LogicalName>SqlObserver.Infrastructure.SqlServer.M4CollectorAssets.database.inventory.sqlserver17-windows.v1.sql</LogicalName>
     </EmbeddedResource>
+    <EmbeddedResource Include="../../collectors/sql/database.inventory.sqlserver15-windows.v2.sql">
+      <LogicalName>SqlObserver.Infrastructure.SqlServer.M4CollectorAssets.database.inventory.sqlserver15-windows.v2.sql</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="../../collectors/sql/database.inventory.sqlserver16-windows.v2.sql">
+      <LogicalName>SqlObserver.Infrastructure.SqlServer.M4CollectorAssets.database.inventory.sqlserver16-windows.v2.sql</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="../../collectors/sql/database.inventory.sqlserver17-windows.v2.sql">
+      <LogicalName>SqlObserver.Infrastructure.SqlServer.M4CollectorAssets.database.inventory.sqlserver17-windows.v2.sql</LogicalName>
+    </EmbeddedResource>
     <EmbeddedResource Include="../../collectors/sql/database.files.sqlserver15-windows.v1.sql">
       <LogicalName>SqlObserver.Infrastructure.SqlServer.M4CollectorAssets.database.files.sqlserver15-windows.v1.sql</LogicalName>
     </EmbeddedResource>
@@ -138,6 +236,30 @@
     </EmbeddedResource>
     <EmbeddedResource Include="../../collectors/sql/database.files.sqlserver17-windows.v1.sql">
       <LogicalName>SqlObserver.Infrastructure.SqlServer.M4CollectorAssets.database.files.sqlserver17-windows.v1.sql</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="../../collectors/sql/storage.volume.sqlserver15-17-windows.v1.sql">
+      <LogicalName>SqlObserver.Infrastructure.SqlServer.StorageVolumeAssets.storage.volume.sqlserver15-17-windows.v1.sql</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="../../collectors/sql/engine.buffer-node-ple.sqlserver15-17-windows.v1.sql">
+      <LogicalName>SqlObserver.Infrastructure.SqlServer.BufferNodeAssets.engine.buffer-node-ple.sqlserver15-17-windows.v1.sql</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="../../collectors/manifests/engine.buffer-nodes.assets-v1.sha256">
+      <LogicalName>SqlObserver.Infrastructure.SqlServer.BufferNodeAssets.engine.buffer-nodes.assets-v1.sha256</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="../../collectors/manifests/engine.buffer-nodes.v1.schema.json">
+      <LogicalName>SqlObserver.Infrastructure.SqlServer.BufferNodeAssets.engine.buffer-nodes.v1.schema.json</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="../../collectors/manifests/engine.buffer-nodes.v1.json">
+      <LogicalName>SqlObserver.Infrastructure.SqlServer.BufferNodeAssets.engine.buffer-nodes.v1.json</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="../../collectors/manifests/storage.volume.assets-v1.sha256">
+      <LogicalName>SqlObserver.Infrastructure.SqlServer.StorageVolumeAssets.storage.volume.assets-v1.sha256</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="../../collectors/manifests/storage.volume.v1.schema.json">
+      <LogicalName>SqlObserver.Infrastructure.SqlServer.StorageVolumeAssets.storage.volume.v1.schema.json</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="../../collectors/manifests/storage.volume.v1.json">
+      <LogicalName>SqlObserver.Infrastructure.SqlServer.StorageVolumeAssets.storage.volume.v1.json</LogicalName>
     </EmbeddedResource>
     <EmbeddedResource Include="../../collectors/manifests/collector-manifest.v3.schema.json">
       <LogicalName>SqlObserver.Infrastructure.SqlServer.M5ActivityCollectorAssets.collector-manifest.v3.schema.json</LogicalName>
@@ -211,5 +333,33 @@
     <EmbeddedResource Include="../../collectors/sql/deadlocks.system-health.sqlserver17-windows.v1.sql">
       <LogicalName>SqlObserver.Infrastructure.SqlServer.M6DeadlockCollectorAssets.deadlocks.system-health.sqlserver17-windows.v1.sql</LogicalName>
     </EmbeddedResource>
+  </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="../../collectors/xe-file-reader/collector.v2.json"><LogicalName>SqlObserver.Infrastructure.SqlServer.XeFileSourceAssets.collector.v2.json</LogicalName></EmbeddedResource>
+    <EmbeddedResource Include="../../collectors/xe-file-reader/collector.assets-v2.sha256"><LogicalName>SqlObserver.Infrastructure.SqlServer.XeFileSourceAssets.collector.assets-v2.sha256</LogicalName></EmbeddedResource>
+    <EmbeddedResource Include="../../collectors/xe-file-reader/assets.sha256"><LogicalName>SqlObserver.Infrastructure.SqlServer.XeFileSourceAssets.assets.sha256</LogicalName></EmbeddedResource>
+    <EmbeddedResource Include="../../collectors/xe-file-reader/read.sqlserver15-windows.v1.sql"><LogicalName>SqlObserver.Infrastructure.SqlServer.XeFileSourceAssets.read.sqlserver15-windows.v1.sql</LogicalName></EmbeddedResource>
+    <EmbeddedResource Include="../../collectors/xe-file-reader/read.sqlserver16-windows.v1.sql"><LogicalName>SqlObserver.Infrastructure.SqlServer.XeFileSourceAssets.read.sqlserver16-windows.v1.sql</LogicalName></EmbeddedResource>
+    <EmbeddedResource Include="../../collectors/xe-file-reader/read.sqlserver17-windows.v1.sql"><LogicalName>SqlObserver.Infrastructure.SqlServer.XeFileSourceAssets.read.sqlserver17-windows.v1.sql</LogicalName></EmbeddedResource>
+  </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="../../collectors/plan-cache-runtime/assets.sha256"><LogicalName>SqlObserver.Infrastructure.SqlServer.PlanCacheRuntimeSourceAssets.assets.sha256</LogicalName></EmbeddedResource>
+    <EmbeddedResource Include="../../collectors/plan-cache-runtime/read.sqlserver15-windows.v1.sql"><LogicalName>SqlObserver.Infrastructure.SqlServer.PlanCacheRuntimeSourceAssets.read.sqlserver15-windows.v1.sql</LogicalName></EmbeddedResource>
+    <EmbeddedResource Include="../../collectors/plan-cache-runtime/read.sqlserver16-windows.v1.sql"><LogicalName>SqlObserver.Infrastructure.SqlServer.PlanCacheRuntimeSourceAssets.read.sqlserver16-windows.v1.sql</LogicalName></EmbeddedResource>
+    <EmbeddedResource Include="../../collectors/plan-cache-runtime/read.sqlserver17-windows.v1.sql"><LogicalName>SqlObserver.Infrastructure.SqlServer.PlanCacheRuntimeSourceAssets.read.sqlserver17-windows.v1.sql</LogicalName></EmbeddedResource>
+  </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="../../collectors/plan-cache-identity/read.v1.sql"><LogicalName>SqlObserver.Infrastructure.SqlServer.PlanCacheIdentitySourceAssets.read.v1.sql</LogicalName></EmbeddedResource>
+  </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="../../collectors/plan-cache-content/assets.sha256" LogicalName="SqlObserver.Infrastructure.SqlServer.PlanCacheContentSourceAssets.assets.sha256" />
+    <EmbeddedResource Include="../../collectors/plan-cache-content/read.sqlserver15-windows.v1.sql" LogicalName="SqlObserver.Infrastructure.SqlServer.PlanCacheContentSourceAssets.read.sqlserver15-windows.v1.sql" />
+    <EmbeddedResource Include="../../collectors/plan-cache-content/read.sqlserver16-windows.v1.sql" LogicalName="SqlObserver.Infrastructure.SqlServer.PlanCacheContentSourceAssets.read.sqlserver16-windows.v1.sql" />
+    <EmbeddedResource Include="../../collectors/plan-cache-content/read.sqlserver17-windows.v1.sql" LogicalName="SqlObserver.Infrastructure.SqlServer.PlanCacheContentSourceAssets.read.sqlserver17-windows.v1.sql" />
+  </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="../../collectors/manifests/queries.performance.v3.json" LogicalName="SqlObserver.Infrastructure.SqlServer.QueryPerformanceV3Assets.queries.performance.v3.json" />
+    <EmbeddedResource Include="../../collectors/manifests/queries.performance.v3.schema.json" LogicalName="SqlObserver.Infrastructure.SqlServer.QueryPerformanceV3Assets.queries.performance.v3.schema.json" />
+    <EmbeddedResource Include="../../collectors/manifests/m7-query-performance-v3.assets.sha256" LogicalName="SqlObserver.Infrastructure.SqlServer.QueryPerformanceV3Assets.m7-query-performance-v3.assets.sha256" />
   </ItemGroup>
 </Project>

@@ -20,15 +20,17 @@ public sealed class McpBoundaryScaffoldTests
     {
         string[] expected =
         [
-            "list_instances", "get_instance_capabilities", "get_instance_health", "get_active_alerts", "get_metric_series",
+            "list_instances", "list_metric_catalog", "list_incidents", "get_instance_capabilities", "get_instance_health", "get_active_alerts", "get_metric_series",
             "compare_metric_windows", "get_wait_summary", "get_active_sessions", "get_active_requests", "get_blocking_chain",
             "get_blocking_history", "get_deadlock", "search_deadlocks", "get_top_queries", "get_query_history",
             "get_query_plan_metadata", "get_database_health", "get_tempdb_health", "get_file_io", "get_storage_forecast",
-            "get_backup_status", "get_job_failures", "get_availability_health", "get_incident_evidence", "search_diagnostic_events"
+            "get_backup_status", "get_job_failures", "get_availability_health", "get_incident_evidence", "search_diagnostic_events",
+            "get_availability_replicas_v2", "get_availability_databases_v2", "get_backup_assessments_v2",
+            "list_sql_metric_catalog_v2", "get_sql_metric_baselines_v2"
         ];
 
         Assert.Equal(expected.OrderBy(static n => n), SqlObserver.Mcp.McpCatalog.Definitions.Select(static d => d.Name).OrderBy(static n => n));
-        Assert.Equal(25, SqlObserver.Mcp.McpCatalog.CreateTools().Count);
+        Assert.Equal(32, SqlObserver.Mcp.McpCatalog.CreateTools().Count);
     }
 
     [Fact]
@@ -95,6 +97,16 @@ public sealed class McpBoundaryScaffoldTests
         static JsonNode Build(JsonElement schema)
         {
             if (schema.TryGetProperty("oneOf", out JsonElement alternatives)) return Build(alternatives.EnumerateArray().First());
+            if (schema.TryGetProperty("const", out JsonElement constant)) return JsonNode.Parse(constant.GetRawText())!;
+            if (schema.TryGetProperty("enum", out JsonElement values)) return JsonNode.Parse(values.EnumerateArray().First().GetRawText())!;
+            if (schema.TryGetProperty("format", out JsonElement format) && format.GetString() == "uuid") return JsonValue.Create("11111111-1111-4111-8111-111111111111")!;
+            if (schema.TryGetProperty("pattern", out JsonElement pattern) && pattern.GetString() is "^(0|[1-9][0-9]*)$" or "^(0|[1-9][0-9]{0,18})$") return JsonValue.Create("1")!;
+            if (schema.TryGetProperty("pattern", out pattern) && pattern.GetString() == "^[0-9a-f]{64}$") return JsonValue.Create(new string('a', 64))!;
+            if (schema.TryGetProperty("pattern", out pattern) && pattern.GetString() == "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}$")
+                return JsonValue.Create("2026-09-24T00:00:00")!;
+            if (schema.TryGetProperty("pattern", out pattern) && pattern.GetString() == "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{6}$")
+                return JsonValue.Create("2026-09-24T00:00:00.000001")!;
+            if (schema.TryGetProperty("format", out format) && format.GetString() == "date-time") return JsonValue.Create("2026-09-24T00:00:00Z")!;
             if (schema.TryGetProperty("type", out JsonElement type))
             {
                 string selected = type.ValueKind == JsonValueKind.Array
@@ -103,9 +115,10 @@ public sealed class McpBoundaryScaffoldTests
                 return selected switch
                 {
                     "object" => BuildObject(schema),
-                    "array" => new JsonArray(Build(schema.GetProperty("items"))),
-                    "integer" => JsonValue.Create(1)!,
-                    "number" => JsonValue.Create(1.0)!,
+                    "array" => new JsonArray(Enumerable.Range(0, schema.TryGetProperty("minItems", out JsonElement minItems) ? Math.Max(1, minItems.GetInt32()) : 1)
+                        .Select(_ => Build(schema.GetProperty("items"))).ToArray()),
+                    "integer" => JsonValue.Create(schema.TryGetProperty("minimum", out JsonElement minimum) ? Math.Max(1, minimum.GetInt64()) : 1)!,
+                    "number" => JsonValue.Create(schema.TryGetProperty("maximum", out JsonElement maximum) ? Math.Min(1, maximum.GetDouble()) : 1.0)!,
                     "boolean" => JsonValue.Create(true)!,
                     "null" => JsonValue.Create((string?)null)!,
                     _ => JsonValue.Create("sample")!
@@ -134,25 +147,8 @@ public sealed class McpBoundaryScaffoldTests
                 foreach (JsonElement item in value.EnumerateArray()) AssertNoSensitive(item, tool);
         }
 
-        static void AssertSchemaCompatible(JsonElement value, JsonElement schema, string tool)
-        {
-            if (schema.TryGetProperty("type", out JsonElement type) && type.ValueKind == JsonValueKind.Array)
-            {
-                string actual = value.ValueKind switch { JsonValueKind.Object => "object", JsonValueKind.Array => "array", JsonValueKind.String => "string", JsonValueKind.Number => value.TryGetInt64(out _) ? "integer" : "number", JsonValueKind.True or JsonValueKind.False => "boolean", _ => "null" };
-                string[] allowed = type.EnumerateArray().Select(x => x.GetString()!).ToArray();
-                Assert.True(allowed.Contains(actual) || actual == "integer" && allowed.Contains("number"), $"{tool}: expected one of {string.Join(',', allowed)}, got {actual}");
-            }
-            else if (schema.TryGetProperty("type", out type) && type.ValueKind == JsonValueKind.String)
-            {
-                string actual = value.ValueKind switch { JsonValueKind.Object => "object", JsonValueKind.Array => "array", JsonValueKind.String => "string", JsonValueKind.Number => value.TryGetInt64(out _) ? "integer" : "number", JsonValueKind.True or JsonValueKind.False => "boolean", _ => "null" };
-                Assert.True(type.GetString() == actual || actual == "integer" && type.GetString() == "number", $"{tool}: expected {type.GetString()}, got {actual}");
-            }
-            if (value.ValueKind == JsonValueKind.Object && schema.TryGetProperty("properties", out JsonElement properties))
-                foreach (JsonProperty property in value.EnumerateObject())
-                    if (properties.TryGetProperty(property.Name, out JsonElement propertySchema)) AssertSchemaCompatible(property.Value, propertySchema, tool);
-            if (value.ValueKind == JsonValueKind.Array && schema.TryGetProperty("items", out JsonElement itemSchema))
-                foreach (JsonElement item in value.EnumerateArray()) AssertSchemaCompatible(item, itemSchema, tool);
-        }
+        static void AssertSchemaCompatible(JsonElement value, JsonElement schema, string tool) =>
+            JsonSchemaAssertions.AssertValid(value, schema, tool);
     }
 
     [Fact]

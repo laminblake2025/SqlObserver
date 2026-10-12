@@ -72,12 +72,37 @@ public static class CollectorServiceRegistration
         services.AddSingleton<IRepositoryReadinessMonitor, PostgreSqlRepositoryReadinessMonitor>();
         services.AddSingleton<IWorkerLeasePort>(static provider =>
             provider.GetRequiredService<PostgreSqlCollectorDataPlane>().WorkerLeases);
+        services.AddSingleton<IOverviewLatestMaterializationPort>(static provider =>
+            provider.GetRequiredService<PostgreSqlCollectorDataPlane>().OverviewLatestMaterialization);
+        services.AddSingleton<IBackupFleetSummaryPort>(static provider =>
+            provider.GetRequiredService<PostgreSqlCollectorDataPlane>().BackupFleetSummary);
+        services.AddSingleton<IBackupFleetCachePort>(static provider =>
+            provider.GetRequiredService<PostgreSqlCollectorDataPlane>().BackupFleetCache);
+        services.AddSingleton<IBackupAlertEvidencePort>(static provider =>
+            provider.GetRequiredService<PostgreSqlCollectorDataPlane>().BackupAlertEvidence);
+        services.AddSingleton<IBlockingAlertEvidencePort>(static provider =>
+            provider.GetRequiredService<PostgreSqlCollectorDataPlane>().BlockingAlertEvidence);
+        services.AddSingleton<IDeadlockAlertEvidencePort>(static provider =>
+            provider.GetRequiredService<PostgreSqlCollectorDataPlane>().DeadlockAlertEvidence);
         services.AddSingleton<PostgreSqlPartitionMaintenancePort>(static provider =>
             provider.GetRequiredService<PostgreSqlCollectorDataPlane>().PartitionMaintenance);
+        services.AddSingleton<IRetentionMaintenancePort>(static provider =>
+            provider.GetRequiredService<PostgreSqlPartitionMaintenancePort>());
         services.AddSingleton<ICapabilityProfileRepositoryPort>(static provider =>
             provider.GetRequiredService<PostgreSqlCollectorDataPlane>().CapabilityProfiles);
         services.AddSingleton<ICollectorRuntimeRepositoryPort>(static provider =>
             provider.GetRequiredService<PostgreSqlCollectorDataPlane>().Runtime);
+        services.AddSingleton<IDeadlockReadRepositoryPort>(static provider =>
+            (IDeadlockReadRepositoryPort)provider.GetRequiredService<ICollectorRuntimeRepositoryPort>());
+        services.AddSingleton<IBackupHistoricalZoneQualificationPort>(static provider =>
+            provider.GetRequiredService<PostgreSqlCollectorDataPlane>().BackupZoneQualifications);
+        services.AddSingleton<ISqlAgentModuleEnrollmentResolver>(static provider =>
+            provider.GetRequiredService<PostgreSqlCollectorDataPlane>().SqlAgentModuleEnrollments);
+        services.AddSingleton<SqlServerAgentActivityModuleCaptureReader>();
+        services.AddSingleton(static _ => SqlAgentActivityObservationsAssetCatalog.LoadEmbedded());
+        services.AddSingleton<SqlAgentActivityObservationsCollector>();
+        services.AddSingleton<IQueryStoreGroupWindowPort>(static provider =>
+            provider.GetRequiredService<PostgreSqlCollectorDataPlane>().QueryStoreGroupWindows);
         services.AddSingleton<IAlertRepositoryPort>(static provider =>
             provider.GetRequiredService<PostgreSqlCollectorDataPlane>().Alerts);
         services.AddSingleton<IAnalyticsRepositoryPort>(static provider =>
@@ -102,17 +127,20 @@ public static class CollectorServiceRegistration
             new SqlServerCapabilityDiscoveryPort(provider.GetRequiredService<IReplicationDistributionBindingResolver>()));
         services.AddSingleton<ICapabilityDiscoveryService, CapabilityDiscoveryService>();
         services.AddSingleton(TimeProvider.System);
-        services.AddSingleton<IQuerySensitiveContentProtector, UnavailableQuerySensitiveContentProtector>();
+        services.AddSingleton<IQuerySensitiveContentProtector>(_ =>
+            new QuerySensitiveContentProtector(configuration["SqlObserver:QueryContent:ProtectedKeyPath"]));
         services.AddSingleton(static _ => new WorkerExecutionId(Guid.NewGuid()));
         services.AddSingleton(static _ => SqlServerCollectorAssetCatalog.LoadEmbedded());
         services.AddSingleton(static provider => new SqlServerCoreEngineCollector(
             provider.GetRequiredService<SqlServerCollectorAssetCatalog>()));
-        services.AddSingleton(static provider => new SqlServerDatabaseInventoryCollector(
-            provider.GetRequiredService<SqlServerCollectorAssetCatalog>()));
+        services.AddSingleton(static _ => new SqlServerDatabaseInventoryCollector(
+            SqlServerCollectorAssetCatalog.LoadVersion2Embedded()));
         services.AddSingleton(static provider => new SqlServerDatabaseFilesCollector(
             provider.GetRequiredService<SqlServerCollectorAssetCatalog>()));
         services.AddSingleton(static _ => SqlServerActivityCollectorAssetCatalog.LoadEmbedded());
         services.AddSingleton(static _ => SqlServerDeadlockCollectorAssetCatalog.LoadEmbedded());
+        services.AddSingleton(static _ => SqlServerIncrementalDeadlockAssetCatalog.LoadEmbedded());
+        services.AddSingleton<SqlServerIncrementalDeadlockCollector>();
         services.AddSingleton(static _ => SqlServerQueryPerformanceCollectorAssetCatalog.LoadEmbedded());
         services.AddSingleton(static _ => SqlServerOperationalHealthAssetCatalog.LoadEmbedded());
         services.AddSingleton<SqlServerBackupsStatusCollector>();
@@ -130,12 +158,31 @@ public static class CollectorServiceRegistration
         services.AddSingleton(static provider => new SqlServerDeadlockCollector(
             provider.GetRequiredService<SqlServerDeadlockCollectorAssetCatalog>()));
         services.AddSingleton(static provider => new SqlServerQueryPerformanceCollector(
-            provider.GetRequiredService<SqlServerQueryPerformanceCollectorAssetCatalog>()));
+            provider.GetRequiredService<SqlServerQueryPerformanceCollectorAssetCatalog>(),
+            provider.GetRequiredService<IQuerySensitiveContentProtector>()));
+        // Staged producer uses the production key provider. Catalog activation
+        // remains a separately qualified operation; the registry still selects v1.
+        services.AddSingleton(static provider => new SqlServerQueryPerformanceV3Collector(
+            provider.GetRequiredService<IQuerySensitiveContentProtector>()));
         services.AddSingleton(static _ => SqlServerReplicationAssetCatalog.LoadEmbedded());
         services.AddSingleton(static provider => new SqlServerReplicationCollector(
             provider.GetRequiredService<SqlServerReplicationAssetCatalog>(),
             provider.GetRequiredService<IReplicationDistributionBindingResolver>(),
             provider.GetRequiredService<IdentityFingerprintKey>()));
+        services.AddSingleton(static _ => SqlServerVolumeCapacityAssetCatalog.LoadEmbedded());
+        services.AddSingleton<SqlServerVolumeCapacityCollector>();
+        services.AddSingleton(static _ => SqlServerBufferNodePleAssetCatalog.LoadEmbedded());
+        services.AddSingleton<SqlServerBufferNodePleCollector>();
+        services.AddSingleton(static _ => SqlServerConfigurationAssetCatalog.LoadEmbedded());
+        services.AddSingleton<SqlServerConfigurationsCollector>();
+        // Available for the staged v2 path; the production registry still selects backup v1.
+        services.AddSingleton(static _ => SqlServerBackupV2AssetCatalog.LoadEmbedded());
+        services.AddSingleton(static provider => new SqlServerBackupsV2Collector(
+            provider.GetRequiredService<SqlServerBackupV2AssetCatalog>(),
+            provider.GetRequiredService<IdentityFingerprintKey>(),
+            provider.GetRequiredService<IBackupHistoricalZoneQualificationPort>()));
+        services.AddSingleton(static _ => SqlServerQueryStoreGroupAssetCatalog.LoadEmbedded());
+        services.AddSingleton<SqlServerQueryStoreGroupCollector>();
         services.AddSingleton(static _ => HostMetricsAssetCatalog.LoadEmbedded());
         // Identity HMAC material is supplied by the secret-backed collector
         // configuration. There is deliberately no process-local fallback:
@@ -165,10 +212,23 @@ public static class CollectorServiceRegistration
         services.AddSingleton<IHostMetricsCollector, HostMetricsCollector>();
         services.AddSingleton<IHostTargetResolver, PersistedHostTargetResolver>();
         services.AddSingleton<HostMetricsCollectorAdapter>();
+        services.AddSingleton(static _ => CpuComponentsAssetCatalog.LoadEmbedded());
+        services.AddSingleton<SqlServerCpuTargetWitnessReader>();
+        services.AddSingleton<WindowsCpuTcpAssociationReader>();
+        services.AddSingleton<WindowsTargetCpuPairReader>();
+        services.AddSingleton<WindowsCpuAssociationSamplingReader>();
+        services.AddSingleton<CpuComponentsSource>();
+        services.AddSingleton<CpuComponentsCollector>();
+        services.AddSingleton(static _ => ServerLifecycleAssetCatalog.LoadEmbedded());
+        services.AddSingleton(static _ => SqlServerLifecycleAssetCatalog.LoadEmbedded());
+        services.AddSingleton<SqlServerLifecycleCollector>();
         services.AddSingleton(static provider => CreateRegistry(provider));
         services.AddSingleton<CollectorExecutionEngine>();
+        services.AddSingleton<ISensitivePayloadPort>(static provider =>
+            provider.GetRequiredService<PostgreSqlCollectorDataPlane>().SensitivePayloads);
+        services.AddSingleton<QueryPerformanceProtectedContentCommitter>();
         services.AddSingleton<IDeadlockActivitySnapshotTrigger, DeadlockActivitySnapshotTrigger>();
-        services.AddSingleton(static provider => new CollectorScheduler(
+        services.AddSingleton(provider => new CollectorScheduler(
             provider.GetRequiredService<CollectorRegistry>(),
             provider.GetRequiredService<ICollectorRuntimeRepositoryPort>(),
             provider.GetRequiredService<IWorkerLeasePort>(),
@@ -176,19 +236,22 @@ public static class CollectorServiceRegistration
             provider.GetRequiredService<WorkerExecutionId>(),
             new CollectorSchedulerOptions(
                 maxItemsPerCycle: ListDueCollectorWorkRequest.MaximumItems,
-                maxConcurrency: 4,
+                maxConcurrency: ReadMaxConcurrency(configuration),
                 new WorkerLeaseDuration(TimeSpan.FromSeconds(30)),
                 new RepositoryCallTimeout(TimeSpan.FromSeconds(5))),
-            provider.GetRequiredService<IDeadlockActivitySnapshotTrigger>()));
+            provider.GetRequiredService<IDeadlockActivitySnapshotTrigger>(),
+            provider.GetRequiredService<QueryPerformanceProtectedContentCommitter>()));
         services.AddHostedService<CapabilityDiscoveryWorker>();
         services.AddSingleton<ILiveActivityRepository>(s => s.GetRequiredService<PostgreSqlCollectorDataPlane>().LiveActivity);
         services.AddSingleton<ILiveActivityProtector>(_ => new LiveActivityProtector(configuration["SqlObserver:LiveActivity:ProtectedKeyPath"]));
         services.AddSingleton<ILiveActivityCollector, SqlServerLiveActivityCollector>();
         services.AddHostedService<LiveActivityWorker>();
         services.AddHostedService<CollectionWorker>();
+        services.AddHostedService<RetentionMaintenanceWorker>();
         services.AddHostedService<AlertEvaluationWorker>();
         services.AddHostedService<AlertDeliveryWorker>();
         services.AddHostedService<ReportExpiryWorker>();
+        services.AddHostedService<OverviewLatestStatusWorker>();
         bool contractTesting = environment?.IsEnvironment("ContractTesting") == true ||
             string.Equals(configuration["DOTNET_ENVIRONMENT"], "ContractTesting", StringComparison.OrdinalIgnoreCase) ||
             string.Equals(configuration["ASPNETCORE_ENVIRONMENT"], "ContractTesting", StringComparison.OrdinalIgnoreCase);
@@ -200,13 +263,26 @@ public static class CollectorServiceRegistration
         return services;
     }
 
+    private static int ReadMaxConcurrency(IConfiguration configuration)
+    {
+        string? configured = configuration["SqlObserver:Collector:MaxConcurrency"];
+        if (string.IsNullOrWhiteSpace(configured)) return 16;
+        if (!int.TryParse(configured, System.Globalization.NumberStyles.None,
+                System.Globalization.CultureInfo.InvariantCulture, out int value) || value is < 1 or > 64)
+            throw new InvalidOperationException("SqlObserver:Collector:MaxConcurrency must be an integer from 1 to 64.");
+        return value;
+    }
+
     private static CollectorRegistry CreateRegistry(IServiceProvider provider)
     {
         SqlServerCollectorAssetCatalog catalog =
             provider.GetRequiredService<SqlServerCollectorAssetCatalog>();
         var bundleDigest = new CollectorSha256Digest(catalog.BundleChecksum);
         SqlServerCollectorAsset coreAsset = catalog.Get(CollectorCatalogIds.EngineCore);
-        SqlServerCollectorAsset inventoryAsset = catalog.Get(CollectorCatalogIds.DatabaseInventory);
+        SqlServerCollectorAssetCatalog inventoryV2Catalog =
+            SqlServerCollectorAssetCatalog.LoadVersion2Embedded();
+        SqlServerCollectorAsset inventoryAsset = inventoryV2Catalog.Get(CollectorCatalogIds.DatabaseInventory);
+        var inventoryV2BundleDigest = new CollectorSha256Digest(inventoryV2Catalog.BundleChecksum);
         SqlServerCollectorAsset filesAsset = catalog.Get(CollectorCatalogIds.DatabaseFiles);
         SqlServerActivityCollectorAssetCatalog activityCatalog =
             provider.GetRequiredService<SqlServerActivityCollectorAssetCatalog>();
@@ -215,14 +291,25 @@ public static class CollectorServiceRegistration
         SqlServerCollectorAsset requestsAsset = activityCatalog.Get(new CollectorId("activity.requests"));
         SqlServerCollectorAsset waitsAsset = activityCatalog.Get(new CollectorId("waits.server"));
         SqlServerCollectorAsset blockingAsset = activityCatalog.Get(new CollectorId("blocking.current"));
-        SqlServerDeadlockCollectorAssetCatalog deadlockCatalog = provider.GetRequiredService<SqlServerDeadlockCollectorAssetCatalog>();
+        SqlServerIncrementalDeadlockAssetCatalog deadlockCatalog = provider.GetRequiredService<SqlServerIncrementalDeadlockAssetCatalog>();
         SqlServerQueryPerformanceCollectorAssetCatalog queryCatalog = provider.GetRequiredService<SqlServerQueryPerformanceCollectorAssetCatalog>();
         SqlServerOperationalHealthAssetCatalog m9Catalog = provider.GetRequiredService<SqlServerOperationalHealthAssetCatalog>();
         var m9Bundle = new CollectorSha256Digest(m9Catalog.BundleChecksum);
         SqlServerReplicationAssetCatalog replicationCatalog = provider.GetRequiredService<SqlServerReplicationAssetCatalog>();
         var replicationBundle = new CollectorSha256Digest(replicationCatalog.BundleChecksum);
+        SqlServerVolumeCapacityAssetCatalog volumeCatalog = provider.GetRequiredService<SqlServerVolumeCapacityAssetCatalog>();
+        var volumeBundle = new CollectorSha256Digest(volumeCatalog.BundleChecksum);
+        SqlServerBufferNodePleAssetCatalog bufferNodeCatalog =
+            provider.GetRequiredService<SqlServerBufferNodePleAssetCatalog>();
+        SqlServerConfigurationAssetCatalog configurationCatalog =
+            provider.GetRequiredService<SqlServerConfigurationAssetCatalog>();
+        SqlServerQueryStoreGroupAssetCatalog groupCatalog =
+            provider.GetRequiredService<SqlServerQueryStoreGroupAssetCatalog>();
         HostMetricsAssetCatalog hostCatalog = provider.GetRequiredService<HostMetricsAssetCatalog>();
         var hostBundle = new CollectorSha256Digest(hostCatalog.BundleChecksum);
+        CpuComponentsAssetCatalog cpuCatalog = provider.GetRequiredService<CpuComponentsAssetCatalog>();
+        ServerLifecycleAssetCatalog lifecycleCatalog = provider.GetRequiredService<ServerLifecycleAssetCatalog>();
+        SqlAgentActivityObservationsAssetCatalog agentCatalog = provider.GetRequiredService<SqlAgentActivityObservationsAssetCatalog>();
         static CollectorSha256Digest Digest(string json) => new(Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(json))).ToLowerInvariant());
         return new CollectorRegistry(
         [
@@ -235,9 +322,9 @@ public static class CollectorServiceRegistration
             new CollectorRegistration(
                 executionOrder: 2,
                 provider.GetRequiredService<SqlServerDatabaseInventoryCollector>(),
-                new CollectorOutputValidator(SqlServerDatabaseInventoryCollector.OutputContract),
+                new CollectorOutputValidator(SqlServerDatabaseInventoryCollector.Version2OutputContract),
                 new CollectorSha256Digest(inventoryAsset.ManifestChecksum),
-                bundleDigest),
+                inventoryV2BundleDigest),
             new CollectorRegistration(
                 executionOrder: 3,
                 provider.GetRequiredService<SqlServerDatabaseFilesCollector>(),
@@ -270,10 +357,10 @@ public static class CollectorServiceRegistration
                 activityBundleDigest),
             new CollectorRegistration(
                 executionOrder: 8,
-                provider.GetRequiredService<SqlServerDeadlockCollector>(),
-                new CollectorOutputValidator(SqlServerDeadlockCollector.OutputContract),
-                new CollectorSha256Digest(deadlockCatalog.Asset.ManifestChecksum),
-                new CollectorSha256Digest(deadlockCatalog.BundleChecksum)),
+                provider.GetRequiredService<SqlServerIncrementalDeadlockCollector>(),
+                new CollectorOutputValidator(SqlServerIncrementalDeadlockCollector.OutputContract),
+                new CollectorSha256Digest(deadlockCatalog.ManifestChecksum),
+                new CollectorSha256Digest(SqlServerIncrementalDeadlockAssetCatalog.BundleChecksum)),
             new CollectorRegistration(
                 executionOrder: 9,
                 provider.GetRequiredService<SqlServerQueryPerformanceCollector>(),
@@ -286,6 +373,31 @@ public static class CollectorServiceRegistration
             new CollectorRegistration(13, provider.GetRequiredService<SqlServerAvailabilityGroupsHealthCollector>(), new CollectorOutputValidator(M9Manifest.OutputContract(2048)), Digest(m9Catalog.Get("availability-groups.health.v1.json")), m9Bundle),
             new CollectorRegistration(14, provider.GetRequiredService<HostMetricsCollectorAdapter>(), new CollectorOutputValidator(HostMetricsCollectorAdapter.OutputContract), Digest(hostCatalog.Get("host.metrics.v1.json")), hostBundle),
             new CollectorRegistration(15, provider.GetRequiredService<SqlServerReplicationCollector>(), new CollectorOutputValidator(SqlServerReplicationCollector.OutputContract), Digest(replicationCatalog.Get("replication.health.v1.json")), replicationBundle),
+            new CollectorRegistration(16, provider.GetRequiredService<SqlServerVolumeCapacityCollector>(), new CollectorOutputValidator(SqlServerVolumeCapacityCollector.OutputContract), Digest(volumeCatalog.ManifestJson), volumeBundle),
+            new CollectorRegistration(17, provider.GetRequiredService<SqlServerQueryStoreGroupCollector>(),
+                new CollectorOutputValidator(SqlServerQueryStoreGroupCollector.OutputContract),
+                new CollectorSha256Digest(groupCatalog.ManifestChecksum),
+                new CollectorSha256Digest(SqlServerQueryStoreGroupAssetCatalog.ExpectedBundleChecksum)),
+            new CollectorRegistration(18, provider.GetRequiredService<SqlServerBufferNodePleCollector>(),
+                new CollectorOutputValidator(SqlServerBufferNodePleCollector.OutputContract),
+                Digest(bufferNodeCatalog.ManifestJson),
+                new CollectorSha256Digest(bufferNodeCatalog.BundleChecksum)),
+            new CollectorRegistration(19, provider.GetRequiredService<SqlServerConfigurationsCollector>(),
+                new CollectorOutputValidator(SqlServerConfigurationsCollector.OutputContract),
+                Digest(configurationCatalog.ManifestJson),
+                new CollectorSha256Digest(configurationCatalog.BundleChecksum)),
+            new CollectorRegistration(20, provider.GetRequiredService<CpuComponentsCollector>(),
+                new CollectorOutputValidator(CpuComponentsCollector.OutputContract),
+                Digest(cpuCatalog.ManifestJson),
+                new CollectorSha256Digest(cpuCatalog.BundleChecksum)),
+            new CollectorRegistration(21, provider.GetRequiredService<SqlServerLifecycleCollector>(),
+                new CollectorOutputValidator(SqlServerLifecycleCollector.OutputContract),
+                Digest(lifecycleCatalog.ManifestJson),
+                new CollectorSha256Digest(lifecycleCatalog.BundleChecksum)),
+            new CollectorRegistration(22, provider.GetRequiredService<SqlAgentActivityObservationsCollector>(),
+                new CollectorOutputValidator(SqlAgentActivityObservationsCollector.OutputContract),
+                Digest(agentCatalog.ManifestJson),
+                new CollectorSha256Digest(agentCatalog.BundleChecksum)),
         ]);
     }
 }

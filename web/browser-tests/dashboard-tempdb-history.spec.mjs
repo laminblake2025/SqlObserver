@@ -1,0 +1,90 @@
+import {expect,test} from '@playwright/test';
+import AxeBuilder from '@axe-core/playwright';
+import {mkdir} from 'node:fs/promises';
+import {fileURLToPath} from 'node:url';
+import {tempDbHistoryBinding as binding,tempDbHistoryAlpha as alpha,tempDbHistoryBeta as beta,tempDbHistoryReceipt,tempDbHistoryBackend,installTempDbHistoryFixture,tempDbHistoryJson,tempDbHistoryHeld} from '../component-tests/tempDbWindowHistoryFixture.mjs';
+const origin='http://127.0.0.1:4432',sessions=new WeakMap();
+const panel=p=>p.getByRole('region',{name:'TempDB window history',exact:true}),detail=p=>panel(p).getByRole('region',{name:'Selected TempDB receipt',exact:true}),button=(p,name)=>panel(p).getByRole('button',{name,exact:true});
+const scope=p=>Object.fromEntries(new URLSearchParams(new URL(p.url()).hash.split('?')[1]));
+const href=(extra={})=>'/#/operations?'+new URLSearchParams({target:alpha,check:'tempdb',range:'custom',from:binding.fromUtc,to:binding.toUtc,...extra});
+const response=(s,r)=>r.selection?s.backend.snapshot(r.binding,r.selection,r.cursor,r.limit):s.backend.read(r.binding,r.cursor,r.limit);
+async function open(page,extra={}){await page.goto(href(extra));await expect(detail(page)).toContainText(extra.tempDbRun??tempDbHistoryReceipt().runId);}
+async function browse(page){const summary=panel(page).getByText('Browse TempDB collection receipts',{exact:true});if(!await summary.evaluate(e=>e.parentElement.open))await summary.press('Enter');}
+async function files(page){const summary=detail(page).getByText('Browse TempDB files from selected receipt',{exact:true});if(!await summary.evaluate(e=>e.parentElement.open))await summary.press('Enter');return detail(page).getByRole('region',{name:'Received TempDB files from selected receipt',exact:true});}
+async function capture(page,name){const folder=fileURLToPath(new URL('../../artifacts/dashboard-tempdb-history-2026-10-04/screenshots/',import.meta.url));await mkdir(folder,{recursive:true});await page.screenshot({path:folder+name+'.png',fullPage:true});}
+
+async function containedEvidence(page){
+ const geometry=await panel(page).evaluate(root=>{
+  const box=root.getBoundingClientRect(),style=getComputedStyle(root);
+  const left=box.left+parseFloat(style.borderLeftWidth)+parseFloat(style.paddingLeft);
+  const right=box.right-parseFloat(style.borderRightWidth)-parseFloat(style.paddingRight);
+  const visible=element=>element.getClientRects().length>0&&element.getBoundingClientRect().width>0;
+  const nodes=[...root.querySelectorAll(':scope > *, header, p, details, summary, .tempdb-receipt, .table-scroll')].filter(visible).map(element=>{
+   const rect=element.getBoundingClientRect();
+   return{label:element.tagName+' '+(element.getAttribute('aria-label')??element.className),left:rect.left,right:rect.right};
+  });
+  const scrolls=[...root.querySelectorAll('.table-scroll')].filter(visible).map(element=>{
+   const parent=element.parentElement,parentBox=parent.getBoundingClientRect(),parentStyle=getComputedStyle(parent);
+   const available=parentBox.width-parseFloat(parentStyle.paddingLeft)-parseFloat(parentStyle.paddingRight)-parseFloat(parentStyle.borderLeftWidth)-parseFloat(parentStyle.borderRightWidth);
+   return{label:element.getAttribute('aria-label'),client:element.clientWidth,scroll:element.scrollWidth,available,overflow:getComputedStyle(element).overflowX};
+  });
+  return{left,right,viewport:innerWidth,nodes,scrolls};
+ });
+ expect(geometry.right-geometry.left).toBeGreaterThan(0);
+ for(const node of geometry.nodes){
+  expect(node.left,node.label+' left edge must fit panel content').toBeGreaterThanOrEqual(geometry.left-1);
+  expect(node.right,node.label+' right edge must fit panel content').toBeLessThanOrEqual(geometry.right+1);
+  expect(node.left,node.label+' must fit viewport').toBeGreaterThanOrEqual(-1);
+  expect(node.right,node.label+' must fit viewport').toBeLessThanOrEqual(geometry.viewport+1);
+ }
+ for(const scroll of geometry.scrolls){
+  expect(scroll.client,scroll.label+' must have a real local viewport').toBeGreaterThan(0);
+  expect(scroll.client,scroll.label+' must fit parent content').toBeLessThanOrEqual(scroll.available+1);
+  expect(scroll.client,scroll.label+' must fit panel content').toBeLessThanOrEqual(geometry.right-geometry.left+1);
+  expect(['auto','scroll'],scroll.label+' must scroll locally').toContain(scroll.overflow);
+  if(geometry.viewport<=390)expect(scroll.scroll,scroll.label+' must overflow locally on mobile').toBeGreaterThan(scroll.client);
+ }
+ return geometry;
+}
+async function openReceiptIdentities(page){
+ for(const summary of await panel(page).locator('.tempdb-receipt summary').all()){
+  if(!await summary.evaluate(element=>element.parentElement.open))await summary.press('Enter');
+ }
+}
+
+test.beforeEach(async({page})=>{await page.clock.setFixedTime(new Date('2026-10-04T12:00:00Z'));await page.context().addCookies([{name:'dashboardRefactor',value:'1',url:origin},{name:'chartReferenceRole',value:'viewer',url:origin}]);await page.addInitScript(()=>localStorage.setItem('sqlobserver.timeDisplayMode','utc'));sessions.set(page,await installTempDbHistoryFixture(page,{origin,allowOtherApi:true}));});
+test.afterEach(async({page})=>expect(sessions.get(page).errors,'No external traffic or unknown TempDB query shape').toEqual([]));
+for(const mode of ['failedLatest','missingLatest','emptyLatest'])test(`built App keeps newest ${mode} as default instead of choosing an older successful receipt`,async({page})=>{
+ const s=sessions.get(page);s.backend.settings[mode]=true;await open(page);await expect(detail(page)).not.toContainText('9007199254741505');await expect(detail(page)).toContainText(mode==='failedLatest'?/collection attempt failed|permission_denied/iu:mode==='missingLatest'?/payload/iu:/empty|no files/iu);await browse(page);await button(page,'Inspect TempDB receipt '+tempDbHistoryReceipt(1).runId).press('Enter');await expect(detail(page)).toContainText('9007199254741505');expect(scope(page)).toMatchObject({target:alpha,check:'tempdb',range:'custom',from:binding.fromUtc,to:binding.toUtc,tempDbRun:tempDbHistoryReceipt(1).runId,tempDbRevision:'1'});
+});
+test('built App reload and Back/Forward restore the exact off-list tuple with no fallback',async({page})=>{
+ sessions.get(page).backend.settings.count=201;const old=tempDbHistoryReceipt(200);await open(page,{tempDbRun:old.runId,tempDbRevision:'1'});await browse(page);await expect(button(page,'Inspect TempDB receipt '+old.runId)).toHaveCount(0);await button(page,'Inspect TempDB receipt '+tempDbHistoryReceipt(1).runId).press('Enter');await expect(detail(page)).toContainText(tempDbHistoryReceipt(1).runId);await page.goBack();await expect(detail(page)).toContainText(old.runId);await page.goForward();await expect(detail(page)).toContainText(tempDbHistoryReceipt(1).runId);await page.reload();await expect(detail(page)).toContainText(tempDbHistoryReceipt(1).runId);
+});
+test('invalid repeated exact pin survives unrelated shared database change with no default exact read',async({page})=>{
+ await page.goto(href({tempDbRun:'bad',tempDbRevision:'01'})+'&tempDbRun=also-bad');await expect(detail(page)).toContainText('invalid');expect(sessions.get(page).reads.some(r=>r.selection)).toBe(false);await page.evaluate(()=>{const q=new URLSearchParams(location.hash.split('?')[1]);q.set('databaseId','5');location.hash='#/operations?'+q;});await expect(detail(page)).toContainText('invalid');expect(sessions.get(page).reads.some(r=>r.selection)).toBe(false);expect(new URLSearchParams(new URL(page.url()).hash.split('?')[1]).getAll('tempDbRun')).toEqual(['bad','also-bad']);await button(page,'Clear selected TempDB receipt').press('Enter');await expect(detail(page)).toContainText('9007199254741505');
+});
+for(const family of ['receipts','files'])test(`Live ${family} paging atomically fixes the shared Rewind window and owns one continuation`,async({page})=>{
+ const s=sessions.get(page);s.backend.settings.count=101;s.backend.settings.fileCount=101;await page.goto('/#/operations?'+new URLSearchParams({target:alpha,check:'tempdb',range:'1h'}));await expect(detail(page).getByRole('region',{name:'TempDB summary from selected receipt',exact:true})).toBeVisible();const original=s.reads.find(r=>!r.selection).binding;if(family==='receipts')await browse(page);else await files(page);const held=tempDbHistoryHeld();s.handler=(route,r)=>r.cursor?held.handle(route,response(s,r)):false;const before=s.reads.length;await button(page,family==='receipts'?'Next TempDB receipts page':'Next TempDB files page').press('Enter');const request=await held.started;await expect.poll(()=>scope(page).range).toBe('custom');expect(scope(page)).toMatchObject({from:original.fromUtc,to:original.toUtc});expect(request.failure()).toBeNull();expect(s.reads).toHaveLength(before+1);await held.finish();if(family==='files'){await expect(detail(page).getByRole('table').locator('tbody tr')).toHaveCount(1);expect(scope(page).tempDbRun).toBe(s.reads.find(r=>r.selection).selection.runId);}else await expect(panel(page).getByRole('region',{name:'Received TempDB collection receipts',exact:true}).getByRole('table').locator('tbody tr')).toHaveCount(1);
+});
+test('Refresh failure keeps the exact selected receipt while explicit URL window change discloses out-of-window instead of latest',async({page})=>{
+ await open(page,{tempDbRun:tempDbHistoryReceipt(1).runId,tempDbRevision:'1'});const s=sessions.get(page);s.handler=async(route,r)=>r.selection?(await tempDbHistoryJson(route,{detail:'SECRET'},503),true):false;await button(page,'Refresh selected TempDB receipt').press('Enter');await expect(button(page,'Retry selected TempDB receipt read')).toBeVisible();await expect(detail(page)).toContainText('9007199254741505');await expect(panel(page)).not.toContainText('SECRET');s.handler=undefined;await button(page,'Retry selected TempDB receipt read').press('Enter');await expect(detail(page).getByRole('alert')).toHaveCount(0);await page.evaluate(()=>{const q=new URLSearchParams(location.hash.split('?')[1]);q.set('from','2026-10-04T09:00:00.123456Z');q.set('to','2026-10-04T10:00:00.123456Z');location.hash='#/operations?'+q;});await expect(detail(page)).toContainText('outside');await expect(detail(page)).not.toContainText('9007199254741505');expect(scope(page).tempDbRun).toBe(tempDbHistoryReceipt(1).runId);
+});
+for(const status of [401,403])test(`native ${status} purges both TempDB source receipts and fences the pending sibling`,async({page})=>{
+ await open(page);const s=sessions.get(page),held=tempDbHistoryHeld();s.handler=async(route,r)=>{if(r.selection){await held.started;await tempDbHistoryJson(route,{detail:'SECRET'},status);return true;}return held.handle(route,response(s,r));};await page.getByRole('button',{name:'↻ Refresh',exact:true}).click();const request=await held.started;await expect(button(page,'Retry TempDB history access')).toBeVisible();await expect(panel(page)).not.toContainText('9007199254741505');await expect.poll(()=>request.failure()?.errorText??'').toContain('ERR_ABORTED');await held.finish();await expect(panel(page)).not.toContainText('9007199254741505');const before=s.reads.length;s.handler=undefined;await button(page,'Retry TempDB history access').press('Enter');await expect(detail(page)).toContainText('9007199254741505');expect(s.reads.length).toBeGreaterThan(before);
+});
+test('missing selected payload and independent list cap have explicit recovery without replacing the exact pin',async({page})=>{
+ const s=sessions.get(page);s.backend.settings.count=10001;s.backend.settings.detailAbsent=true;await page.goto(href({tempDbRun:tempDbHistoryReceipt(1).runId,tempDbRevision:'1'}));await expect(button(page,'Retry TempDB history read')).toBeVisible();await expect(detail(page)).toContainText('not retained');await expect(detail(page)).not.toContainText('9007199254741505');expect(scope(page).tempDbRun).toBe(tempDbHistoryReceipt(1).runId);
+});
+for(const width of [320,390,768,1440])test(`built TempDB workflow is dark, keyboard-scrollable and WCAG21A at ${width}px`,async({page},info)=>{
+ await page.setViewportSize({width,height:1000});await open(page);await containedEvidence(page);await browse(page);await containedEvidence(page);const scroll=await files(page);await openReceiptIdentities(page);const geometry=await containedEvidence(page);expect(geometry.scrolls).toHaveLength(2);await info.attach('tempdb-built-panel-geometry',{body:JSON.stringify(geometry,null,2),contentType:'application/json'});await scroll.scrollIntoViewIfNeeded();await scroll.press('ArrowRight');await expect(scroll).toBeFocused();if(await scroll.evaluate(e=>e.scrollWidth>e.clientWidth))await expect.poll(()=>scroll.evaluate(e=>e.scrollLeft)).toBeGreaterThan(0);expect(await scroll.evaluate(e=>parseFloat(getComputedStyle(e).outlineWidth))).toBeGreaterThanOrEqual(2);for(const label of ['Refresh TempDB window history','Refresh selected TempDB receipt','Clear selected TempDB receipt']){if(await button(page,label).count()){const box=await button(page,label).boundingBox();expect(box.width).toBeGreaterThanOrEqual(44);expect(box.height).toBeGreaterThanOrEqual(44);}}expect(await page.evaluate(()=>document.documentElement.scrollWidth-innerWidth)).toBe(0);expect(await page.evaluate(()=>getComputedStyle(document.documentElement).colorScheme)).toBe('dark');const axe=await new AxeBuilder({page}).withTags(['wcag2a','wcag2aa','wcag21a','wcag21aa']).analyze();await info.attach('tempdb-built-axe',{body:JSON.stringify(axe.violations,null,2),contentType:'application/json'});expect(axe.violations).toEqual([]);await capture(page,`tempdb-built-${width}-focus`);await page.evaluate(()=>{document.activeElement?.blur();scrollTo({top:0,left:0,behavior:'instant'});});await capture(page,`tempdb-built-${width}`);
+});
+for(const width of [320,1440])test(`built TempDB forced colors retains visible keyboard control focus at ${width}px`,async({page})=>{
+ await page.setViewportSize({width,height:1000});await page.emulateMedia({forcedColors:'active'});await open(page);const refresh=button(page,'Refresh selected TempDB receipt');await refresh.press('Tab');await page.keyboard.press('Shift+Tab');await expect(refresh).toBeFocused();expect(await refresh.evaluate(e=>parseFloat(getComputedStyle(e).outlineWidth))).toBeGreaterThanOrEqual(2);expect(await page.evaluate(()=>document.documentElement.scrollWidth-innerWidth)).toBe(0);expect((await new AxeBuilder({page}).withTags(['wcag2a','wcag2aa','wcag21a','wcag21aa']).analyze()).violations).toEqual([]);await capture(page,`tempdb-built-${width}-forced-focus`);
+});
+
+test('actual shared database picker retains exact TempDB pin, while a changed shared time range retires it',async({page})=>{
+ const selected=tempDbHistoryReceipt(1);await open(page,{databaseId:'7',tempDbRun:selected.runId,tempDbRevision:'1'});await page.getByRole('combobox',{name:'Workspace database',exact:true}).selectOption('');await expect(detail(page)).toContainText(selected.runId);expect(scope(page).tempDbRun).toBe(selected.runId);expect(scope(page).databaseId).toBeUndefined();const previous=sessions.get(page).reads.length;await page.getByRole('combobox',{name:'Time range',exact:true}).selectOption('1h');await expect.poll(()=>scope(page).tempDbRun).toBeUndefined();await expect.poll(()=>sessions.get(page).reads.length).toBeGreaterThan(previous);await expect(detail(page)).toContainText('Default: newest completed attempt');expect(sessions.get(page).reads.at(-1).selection.runId).not.toBe(selected.runId);
+});
+for(const width of [320,1440])test(`light system preference preserves dark TempDB evidence and keyboard focus at ${width}px`,async({page})=>{
+ await page.emulateMedia({colorScheme:'light'});await page.setViewportSize({width,height:1000});await open(page);const scroll=await files(page);await scroll.press('ArrowRight');await expect(scroll).toBeFocused();expect(await page.evaluate(()=>getComputedStyle(document.documentElement).colorScheme)).toBe('dark');expect(await page.evaluate(()=>document.documentElement.scrollWidth-innerWidth)).toBe(0);expect((await new AxeBuilder({page}).withTags(['wcag2a','wcag2aa','wcag21a','wcag21aa']).analyze()).violations).toEqual([]);await capture(page,`tempdb-built-${width}-light-preference-focus`);
+});

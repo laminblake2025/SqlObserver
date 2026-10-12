@@ -1,6 +1,41 @@
 # M8 — Alerts, maintenance, and notifications
 
+Configured HTTPS destinations now support optional HMAC-SHA256 signing with
+Windows-protected shared keys. Approval/outbox configuration digests bind the
+signing protocol, key ID and key fingerprint; key rotation or signing removal
+blocks deliveries approved against the old configuration. See
+[Signed alert webhooks](../technical/Signed-Alert-Webhooks.md) for provisioning,
+the exact receiver contract, replay handling and verification limits.
+
+The leased, bounded [blocking-duration source, private queue and verified commit](../technical/Blocking-Duration-Alerts.md)
+are implemented with native PostgreSQL coverage. Catalog contract 4 added the
+blocking-duration template and Target Administrator create/edit/disable settings
+in seconds. Defaults require two observations to fire or clear; source gaps keep
+active alerts open. Runtime discovery, claims and verified dispatch are connected
+to the existing worker. Native tests cover acknowledgement between evaluation
+and commit, changed source/target/rule bindings and lease ownership. The SQL Server
+2022 lab path also qualifies passive blocking collection, permission gaps and
+signed firing/recovery delivery to an owned HTTPS receiver; deployment-specific
+identity, DNS and certificate qualification remain separate.
+
+Catalog contract 5 adds [deadlock count alerts](../technical/Deadlock-Count-Alerts.md)
+with a complete five-minute scan window, whole-count settings and two observations
+to fire or clear. The canonical source, durable queue, independent transition,
+atomic persistence and normal worker are implemented. Target Administrators can
+create/edit/disable rules; unknown evidence preserves active episodes. Native,
+HTTP and browser checks cover administration and source/revision/lease boundaries.
+The SQL Server 2022 Express lab also qualifies real deadlock collection, stable
+identities on rescans, permission gaps and signed firing/recovery delivery after
+the actual five-minute window expires. Migration 0309 fixes false empty scans
+from the native XE timestamp predicate and advances the pinned SQL bundle;
+deploy it with the matching Collector build. Other SQL versions and deployment
+identity/network/certificate qualification remain separate.
+
 M8 adds repository-driven `metric_threshold` and `collector_health` rules. The evaluator is a deterministic state machine: confirmation protects against one-sample noise, hysteresis prevents flapping, and acknowledgement changes delivery state without changing evaluation. All timestamps are UTC and all transitions are fenced by the collector lease.
+
+Recovery uses `clearConfirmationCount` (1–100) independently of firing confirmation. New HTTP rules default to two clear observations; updates and disables require the field explicitly. Migration `0083_alert_clear_confirmation.sql` preserves existing rules at one clear observation. While recovery is pending, the alert keeps its active state, episode, and acknowledgement. Returning to the hysteresis band resets recovery progress; replaying an observation does not advance it. Progress survives collector restarts, resets when a rule changes, and is bypassed by administrative disablement. This is count-based confirmation and can span a collection gap. Unknown evidence cannot count as recovery.
+
+The existing hysteresis delta determines the clear boundary: `>` clears at or below `threshold - hysteresis`, `>=` below it, `<` at or above `threshold + hysteresis`, and `<=` above it. Binary collector health keeps zero hysteresis so healthy evidence remains reachable. The connection-count template also keeps its existing threshold and hysteresis; operators can configure an appropriate threshold/delta. Deploy migration 0083 and its matching application together; newly submitted evaluation decisions require the persisted clear counter, while exact historical replay documents remain valid and unchanged.
 
 One-off maintenance windows suppress notification delivery only. Collection, evaluation, state transitions, and the active-alert projection continue during maintenance. The PostgreSQL outbox is durable and idempotent (`alert_id`, destination, and event kind); each delivery has at most eight recorded attempts (initial send plus seven retries) at 5 seconds, 30 seconds, 5 minutes, 30 minutes, 2 hours, 6 hours, and 12 hours, with a final 24-hour bound. Response status and bounded response bytes are retained with each attempt; request, body, response, and lease operations are cancellable and time-limited.
 
@@ -9,3 +44,13 @@ The initial adapters are HTTPS webhooks resolved from a pre-provisioned configur
 Evaluation operation identities and SHA-256 evidence digests are propagated from every metric sample and collector-health run/schedule (including equal-time sample IDs and health `run_id`) through state, history, and outbox rows. Pending confirmation state has no alert/episode identity; identities are allocated only when the rule fires. Replaying an identical operation returns the stored canonical result without mutation; reusing an operation with divergent evidence or decision bindings is rejected. Rule and maintenance creates are insert-only and cannot mutate a concurrent winner. Maintenance transitions lock affected outbox rows, record suppression intents, and clear/defer claims; the collector holds a per-target database dispatch permit across the final readiness check and adapter side effect, while maintenance acquires the same transaction advisory fence. The atomic fenced renewal outcome and the immediate pre-send recheck therefore prevent a start-between-check-and-send race without stranded claims. Delivery claims carry work-key/owner/fence ownership, assert the lease before and after network I/O, and re-check repository-clock maintenance before send. Webhook DNS answers are validated for every A/AAAA result (including mapped IPv4) against the configured destination allowlist and pinned into the actual connect callback, redirects are disabled, response drains are bounded, and Event Log writes require an injected or pre-provisioned source.
 
 Migration `0012_alerts_maintenance_notifications.sql` enables forced RLS, appends outbox attempts, supplies target-bounded reporting functions, and grants execution only to the server/collector roles. Evidence reconciliation is canonical, oldest-first, and pages only durable unreconciled identities; canceled maintenance is durable and excluded from all suppression/readiness paths. Event Log writes use a trusted, argument-list-only `eventcreate.exe` child process inside a Windows Job Object configured with `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`; bounded timeout/cancellation closes the owned OS boundary, confirms process exit before permit release, and maps launch/assignment/termination failures. This bounds the helper process itself; the Windows Event Log service may continue processing an already accepted event after `eventcreate.exe` exits. Docker PostgreSQL integration and live Event Log delivery require their respective environments.
+
+Migration `0232_alert_rule_admin_read.sql` adds a server-only read for the alert-rule administration screen. `GET /api/v1/observation-targets/{instanceId}/alerts/rules` requires TargetAdministrator on that exact target and returns enabled and disabled rules, revision, and editable settings in pages of at most 100. A continuation freezes the listing start time and advances by rule ID; rule edits can still change their displayed values between pages, so refresh the list before editing. The repository function enforces the target scope again and does not grant the server table access.
+
+The web Alerts screen links to `#/rules?target=...` for a Target Administrator on the selected server. It shows configured rules, including disabled rules and clear confirmation, in bounded pages. The link is hidden without that target role; a direct URL still receives the server's authorization decision. Rule editing remains an admin-screen follow-up.
+
+Migration `0233_maintenance_window_admin_read.sql` adds `GET /api/v1/observation-targets/{instanceId}/alerts/maintenance`. A Target Administrator on that exact server can page through configured and cancelled windows, newest start first, with reason, revision, and cancellation time. The server function checks the target scope and returns no direct table access. The listing start freezes newly created rows but changes to existing windows can still appear across pages.
+
+Migration `0234_destination_admin_read.sql` adds a creation timestamp and `GET /api/v1/observation-targets/{instanceId}/alerts/destinations`. A Security Administrator on that exact server can page through destinations with kind, enabled, approved, and revision. `approved` is the stored flag, not a live delivery-readiness check. Configuration references and approval digests are omitted. The repository function enforces the target scope and grants the server function execution without table reads.
+
+The target Alerts screen links to `#/rules?target=...` and `#/maintenance?target=...` for Target Administrators and `#/destinations?target=...` for Security Administrators. These views show bounded lists with detail panels, and a direct URL remains subject to server authorization. The rules view reads the product-owned catalog from `GET /api/v1/observation-targets/{instanceId}/alerts/rules/catalog`, creates approved rules, edits existing rules, and disables enabled rules using their displayed revision. The maintenance view schedules one-off windows from local-time inputs and cancels them with the displayed revision as a fence. The destination view configures, updates, approves, and disables destinations; each action requires the operator to enter the pre-provisioned configuration reference because the read API does not disclose it. Approval runs the server-side preflight, and updates require approval again. Client operation IDs remain stable across retries of the same action. A recurring maintenance calendar remains future interface work.

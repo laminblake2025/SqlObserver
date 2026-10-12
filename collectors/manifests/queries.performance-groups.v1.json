@@ -1,0 +1,15 @@
+{
+  "$schema":"queries.performance-groups.v1.schema.json","schemaVersion":6,
+  "collectorId":"queries.performance-groups","collectorVersion":1,
+  "displayName":"SQL Server Query Store interval deltas","operationalMode":"passive",
+  "dependsOn":["capability.connection","engine.core","database.inventory"],
+  "supportedTargets":{"product":"Microsoft SQL Server","minimumMajorVersion":16,"maximumMajorVersion":16,"platforms":["Windows"],"engineEditions":[2,3,4]},
+  "requiredCapabilities":["connection.tds","authentication.windows-integrated","transport.tls-validated","privilege.non-sysadmin","platform.windows"],
+  "requiredPermissionsByMajor":{"16":["database.view-performance-state"]},
+  "cadence":{"defaultIntervalSeconds":1800,"minimumIntervalSeconds":300,"nonOverlappingPerTarget":true},
+  "executionBounds":{"connectTimeoutSeconds":5,"commandTimeoutSeconds":300,"maximumRows":2000,"maximumResponseBytes":8388608},
+  "resilience":{"maximumAttempts":2,"transientRetryDelayMilliseconds":100,"circuitFailureThreshold":3,"circuitOpenSeconds":300},
+  "estimatedCostClass":"high","fallback":{"mode":"unsupported"},
+  "queryResources":{"runtime":"runtime.sqlserver16-windows.v1.sql","waits":"waits.sqlserver16-windows.v1.sql"},
+  "outputSchemaVersion":1,"outputKind":"query-store-groups","defaultEnabled":false
+}

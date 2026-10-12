@@ -27,6 +27,16 @@ public sealed record UpdateObservationTargetBody(
 [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
 public sealed record TargetRevisionBody(long ExpectedRevision);
 
+/// <summary>Revision-checked fleet labels; independent of connection configuration.</summary>
+[JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
+public sealed record UpdateObservationTargetGroupingBody(
+    [property: JsonRequired] long ExpectedRevision,
+    string? Environment,
+    [property: JsonRequired] IReadOnlyList<string> Tags);
+
+public sealed record ObservationTargetGroupingResponse(
+    Guid InstanceId, string? Environment, IReadOnlyList<string> Tags, long GroupingRevision);
+
 /// <summary>Sanitized target projection returned to authorized callers.</summary>
 public sealed record ObservationTargetResponse(
     Guid InstanceId,

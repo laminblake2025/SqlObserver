@@ -1,0 +1,54 @@
+[WebServer] (node:203472) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+
+Running 3 tests using 1 worker
+
+(node:216272) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ok 1 [chromium] › component-tests\ContextDiagnostics.spec.mjs:209:34 › an explicit 401 authorization refusal clears previously retained wait data (480ms)
+  ok 2 [chromium] › component-tests\DeadlockRetained.spec.mjs:144:53 › cancelled continuation read retains received evidence and exact retry ownership (550ms)
+  x  3 [chromium] › component-tests\IncidentWorkspace.spec.mjs:322:1 › closing the workspace preserves a frozen draft through context refresh and a shared-window change (5.5s)
+
+
+  1) [chromium] › component-tests\IncidentWorkspace.spec.mjs:322:1 › closing the workspace preserves a frozen draft through context refresh and a shared-window change 
+
+    Error: expect(locator).toBeFocused() failed
+
+    Locator:  getByRole('button', { name: 'Open incident', exact: true })
+    Expected: focused
+    Received: inactive
+    Timeout:  5000ms
+
+    Call log:
+      - Expect "toBeFocused" getByRole('button', { name: 'Open incident', exact: true }) with timeout 5000ms
+      - waiting for getByRole('button', { name: 'Open incident', exact: true })
+        14 × locator resolved to <button type="button">Open incident</button>
+           - unexpected value "inactive"
+
+
+      334 |   await expect(page.locator('.incident-form > p').first()).toHaveText(frozen);
+      335 |   await page.getByRole('button', { name: 'Close draft', exact: true }).press('Enter');
+    > 336 |   await expect(page.getByRole('button', { name: 'Open incident', exact: true })).toBeFocused();
+          |                                                                                  ^
+      337 |   await expect(workspaceSummary(page).locator('..')).toHaveAttribute('open', '');
+      338 |   expect(contexts.get(page).requests).toHaveLength(0);
+      339 | });
+        at G:\Adams SQL Diagnostic Manager\web\component-tests\IncidentWorkspace.spec.mjs:336:82
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    ..\.artifacts\ui-redesign-20261009\component-results\IncidentWorkspace-closing--19d00--and-a-shared-window-change-chromium\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: ..\.artifacts\ui-redesign-20261009\component-results\IncidentWorkspace-closing--19d00--and-a-shared-window-change-chromium\error-context.md
+
+    attachment #3: trace (application/zip) ─────────────────────────────────────────────────────────
+    ..\.artifacts\ui-redesign-20261009\component-results\IncidentWorkspace-closing--19d00--and-a-shared-window-change-chromium\trace.zip
+    Usage:
+
+        pnpm exec playwright show-trace ..\.artifacts\ui-redesign-20261009\component-results\IncidentWorkspace-closing--19d00--and-a-shared-window-change-chromium\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  1 failed
+    [chromium] › component-tests\IncidentWorkspace.spec.mjs:322:1 › closing the workspace preserves a frozen draft through context refresh and a shared-window change 
+  2 passed (9.6s)

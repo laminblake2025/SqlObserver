@@ -45,6 +45,40 @@ public sealed class M8WorkerExecutionTests
         Assert.Equal(1, repository.CompleteCount);
     }
 
+    [Theory]
+    [InlineData(1)]
+    [InlineData(2)]
+    public async Task SnoozeDeferralBeforeDispatchLeavesDeliveryUnconsumed(int deferAtRenewal)
+    {
+        var repository = new WorkerRepository { DeferAtRenewal = deferAtRenewal,
+            DeliveryWork = [new AlertDeliveryWork(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), "windows-event-log", "SqlObserver Alerts", [1], 0, MicrosecondUtcNow(), Target)] };
+        var dispatcher = new CountingDispatcher();
+        using var worker = new AlertDeliveryWorker(repository, dispatcher, new FakeLeases(Lease),
+            new WorkerExecutionId(Guid.NewGuid()), NullLogger<AlertDeliveryWorker>.Instance);
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(3));
+        await worker.StartAsync(timeout.Token); await repository.DeliveryDeferred.Task.WaitAsync(timeout.Token);
+        await worker.StopAsync(CancellationToken.None);
+        Assert.Equal(0, dispatcher.Calls); Assert.Equal(0, repository.CompleteCount);
+        Assert.False(repository.PermitHeld); Assert.Single(repository.DeliveryWork);
+    }
+
+    [Fact]
+    public async Task SnoozeRenewalCancelsInFlightAdapterOwnership()
+    {
+        var repository = new WorkerRepository { DeferAtRenewal = 3,
+            DeliveryWork = [new AlertDeliveryWork(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), "windows-event-log", "SqlObserver Alerts", [1], 0, MicrosecondUtcNow(), Target)] };
+        var dispatcher = new OwnedCancellationDispatcher();
+        using var worker = new AlertDeliveryWorker(repository, dispatcher, new FakeLeases(Lease),
+            new WorkerExecutionId(Guid.NewGuid()), NullLogger<AlertDeliveryWorker>.Instance);
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+        await worker.StartAsync(timeout.Token); await dispatcher.Started.Task.WaitAsync(timeout.Token);
+        await repository.DeliveryDeferred.Task.WaitAsync(timeout.Token);
+        await dispatcher.Cancelled.Task.WaitAsync(timeout.Token);
+        Assert.False(timeout.IsCancellationRequested); // Repository renewal, not test shutdown, ended ownership.
+        await worker.StopAsync(CancellationToken.None);
+        Assert.Equal(1, dispatcher.Calls); Assert.False(repository.PermitHeld);
+    }
+
     [Fact]
     public async Task AlertDeliveryWorkerReleasesWhenLeaseRenewalFaults()
     {
@@ -181,6 +215,25 @@ public sealed class M8WorkerExecutionTests
         public ValueTask<LeaseOwnershipStatus> AssertOwnershipAsync(AssertWorkerLeaseRequest request, CancellationToken cancellationToken) => ValueTask.FromResult(LeaseOwnershipStatus.Current);
     }
     private sealed class FakeDispatcher : IAlertDestinationPort { public ValueTask<AlertDeliveryResult> DeliverAsync(AlertDeliveryWork work, CancellationToken cancellationToken) => ValueTask.FromResult(new AlertDeliveryResult(work.DeliveryId, true, false, "delivered", DateTimeOffset.UtcNow, work.TargetId, 202, 1)); }
+    private sealed class CountingDispatcher : IAlertDestinationPort
+    {
+        public int Calls { get; private set; }
+        public ValueTask<AlertDeliveryResult> DeliverAsync(AlertDeliveryWork work, CancellationToken cancellationToken)
+        { Calls++; return ValueTask.FromResult(new AlertDeliveryResult(work.DeliveryId, true, false, "delivered", DateTimeOffset.UtcNow, work.TargetId)); }
+    }
+    private sealed class OwnedCancellationDispatcher : IAlertDestinationPort
+    {
+        public int Calls { get; private set; }
+        public TaskCompletionSource Started { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource Cancelled { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public async ValueTask<AlertDeliveryResult> DeliverAsync(AlertDeliveryWork work, CancellationToken cancellationToken)
+        {
+            Calls++; Started.TrySetResult();
+            try { await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken); }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { Cancelled.TrySetResult(); throw; }
+            throw new InvalidOperationException("The owned adapter must stop on repository suppression.");
+        }
+    }
     private sealed class ThrowingDispatcher : IAlertDestinationPort { public ValueTask<AlertDeliveryResult> DeliverAsync(AlertDeliveryWork work, CancellationToken cancellationToken) => throw new InvalidOperationException("adapter failure"); }
     private sealed class CancellationDispatcher(TaskCompletionSource started) : IAlertDestinationPort
     {
@@ -210,6 +263,9 @@ public sealed class M8WorkerExecutionTests
         public IReadOnlyList<AlertDeliveryWork> DeliveryWork { get; init; } = [];
         public TaskCompletionSource EvaluationPersisted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public TaskCompletionSource DeliveryCompleted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource DeliveryDeferred { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public int DeferAtRenewal { get; init; } = int.MaxValue;
+        private int renewals;
         public int PersistCount { get; private set; }
         public int CompleteCount { get; private set; }
         public Exception? CompletionException { get; init; }
@@ -234,7 +290,11 @@ public sealed class M8WorkerExecutionTests
             if (CompletionException is not null) throw CompletionException;
             return ValueTask.FromResult(result);
         }
-        public ValueTask<AlertDeliveryLeaseOutcome> RenewDeliveryStateAsync(AlertDeliveryWork work, WorkerLeaseIdentity lease, RepositoryCallTimeout timeout, CancellationToken cancellationToken) => ValueTask.FromResult(AlertDeliveryLeaseOutcome.Active);
+        public ValueTask<AlertDeliveryLeaseOutcome> RenewDeliveryStateAsync(AlertDeliveryWork work, WorkerLeaseIdentity lease, RepositoryCallTimeout timeout, CancellationToken cancellationToken)
+        {
+            if (Interlocked.Increment(ref renewals) < DeferAtRenewal) return ValueTask.FromResult(AlertDeliveryLeaseOutcome.Active);
+            DeliveryDeferred.TrySetResult(); return ValueTask.FromResult(AlertDeliveryLeaseOutcome.DeferSnooze);
+        }
         public ValueTask<IAlertDeliveryDispatchPermit> AcquireDeliveryDispatchPermitAsync(AlertDeliveryWork work, RepositoryCallTimeout timeout, CancellationToken cancellationToken)
         {
             PermitHeld = true;

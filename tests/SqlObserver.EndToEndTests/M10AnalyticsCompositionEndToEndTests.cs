@@ -15,6 +15,9 @@ namespace SqlObserver.EndToEndTests;
 /// </summary>
 public sealed class M10AnalyticsCompositionEndToEndTests
 {
+    private static readonly string[] ProductionWorkers = new[] { "AlertDeliveryWorker", "AlertEvaluationWorker", "AnalyticsBackfillWorker", "AnalyticsDerivationWorker", "CapabilityDiscoveryWorker", "CollectionWorker", "LiveActivityWorker", "OverviewLatestStatusWorker", "ReportExpiryWorker", "RetentionMaintenanceWorker", "TelemetryHostedService" };
+    private static readonly string[] ContractWorkers = new[] { "AlertDeliveryWorker", "AlertEvaluationWorker", "CapabilityDiscoveryWorker", "CollectionWorker", "LiveActivityWorker", "OverviewLatestStatusWorker", "ReportExpiryWorker", "RetentionMaintenanceWorker", "TelemetryHostedService" };
+
     [Fact]
     public async Task CollectorOwnsAnalyticsWorkersAndRestrictedRepositoryPorts()
     {
@@ -37,7 +40,8 @@ public sealed class M10AnalyticsCompositionEndToEndTests
         Assert.Contains(workers, static worker => worker is AnalyticsDerivationWorker);
         Assert.Contains(workers, static worker => worker is AnalyticsBackfillWorker);
         Assert.Contains(workers, static worker => worker is LiveActivityWorker);
-        Assert.Equal(9, workers.Length);
+        Assert.Equal(ProductionWorkers,
+            workers.Select(worker => worker.GetType().Name).Order(StringComparer.Ordinal));
     }
 
     [Fact]
@@ -55,7 +59,8 @@ public sealed class M10AnalyticsCompositionEndToEndTests
         Assert.Contains(workers, static worker => worker is ReportExpiryWorker);
         Assert.DoesNotContain(workers, static worker => worker is AnalyticsDerivationWorker or AnalyticsBackfillWorker);
         Assert.Contains(workers, static worker => worker is LiveActivityWorker);
-        Assert.Equal(7, workers.Length);
+        Assert.Equal(ContractWorkers,
+            workers.Select(worker => worker.GetType().Name).Order(StringComparer.Ordinal));
     }
 
     private static IConfiguration Configuration(string environment) => new ConfigurationBuilder()

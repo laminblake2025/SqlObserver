@@ -1,0 +1,17 @@
+.agent-activity-history { min-width: 0; max-width: 100%; overflow-wrap: anywhere; }
+.agent-activity-history > *, .agent-activity-history section, .agent-activity-history details, .agent-activity-history header { min-width: 0; max-width: 100%; }
+.agent-activity-history header h3 { margin-top: .3rem; }
+.agent-activity-history summary { cursor: pointer; padding: .75rem 0; min-height: 44px; }
+.agent-activity-history button { min-height: 44px; min-width: 44px; white-space: normal; }
+.agent-activity-actions { display: flex; flex-wrap: wrap; gap: .65rem; align-items: center; margin-block: .75rem; }
+.agent-activity-qualification { border-left: 3px solid var(--accent, #8bbaff); padding-left: .9rem; }
+.agent-activity-history .table-scroll { width: 100%; overflow-x: auto; margin-block: .7rem; }
+.agent-activity-history table { width: 100%; min-width: 850px; }
+.agent-activity-history td, .agent-activity-history th { vertical-align: top; }
+.agent-activity-history small { display: block; margin-top: .3rem; }
+.agent-activity-facts { display: grid; grid-template-columns: repeat(auto-fit,minmax(min(100%, 250px),1fr)); gap: .7rem; }
+.agent-activity-facts div { min-width: 0; }
+.agent-activity-facts dt { font-weight: 600; }
+.agent-activity-facts dd { margin: .25rem 0 0; }
+.agent-activity-history :focus-visible { outline: 2px solid var(--accent, #8bbaff); outline-offset: 3px; }
+@media (forced-colors: active) { .agent-activity-history :focus-visible { outline-color: Highlight; } .agent-activity-qualification { border-color: CanvasText; } }

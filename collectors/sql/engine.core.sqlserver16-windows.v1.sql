@@ -42,6 +42,40 @@ WITH metric_values AS
 
     UNION ALL
 
+    SELECT N'engine.os_available_memory_bytes', CONVERT(float, memory.available_physical_memory_kb) * 1024.0
+    FROM sys.dm_os_sys_memory AS memory
+
+    UNION ALL
+
+    SELECT N'engine.memory_grants_pending', CONVERT(float, COUNT_BIG(*))
+    FROM sys.dm_exec_query_memory_grants AS grant_request
+    WHERE grant_request.grant_time IS NULL
+
+    UNION ALL
+
+    SELECT N'engine.scheduler_runnable_tasks', CONVERT(float, COALESCE(SUM(CONVERT(bigint, scheduler.runnable_tasks_count)), 0))
+    FROM sys.dm_os_schedulers AS scheduler
+    WHERE scheduler.status = N'VISIBLE ONLINE'
+      AND scheduler.scheduler_id < 1048576
+
+    UNION ALL
+
+    -- Cumulative non-preemptive worker CPU; derive a rate between matching
+    -- scheduler-count and server-start epochs in the repository.
+    SELECT N'engine.scheduler_cpu_milliseconds_total', CONVERT(float, COALESCE(SUM(CONVERT(bigint, scheduler.total_cpu_usage_ms)), 0))
+    FROM sys.dm_os_schedulers AS scheduler
+    WHERE scheduler.status = N'VISIBLE ONLINE'
+      AND scheduler.scheduler_id < 1048576
+
+    UNION ALL
+
+    SELECT N'engine.visible_scheduler_count', CONVERT(float, COUNT_BIG(*))
+    FROM sys.dm_os_schedulers AS scheduler
+    WHERE scheduler.status = N'VISIBLE ONLINE'
+      AND scheduler.scheduler_id < 1048576
+
+    UNION ALL
+
     SELECT N'engine.committed_memory_bytes', CONVERT(float, info.committed_kb) * 1024.0
     FROM sys.dm_os_sys_info AS info
 

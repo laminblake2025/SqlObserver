@@ -1,5 +1,15 @@
-import { displayMetric } from './overviewModel';
+import { type PointerEvent } from 'react';
+import { useTimeDisplay } from '../../TimeDisplayContext';
+import { formatDisplayTime } from '../../timeDisplay';
+import { chartObservedPoints, chartUtcAtX, chartSvgX } from './chartTimeModel';
+import { useChartGesture } from '../../components/useChartGesture';
+import { ChartPlotViewport } from '../../components/ChartPlotViewport.tsx';
+import { chartViewportIdentity } from '../../components/chartViewportIdentity.ts';
+import { useResponsiveChart } from '../../components/useResponsiveChart';
+import { formatOverviewChartValue, overviewChartRange } from './overviewChartRange';
 import type { OverviewSeries } from './overviewTypes';
+import { matchingReferences, type ChartReferences } from './chartReferenceModel.ts';
+import './overviewChart.css';
 
 const colors = ['var(--series-1)','var(--series-2)','var(--series-3)','var(--series-4)','var(--series-5)','var(--series-6)','var(--series-7)','var(--series-8)','var(--series-9)','var(--series-10)'];
 
@@ -11,34 +21,91 @@ interface PlotPoint {
   readonly y: number;
 }
 
-export function OverviewChart({series,previous,fromUtc,toUtc}: {series:readonly OverviewSeries[];previous?:readonly OverviewSeries[];fromUtc:string;toUtc:string}) {
+export function OverviewChart({series,previous,fromUtc,toUtc,markers=[],crosshairUtc,onCrosshairChange,onSelectWindow,references,scrollablePlotLabel,interactionKey}: {
+  series:readonly OverviewSeries[];previous?:readonly OverviewSeries[];fromUtc:string;toUtc:string;
+  markers?:readonly {timeUtc:string;label:string}[];
+  crosshairUtc?:string|null;
+  onCrosshairChange?:(utc:string|null)=>void;
+  onSelectWindow?:(window:{fromUtc:string;toUtc:string})=>void;
+  references?:ChartReferences;
+  scrollablePlotLabel?:string;
+  interactionKey?:string;
+}) {
+  const {mode}=useTimeDisplay();
+  const responsive = useResponsiveChart();
+  const timeLabel=(value:string|number,compact=false)=>formatDisplayTime(value,mode,compact);
+  const gesture=useChartGesture(JSON.stringify([fromUtc,toUtc,series.map(seriesIdentity),interactionKey]),fromUtc,toUtc,onSelectWindow);
+  const dragStart=gesture.start,dragEnd=gesture.end;
   const from=Date.parse(fromUtc), to=Date.parse(toUtc);
-  const current=series.flatMap(s=>s.points.filter(p=>p.value!==null && Number.isFinite(p.value)));
-  if (!current.length) return <p className="overview-empty">No comparable observations in this window. Missing samples are not plotted as zero.</p>;
-  const max=Math.max(1,...current.map(p=>p.value!),...(previous??[]).flatMap(s=>s.points.map(p=>p.value??0)));
-  const x=(time:string,shift=0)=>48+(Date.parse(time)+shift-from)/(to-from)*570;
-  const y=(value:number)=>180-value/max*155;
-  const ticks=[0,.25,.5,.75,1];
+  const selectedReferences=matchingReferences(series,references);
+  const bands=selectedReferences.bands.filter(band=>Date.parse(band.fromUtc)<to&&Date.parse(band.toUtc)>from&&Date.parse(band.fromUtc)<Date.parse(band.toUtc));
+  const range=overviewChartRange(series,previous,fromUtc,toUtc,selectedReferences);
+  if (!range) return <p className="overview-empty">No comparable observations in this window. Missing samples are not plotted as zero.</p>;
+  const x=(time:string,shift=0)=>48+(Date.parse(time)+shift-from)/(to-from)*572;
+  const y=(value:number)=>180-(value-range.minimum)/(range.maximum-range.minimum)*155;
+  const ticks=responsive.width<480?[0,.5,1]:[0,.25,.5,.75,1];
+  const tickLabels=ticks.map(f=>formatOverviewChartValue(range.minimum+f*(range.maximum-range.minimum),range));
+  const viewLeft=Math.min(0,40-(Math.max(...tickLabels.map(label=>label.length))*8+8));
+  const viewWidth=650-viewLeft;
+  const longAxes=tickLabels.some(label=>label.length>10);
   const colorOrder=[...new Set([...series,...(previous??[])].map(seriesIdentity))].sort();
   const colorByIdentity=new Map(colorOrder.map((identity,index)=>[identity,index]));
   const colorFor=(s:OverviewSeries)=>colors[(colorByIdentity.get(seriesIdentity(s))??0)%colors.length];
   const all=[...series.map(s=>({s,shift:0})),...(previous??[]).map(s=>({s,shift:to-from}))];
-  return <figure><svg className="chart overview-chart" viewBox="0 0 650 220" role="img" aria-label={`${series[0]?.unit} over the selected UTC window. Lines connect observations; missing samples remain gaps.`}>
-    {ticks.map(f=><g key={f}><line className="chart-gridline" x1={48} x2={620} y1={y(max*f)} y2={y(max*f)}/><text x="0" y={y(max*f)+4}>{displayMetric(max*f)}</text><line className="chart-gridline chart-gridline-vertical" x1={48+f*570} x2={48+f*570} y1={25} y2={180}/></g>)}
+  const crosshairTime=crosshairUtc===null||crosshairUtc===undefined?NaN:Date.parse(crosshairUtc);
+  const crosshairX=Number.isFinite(crosshairTime)&&crosshairTime>=from&&crosshairTime<=to?x(crosshairUtc!):null;
+  const pointX=(event:PointerEvent<SVGSVGElement>)=>{
+    return chartSvgX(event.currentTarget,event.clientX,event.clientY);
+  };
+  const plot=<svg style={{fontSize: longAxes ? 12 : responsive.fontSize * viewWidth / 650}} className={`chart overview-chart${onSelectWindow?' chart-interactive':''}`} viewBox={`${viewLeft} 0 ${viewWidth} 220`} role="img" aria-label={`${series[0]?.unit} over the selected ${mode==='local'?'local-time display':'UTC'} window. Lines connect observations; missing samples remain gaps.${onSelectWindow?' Drag across the chart to select a shared time window.':''}`}
+    onPointerMove={event=>{if((!onCrosshairChange&&!onSelectWindow)||!event.isPrimary||!gesture.acceptsPointer(event.pointerId))return;const value=pointX(event);if(value===null)return;onCrosshairChange?.(chartUtcAtX(value,fromUtc,toUtc));gesture.move(event.pointerId,value);}}
+    onPointerDown={event=>{if(!onSelectWindow||event.button!==0||!event.isPrimary)return;const value=pointX(event);if(value===null)return;if(gesture.begin(event.pointerId,value))event.currentTarget.setPointerCapture(event.pointerId);}}
+    onPointerUp={event=>{gesture.finish(event.pointerId,pointX(event));}}
+    onPointerCancel={event=>gesture.cancel(event.pointerId)} onLostPointerCapture={event=>gesture.cancel(event.pointerId)}
+    onPointerLeave={event=>{if(event.isPrimary&&gesture.acceptsPointer(event.pointerId)&&dragStart===null)onCrosshairChange?.(null);}}>
+    {ticks.map((f,index)=>{const value=range.minimum+f*(range.maximum-range.minimum);return <g key={f}><line className="chart-gridline" x1={48} x2={620} y1={y(value)} y2={y(value)}/><text x="40" textAnchor="end" y={y(value)+4}>{tickLabels[index]}</text><line className="chart-gridline chart-gridline-vertical" x1={48+f*572} x2={48+f*572} y1={25} y2={180}/></g>;})}
+    {bands.map((band,index)=>{const left=x(new Date(Math.max(from,Date.parse(band.fromUtc))).toISOString()),right=x(new Date(Math.min(to,Date.parse(band.toUtc))).toISOString());return <g className="chart-baseline-band" key={`${band.metric}:${band.fromUtc}:${index}`}>
+      <rect x={left} y={y(band.high)} width={right-left} height={y(band.low)-y(band.high)}/>
+      <line x1={left} x2={right} y1={y(band.median)} y2={y(band.median)}/><title>{`${band.label} · ${formatOverviewChartValue(band.low,range)}–${formatOverviewChartValue(band.high,range)} ${band.unit}`}</title>
+    </g>;})}
+    {selectedReferences.thresholds.map((threshold,index)=><g className="chart-threshold" key={`${threshold.metric}:${index}`}>
+      <line x1={48} x2={618} y1={y(threshold.value)} y2={y(threshold.value)}/><title>{`${threshold.label} · ${formatOverviewChartValue(threshold.value,range)} ${threshold.unit}`}</title>
+    </g>)}
     {all.map(({s,shift})=>{
       const color=colorFor(s);
       const points=plotPoints(s,shift,from,to,x,y);
-      return <g key={`${s.targetId}:${s.dimension}:${shift}`}>
+      const observed=points.filter((point):point is PlotPoint=>point!==null);
+      const gaps=observed.slice(1).map((point,index)=>point.x-observed[index]!.x).filter(gap=>gap>0);
+      const hitRadius=Math.max(.1,Math.min(4,gaps.length?Math.min(...gaps)*.4:4));
+      const connectedTimes=new Set<string>();
+      points.forEach((point,index)=>{if(point&&(points[index-1]||points[index+1]))connectedTimes.add(point.timeUtc);});
+      return <g key={`${s.targetId}:${s.metric}:${s.dimension}:${shift}`}>
         {lineSegments(points).map((d,index)=><path className="chart-series" d={d} fill="none" key={index} stroke={color} strokeDasharray={shift ? "5 5" : undefined} strokeLinecap="round" strokeLinejoin="round" strokeOpacity={shift ? .48 : .95} strokeWidth={shift ? 1.75 : 2.5}/>)}
-        {points.filter((point): point is PlotPoint => point !== null).map(point=><circle className="chart-marker" cx={point.x} cy={point.y} fill={shift ? "var(--surface)" : color} key={`${point.timeUtc}:${shift}`} r={shift ? 1.5 : 2} stroke={color} strokeWidth={shift ? 1 : 1.25}>
-          <title>{s.label} {s.dimension} · {point.timeUtc} · {displayMetric(point.value)} {s.unit} · {point.samples} samples{shift?' · previous period':''}</title>
+        {observed.map(point=><circle className={`chart-marker${connectedTimes.has(point.timeUtc)?' chart-point-hit-target':''}`} cx={point.x} cy={point.y} fill={shift ? "var(--surface)" : color} key={`${point.timeUtc}:${shift}`} r={connectedTimes.has(point.timeUtc)?hitRadius:shift ? 1.5 : 2} stroke={color} strokeWidth={connectedTimes.has(point.timeUtc)?0:shift ? 1 : 1.25}>
+          <title>{`${s.label} ${s.dimension??''} · ${timeLabel(point.timeUtc)} · ${formatOverviewChartValue(point.value,range)} ${s.unit} · ${point.samples} samples${shift?' · previous period':''}`}</title>
         </circle>)}
       </g>;
     })}
-    <text x="48" y="210">{new Date(from).toISOString().slice(5,16).replace('T',' ')} UTC</text><text x="465" y="210">{new Date(to).toISOString().slice(5,16).replace('T',' ')} UTC</text>
-  </svg><figcaption className="overview-legend">{series.map(s=><span key={`${s.targetId}:${s.dimension}`}><i style={{background:colorFor(s)}}/>{s.label}{s.dimension?` · ${s.dimension}`:''} <small>{s.state}</small></span>)}</figcaption>
+    {markers.filter(marker=>Date.parse(marker.timeUtc)>=from&&Date.parse(marker.timeUtc)<to).map((marker,index)=><g key={`${marker.timeUtc}:${index}`} className="chart-event-marker"><line x1={x(marker.timeUtc)} x2={x(marker.timeUtc)} y1="25" y2="180"/><circle cx={x(marker.timeUtc)} cy="24" r="4"/><title>{`${marker.label} · ${timeLabel(marker.timeUtc)}`}</title></g>)}
+    {dragStart!==null&&dragEnd!==null&&<rect className="chart-selection" x={Math.min(dragStart,dragEnd)} y="25" width={Math.abs(dragEnd-dragStart)} height="155" pointerEvents="none"/>}
+    {crosshairX!==null&&<g className="chart-crosshair" pointerEvents="none"><line x1={crosshairX} x2={crosshairX} y1="25" y2="180"/><text x={crosshairX>500?crosshairX-5:crosshairX+5} y="18" textAnchor={crosshairX>500?'end':'start'}>{timeLabel(crosshairTime,true)}</text></g>}
+    <text x="48" y="210">{timeLabel(from,true)}</text><text x="620" y="210" textAnchor="end">{timeLabel(to,true)}</text>
+  </svg>;
+  const plotLabel=scrollablePlotLabel??`${series[0]?.label??'Overview'} · ${series[0]?.metric??'observations'} plot`;
+  return <figure ref={responsive.ref}><ChartPlotViewport label={plotLabel} contextKey={JSON.stringify([fromUtc,toUtc,series.map(seriesIdentity)])} resetKey={chartViewportIdentity(series.map(seriesIdentity), typeof location === 'undefined' ? '' : location.hash)} canSelectWindow={Boolean(onSelectWindow)} minWidth={viewWidth} adaptWidth={!longAxes}>{plot}</ChartPlotViewport><figcaption className="overview-legend" tabIndex={0} aria-label="Chart series legend">{series.map(s=><span key={`${s.targetId}:${s.metric}:${s.dimension}`}><i style={{background:colorFor(s)}}/>{s.label}{s.dimension?` · ${s.dimension}`:''} <small>{s.state}</small></span>)}</figcaption>
+  <details className="chart-context-details"><summary>Chart semantics & references</summary>
+  <small>Vertical scale includes observations and visible references and may not start at zero.</small>
+  {bands.length>0&&<small>Shaded band: {[...new Set(bands.map(band=>band.label.split(' · ')[0]))].join(', ')} · p10–p90; center line: median. Missing reference hours remain gaps.</small>}
+  {selectedReferences.thresholds.length>0&&<small>Dashed horizontal lines: current enabled metric rules. Open reference details for each rule and condition.</small>}
+  {(bands.length>0||selectedReferences.thresholds.length>0)&&<details className="chart-values"><summary>View chart references</summary>
+    <p>Baseline shading describes historical percentiles. Dashed threshold lines show current configured rules, not historical settings or an alert decision.</p>
+    <ul>{selectedReferences.thresholds.map((threshold,index)=><li key={`threshold:${index}`}>{threshold.label} · {formatOverviewChartValue(threshold.value,range)} {threshold.unit}</li>)}</ul>
+    {bands.length>0&&<div className="table-scroll" tabIndex={0} role="region" aria-label="Baseline reference hours"><table><caption>Baseline reference hours</caption><thead><tr><th>Window ({mode==='local'?'local':'UTC'})</th><th>p10–p90 / median</th><th>Source evidence</th></tr></thead><tbody>{bands.map((band,index)=><tr key={`band:${index}`}><td>{timeLabel(band.fromUtc)} to {timeLabel(band.toUtc)}</td><td>{formatOverviewChartValue(band.low,range)}–{formatOverviewChartValue(band.high,range)} / {formatOverviewChartValue(band.median,range)} {band.unit}</td><td>{band.label}</td></tr>)}</tbody></table></div>}
+  </details>}
   {previous?.length ? <small>Dashed lines: previous equal-length window shifted for comparison. Observed bucket means; gaps and changing coverage can affect comparisons.</small> : null}
-  <details className="chart-values"><summary>View chart values</summary><div className="table-scroll"><table><thead><tr><th>Server / resource</th><th>UTC</th><th>Value</th><th>Samples</th><th>Period</th></tr></thead><tbody>{all.flatMap(({s,shift})=>s.points.map(p=><tr key={`${s.targetId}:${s.dimension}:${shift}:${p.timeUtc}`}><td>{s.label} {s.dimension}</td><td>{p.timeUtc}</td><td>{displayMetric(p.value)} {s.unit}</td><td>{p.samples}</td><td>{shift?'Previous':'Selected'}</td></tr>))}</tbody></table></div></details></figure>;
+  {markers.length>0&&<small>Event lines mark available events in this window; they are not a complete event history.</small>}
+  </details>
+  <details className="chart-values"><summary>View chart values</summary><div className="table-scroll" tabIndex={0} role="region" aria-label="Chart observation values"><table><thead><tr><th>Server / resource</th><th>{mode==='local'?'Local time':'UTC'}</th><th>Value</th><th>Samples</th><th>Period</th></tr></thead><tbody>{all.flatMap(({s,shift})=>s.points.map(p=><tr key={`${s.targetId}:${s.metric}:${s.dimension}:${shift}:${p.timeUtc}`}><td>{s.label} {s.dimension}</td><td title={p.timeUtc}>{timeLabel(p.timeUtc)}</td><td>{formatOverviewChartValue(p.value,range)} {s.unit}</td><td>{p.samples}</td><td>{shift?'Previous':'Selected'}</td></tr>))}</tbody></table></div></details></figure>;
 }
 
 function seriesIdentity(series: OverviewSeries): string {
@@ -46,14 +113,15 @@ function seriesIdentity(series: OverviewSeries): string {
 }
 
 function plotPoints(series: OverviewSeries, shift: number, from: number, to: number, x: (time: string, shift?: number) => number, y: (value: number) => number): readonly (PlotPoint | null)[] {
-  return series.points
-    .filter(point => Date.parse(point.timeUtc) + shift >= from && Date.parse(point.timeUtc) + shift < to)
-    .map(point => point.value === null ? null : {
+  const windowFrom = new Date(from - shift).toISOString();
+  const windowTo = new Date(to - shift).toISOString();
+  return chartObservedPoints(series.points, windowFrom, windowTo)
+    .map(point => point === null ? null : {
       timeUtc: point.timeUtc,
-      value: point.value,
+      value: point.value!,
       samples: point.samples,
       x: x(point.timeUtc, shift),
-      y: y(point.value),
+      y: y(point.value!),
     });
 }
 

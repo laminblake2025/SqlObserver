@@ -1,0 +1,124 @@
+// Synthetic loopback evidence only. Never imported by production code.
+import { readFile, appendFile, mkdir } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
+const artifacts = new URL('../.artifacts/', import.meta.url);
+const runId = '22222222-2222-4222-8222-222222222222';
+const hash = n => n.toString(16).padStart(64, '0');
+const policies = new Map(), operations = new Map();
+const zoneCommands = new Map(), zoneOperations = new Map();
+const initialZone = targetId => ({ targetId, targetRevision: 1, qualificationRevision: 1, enabled: true, sourceZoneId: 'UTC',
+  fromUtc: '2020-01-01T00:00:00Z', toUtc: '2030-01-01T00:00:00Z', evidenceSha256: 'a'.repeat(64), rulesSha256: 'b'.repeat(64) });
+export function backupFixture(targetId, atUtc, scenario = 'mixed', after = 0) {
+  const stamp = seconds => new Date(Date.parse(atUtc) - seconds * 1000).toISOString();
+  const observed = stamp(scenario === 'stale_source' ? 7200 : 5);
+  const selected = s => ({ kind: s.kind, copyOnly: s.copyOnly, finishUtc: s.recordedFinishUtc, sourceLocalFinish: s.sourceLocalFinish,
+    hasChecksum: s.hasChecksum, isDamaged: s.isDamaged, metadataComplete: s.metadataComplete });
+  const fullLimit = 86400, logLimit = 900;
+  const items = Array.from({ length: 51 }, (_, index) => {
+    const zone = (zoneCommands.get(targetId) ?? []).filter(command => command.at <= Date.parse(atUtc)).at(-1)?.snapshot ?? initialZone(targetId);
+    const unknown = index === 50, ag = index === 2, damaged = index === 3, revoked = damaged || !zone.enabled || zone.qualificationRevision !== 1, unresolved = index === 5;
+    const sample = (kind, age) => ({ kind, copyOnly: false, recordedFinishUtc: kind === 'full' && unresolved ? null : stamp(age),
+      sourceLocalFinish: stamp(age).replace('Z', ''), sourceLocalStart: stamp(age + 60).replace('Z', ''),
+      recordedStartOffsetMinutes: 0, sizeBytes: '9223372036854775807', hasChecksum: true, isDamaged: kind === 'full' && (ag || damaged),
+      metadataComplete: true, firstRecoveryForkFingerprint: hash(900), lastRecoveryForkFingerprint: hash(900),
+      timeState: kind === 'full' && unresolved ? 'qualification_missing' : 'resolved',
+      qualificationRevision: kind === 'full' && unresolved ? null : 1, qualificationTrusted: !revoked && !(kind === 'full' && unresolved) });
+    const full = sample('full', 3600), log = sample('log', index === 0 ? 960 : 60);
+    const saved = policies.get(`${targetId}:${hash(index + 1)}`);
+    const current = saved && Date.parse(atUtc) >= saved.at ? saved.policy : null;
+    const policy = current ?? (unknown || index === 1 ? null : { enabled: index !== 4, maximumFullAgeSeconds: fullLimit, maximumLogAgeSeconds: logLimit,
+      maximumObservationAgeSeconds: 300, fullRequirement: 'full_image', requireChecksums: false });
+    const check = (s, max) => {
+      const reason = unknown ? 'database_identity_unknown' : !policy ? 'policy_not_configured' : !policy.enabled ? 'policy_disabled'
+        : scenario === 'stale_source' || 5 > policy.maximumObservationAgeSeconds ? 'stale_observation' : ag ? 'other_replica_evidence_required' : revoked ? 'timestamp_qualification_unavailable'
+          : s.recordedFinishUtc === null ? 'finish_time_unknown' : null;
+      if (reason) return { status: reason === 'policy_disabled' ? 'disabled' : 'indeterminate', reason, maximumAgeSeconds: policy ? max : null,
+        observedAgeSeconds: null, selectedBackup: null, action: reason === 'policy_not_configured' ? 'Configure explicit full and log backup thresholds for this database identity.'
+          : reason === 'other_replica_evidence_required' ? 'Inspect backup evidence on every registered replica; local history is incomplete.'
+            : reason.includes('qualification') || reason === 'finish_time_unknown' ? 'Verify historical source-zone rules and collect new evidence with an active qualification.'
+              : reason === 'stale_observation' ? 'Restore complete current collection coverage.' : null };
+      const age = (Date.parse(atUtc) - Date.parse(s.recordedFinishUtc)) / 1000;
+      return { status: age > max ? 'policy_violated' : 'within_threshold', reason: age > max ? 'age_exceeded' : 'recent_backup',
+        maximumAgeSeconds: max, observedAgeSeconds: age, selectedBackup: selected(s), action: null };
+    };
+    return { databaseOrdinal: index + 1, databaseFingerprint: unknown ? null : hash(index + 1), familyFingerprint: hash(800), recoveryForkFingerprint: hash(900),
+      groupFingerprint: ag ? hash(700) : null, agDatabaseFingerprint: ag ? hash(701) : null, localReplicaFingerprint: ag ? hash(702) : null,
+      recoveryModel: 'full', catalogDatabaseState: 'ONLINE', scope: ag ? 'availability_group_local_only' : 'standalone',
+      localReplicaRole: ag ? 'PRIMARY' : null, localReplicaPreferred: ag ? true : null, unclassifiedBackupSeen: false,
+      coverage: unknown ? 'partial' : 'complete', policyRevision: current?.policyRevision ?? (policy ? 1 : null),
+      policy: policy && { enabled: policy.enabled, maximumFullAgeSeconds: policy.maximumFullAgeSeconds, maximumLogAgeSeconds: policy.maximumLogAgeSeconds,
+        maximumObservationAgeSeconds: policy.maximumObservationAgeSeconds, fullRequirement: policy.fullRequirement, requireChecksums: policy.requireChecksums },
+      full: check(full, policy?.maximumFullAgeSeconds ?? fullLimit), log: check(log, policy?.maximumLogAgeSeconds ?? logLimit),
+      observedIssues: ag || damaged ? [{ kind: 'full', copyOnly: false, reason: 'backup_damaged' }] : [], samples: unknown ? [] : [full, log] };
+  });
+  const page = { contractVersion: 2, targetId, atUtc, targetRevision: 1, runId, sourceObservedAtUtc: observed, completedAtUtc: stamp(1), receivedAtUtc: stamp(2),
+    sourceZoneId: 'UTC', historyLowerBoundLocal: stamp(35 * 86400).replace('Z', ''), coverage: 'partial', evidenceStatus: 'retained',
+    sourceRows: 151, outputItems: 151, retainedItems: 151, databaseCount: 51, collectorEnabled: true, action: null,
+    items: items.slice(after, after + 50), hasMore: after === 0, nextCursor: after === 0 ? 'backup-page-2' : null };
+  const empty = (status, coverage, action) => ({ ...page, evidenceStatus: status, coverage, action, items: [], hasMore: false, nextCursor: null,
+    sourceRows: 0, outputItems: 0, retainedItems: 0, databaseCount: 0, sourceObservedAtUtc: null, sourceZoneId: null, historyLowerBoundLocal: null });
+  if (scenario === 'not_collected') return { ...empty('not_collected', 'not_collected', 'Enable and qualify backup v2 collection for this target revision.'),
+    runId: null, completedAtUtc: null, receivedAtUtc: null, collectorEnabled: false };
+  if (scenario === 'failed') return empty('collection_failed', 'permission_denied', 'Resolve the collector failure or permission gap and collect again.');
+  if (scenario === 'expired') return { ...empty('evidence_not_retained', 'failed', 'Choose a retained time window or collect new backup evidence.'),
+    receivedAtUtc: null, sourceRows: 151, outputItems: 151 };
+  return page;
+}
+export async function handleBackupFixture(url, res, req) {
+  const zoneRoute = /^\/api\/v1\/observation-targets\/([^/]+)\/health\/backup-zone-qualification\/$/.exec(url.pathname);
+  if (zoneRoute) {
+    const targetId = zoneRoute[1], history = zoneCommands.get(targetId) ?? [], current = history.at(-1)?.snapshot ?? initialZone(targetId);
+    const send = (body, status = 200) => { res.writeHead(status, { 'content-type': 'application/json' }); res.end(JSON.stringify(body)); return true; };
+    if (req.method === 'GET') return send(current);
+    if (req.method !== 'PUT') return send({}, 405);
+    let raw = ''; for await (const chunk of req) { raw += chunk; if (Buffer.byteLength(raw) > 65536) return send({}, 413); }
+    const command = JSON.parse(raw); await mkdir(artifacts, { recursive: true });
+    await appendFile(new URL('backup-zone-requests.ndjson', artifacts), JSON.stringify({ targetId, command }) + '\n');
+    const prior = zoneOperations.get(command.operationId);
+    if (prior) return prior.targetId === targetId && prior.body === raw ? send(prior.ack) : send({}, 409);
+    let scenario = ''; try { scenario = (await readFile(new URL('backup-scenario.txt', artifacts), 'utf8')).trim(); } catch {}
+    if (scenario === 'qualification_invalid') return send({}, 400);
+    if (scenario === 'qualification_conflict' || command.expectedTargetRevision !== 1 || command.expectedQualificationRevision !== current.qualificationRevision)
+      return send({ code: 'backup_zone_qualification_conflict' }, 409);
+    const ack = { targetId, targetRevision: 1, qualificationRevision: current.qualificationRevision + 1, enabled: command.enabled };
+    const snapshot = { ...ack, sourceZoneId: command.enabled ? command.sourceZoneId : null, fromUtc: command.enabled ? command.fromUtc : null,
+      toUtc: command.enabled ? command.toUtc : null, evidenceSha256: command.enabled ? command.evidenceSha256 : null,
+      rulesSha256: command.enabled ? createHash('sha256').update(command.serializedZoneRules).digest('hex') : null };
+    zoneCommands.set(targetId, [...history, { at: Date.now(), snapshot }]); zoneOperations.set(command.operationId, { targetId, body: raw, ack });
+    return scenario === 'qualification_uncertain' ? send({}, 503) : send(ack);
+  }
+  const policyRoute = /^\/api\/v1\/observation-targets\/([^/]+)\/health\/backups\/databases\/([a-f0-9]{64})\/policy\/$/.exec(url.pathname);
+  if (policyRoute) {
+    const [, targetId, fingerprint] = policyRoute, key = `${targetId}:${fingerprint}`;
+    const send = (body, status = 200) => { res.writeHead(status, { 'content-type': 'application/json' }); res.end(JSON.stringify(body)); return true; };
+    const baseline = backupFixture(targetId, new Date().toISOString()).items.find(row => row.databaseFingerprint === fingerprint);
+    const existing = policies.get(key)?.policy ?? (baseline?.policy && { targetId, targetRevision: 1, databaseFingerprint: fingerprint,
+      policyRevision: baseline.policyRevision, ...baseline.policy });
+    if (req.method === 'GET') return existing ? send(existing) : send({}, 404);
+    if (req.method !== 'PUT') return send({}, 405);
+    let raw = ''; for await (const chunk of req) { raw += chunk; if (raw.length > 16384) return send({}, 413); }
+    const command = JSON.parse(raw); await mkdir(artifacts, { recursive: true });
+    await appendFile(new URL('backup-policy-requests.ndjson', artifacts), JSON.stringify({ targetId, fingerprint, command }) + '\n');
+    const previous = operations.get(command.operationId);
+    if (previous) return previous.key === key && previous.body === raw ? send(previous.policy) : send({ code: 'backup_policy_conflict' }, 409);
+    let scenario = ''; try { scenario = (await readFile(new URL('backup-scenario.txt', artifacts), 'utf8')).trim(); } catch {}
+    if (scenario === 'policy_conflict' || command.expectedTargetRevision !== 1 || command.expectedPolicyRevision !== (existing?.policyRevision ?? 0))
+      return send({ code: 'backup_policy_conflict' }, 409);
+    if (scenario === 'policy_inventory') return send({ code: 'backup_inventory_unavailable' }, 409);
+    const { expectedTargetRevision, expectedPolicyRevision, operationId, ...settings } = command;
+    const policy = { targetId, targetRevision: expectedTargetRevision, databaseFingerprint: fingerprint, policyRevision: expectedPolicyRevision + 1, ...settings };
+    policies.set(key, { at: Date.now(), policy }); operations.set(operationId, { key, body: raw, policy });
+    return scenario === 'policy_uncertain' ? send({}, 503) : send(policy);
+  }
+  const route = /^\/api\/v2\/observation-targets\/([^/]+)\/health\/backups$/.exec(url.pathname);
+  if (!route) return false;
+  await mkdir(artifacts, { recursive: true });
+  let scenario = 'mixed';
+  try { scenario = (await readFile(new URL('backup-scenario.txt', artifacts), 'utf8')).trim(); } catch {}
+  const atUtc = url.searchParams.get('atUtc') ?? new Date().toISOString();
+  const cursor = url.searchParams.get('cursor');
+  await appendFile(new URL('backup-requests.ndjson', artifacts), JSON.stringify({ atUtc, cursor, scenario }) + '\n');
+  if (scenario === 'stale_cursor' && cursor) { res.writeHead(409, { 'content-type': 'application/problem+json' }); res.end('{"code":"cursor_stale"}'); return true; }
+  res.writeHead(200, { 'content-type': 'application/json' });
+  res.end(JSON.stringify(backupFixture(route[1], atUtc, scenario, cursor === 'backup-page-2' ? 50 : 0))); return true;
+}

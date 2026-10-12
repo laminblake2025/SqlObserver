@@ -1,0 +1,38 @@
+[WebServer] (node:30768) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+
+Running 29 tests using 1 worker
+
+(node:24752) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ok  1 [chromium] › component-tests\IncidentWorkspace.spec.mjs:94:1 › native health references and full provenance show recorded identities without invented diagnostic facts or links (551ms)
+  ok  2 [chromium] › component-tests\IncidentWorkspace.spec.mjs:117:1 › unknown inner schemas preserve opaque raw HTML as inert text and never fabricate source summaries (343ms)
+  ok  3 [chromium] › component-tests\IncidentWorkspace.spec.mjs:130:1 › empty, partial, unavailable and globally truncated captures retain separate truthful coverage disclosures (628ms)
+  ok  4 [chromium] › component-tests\IncidentWorkspace.spec.mjs:147:1 › the saved exact microsecond window and share link remain frozen while shared scope, clock and display change (461ms)
+  ok  5 [chromium] › component-tests\IncidentWorkspace.spec.mjs:170:44 › lost report receipt preserves one native operation across uncertain retry and guards duplicate pending activation (442ms)
+  ok  6 [chromium] › component-tests\IncidentWorkspace.spec.mjs:170:44 › invalid report receipt preserves one native operation across uncertain retry and guards duplicate pending activation (446ms)
+  ok  7 [chromium] › component-tests\IncidentWorkspace.spec.mjs:196:1 › at the exact 24-hour report expiry stale exports disappear and renewal uses one fresh operation across failure and retry (577ms)
+  ok  8 [chromium] › component-tests\IncidentWorkspace.spec.mjs:226:1 › Viewer-to-unverified read loss hides saved data and aborts a pending report before a fresh permitted read (444ms)
+  ok  9 [chromium] › component-tests\IncidentWorkspace.spec.mjs:243:45 › a report receipt delivered after target cannot expose stale exports or errors (375ms)
+  ok 10 [chromium] › component-tests\IncidentWorkspace.spec.mjs:243:45 › a report receipt delivered after unmount cannot expose stale exports or errors (375ms)
+  ok 11 [chromium] › component-tests\IncidentWorkspace.spec.mjs:257:1 › saved list paging retains its native snapshot and a stale cursor requires explicit refresh without a substituted investigation (544ms)
+  ok 12 [chromium] › component-tests\IncidentWorkspace.spec.mjs:282:1 › direct saved-view props cannot expose title, notes, evidence or actions before read access is verified (290ms)
+  ok 13 [chromium] › component-tests\IncidentWorkspace.spec.mjs:310:1 › the optional workspace exposes the role hint without fetching or changing the shared URL (313ms)
+  ok 14 [chromium] › component-tests\IncidentWorkspace.spec.mjs:322:1 › closing the workspace preserves a frozen draft through context refresh and a shared-window change (464ms)
+  ok 15 [chromium] › component-tests\IncidentWorkspace.spec.mjs:341:1 › a collapsed pending save remains owned and its uncertain retry preserves the exact original command (474ms)
+  ok 16 [chromium] › component-tests\IncidentWorkspace.spec.mjs:370:1 › collapsing the outer workspace preserves a pending saved-list continuation and exposes its failure for explicit recovery (560ms)
+  ok 17 [chromium] › component-tests\IncidentWorkspace.spec.mjs:394:55 › a invalid selected investigation stays discoverable outside the optional workspace (277ms)
+  ok 18 [chromium] › component-tests\IncidentWorkspace.spec.mjs:394:55 › a missing selected investigation stays discoverable outside the optional workspace (293ms)
+  ok 19 [chromium] › component-tests\IncidentWorkspace.spec.mjs:394:55 › a denied selected investigation stays discoverable outside the optional workspace (293ms)
+  ok 20 [chromium] › component-tests\IncidentWorkspace.spec.mjs:408:1 › an invalid shared window stays visible outside the closed workspace and cannot create a draft (314ms)
+  ok 21 [chromium] › component-tests\IncidentWorkspace.spec.mjs:417:1 › opening a draft retires a held saved-list owner without leaving a collapsed loading announcement (391ms)
+  ok 22 [chromium] › component-tests\IncidentWorkspace.spec.mjs:440:44 › the compact investigation disclosure preserves keyboard focus and a draft at 320px (1.1s)
+  ok 23 [chromium] › component-tests\IncidentWorkspace.spec.mjs:440:44 › the compact investigation disclosure preserves keyboard focus and a draft at 390px (1.1s)
+  ok 24 [chromium] › component-tests\IncidentWorkspace.spec.mjs:440:44 › the compact investigation disclosure preserves keyboard focus and a draft at 768px (1.2s)
+  ok 25 [chromium] › component-tests\IncidentWorkspace.spec.mjs:440:44 › the compact investigation disclosure preserves keyboard focus and a draft at 1440px (1.2s)
+  ok 26 [chromium] › component-tests\IncidentWorkspace.spec.mjs:465:44 › populated saved evidence, provenance and unknown raw disclosure remain readable and keyboard accessible at 320px (2.5s)
+  ok 27 [chromium] › component-tests\IncidentWorkspace.spec.mjs:465:44 › populated saved evidence, provenance and unknown raw disclosure remain readable and keyboard accessible at 390px (2.4s)
+  ok 28 [chromium] › component-tests\IncidentWorkspace.spec.mjs:465:44 › populated saved evidence, provenance and unknown raw disclosure remain readable and keyboard accessible at 768px (2.5s)
+  ok 29 [chromium] › component-tests\IncidentWorkspace.spec.mjs:465:44 › populated saved evidence, provenance and unknown raw disclosure remain readable and keyboard accessible at 1440px (2.6s)
+
+  29 passed (25.4s)

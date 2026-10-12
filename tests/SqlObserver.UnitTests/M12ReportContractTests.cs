@@ -7,8 +7,44 @@ namespace SqlObserver.UnitTests;
 
 public sealed class M12ReportContractTests
 {
-    private static readonly string[] ExpectedKinds = ["instance-health", "performance-window", "incident-evidence", "capacity-readiness"];
-    [Fact] public void CatalogContainsExactlyFourVersionedReports() => Assert.Equal(ExpectedKinds, ReportCatalog.All.Select(x => x.ReportKind));
+    private static readonly string[] ExpectedKinds = ["instance-health", "performance-window", "incident-evidence", "capacity-readiness", "saved-investigation"];
+    [Fact] public void CatalogContainsTheFixedVersionedReports() => Assert.Equal(ExpectedKinds, ReportCatalog.All.Select(x => x.ReportKind));
+
+    [Fact]
+    public void SavedReportsBindAThreadAndRejectFreeWindowsOrForeignThreadParameters()
+    {
+        Guid target=Guid.NewGuid(),thread=Guid.NewGuid();
+        var request=new ReportCreateRequest(target,new("saved-investigation",Guid.NewGuid(),ThreadId:thread),TestAuthorization());
+        ReportRequestValidation.Validate(request);
+        foreach(var invalid in new[] {request with {Request=request.Request with {ThreadId=null}},
+            request with {Request=request.Request with {ThreadId=Guid.Empty}},
+            request with {Request=request.Request with {FromUtc=Utc(-1),ToUtc=Utc(0)}},
+            request with {Request=new("instance-health",Guid.NewGuid(),ThreadId:thread)}})
+            Assert.Throws<ArgumentException>(()=>ReportRequestValidation.Validate(invalid));
+        Assert.Equal(ReportRequestValidation.CanonicalDigest(request.Request),
+            ReportRequestValidation.CanonicalDigest(request.Request with {OperationId=Guid.NewGuid()}));
+        Assert.NotEqual(ReportRequestValidation.CanonicalDigest(request.Request),
+            ReportRequestValidation.CanonicalDigest(request.Request with {ThreadId=Guid.NewGuid()}));
+    }
+
+    [Fact]
+    public void SavedCsvPreservesUnicodeAndLineBreaksWhileNeutralizingFormulaValues()
+    {
+        ReportDefinition definition=ReportCatalog.Get(ReportKind.SavedInvestigation);
+        string notes="e\u0301\r\nline two\tvalue";
+        byte[] bytes=ReportRenderer.RenderCsv(definition,definition.Sections[0],
+            [new(1,new Dictionary<string,string?> { ["field"]="notes",["part"]="1",["value"]=notes }),
+             new(2,new Dictionary<string,string?> { ["field"]="title",["part"]="1",["value"]="=SUM(A1)" })]);
+        string csv=Encoding.UTF8.GetString(bytes); Assert.Contains(notes,csv); Assert.Contains("'=SUM(A1)",csv);
+        foreach(string part in new[] {"=SUM(A1)","+command","-1","@text"})
+        {
+            string json=System.Text.Json.JsonSerializer.Serialize(part);
+            string evidence=Encoding.UTF8.GetString(ReportRenderer.RenderCsv(definition,definition.Sections[1],
+                [new(1,new Dictionary<string,string?>{{"evidenceJson",json}})]));
+            Assert.DoesNotContain("'"+part,evidence);
+            Assert.Contains(json.Replace("\"","\"\"",StringComparison.Ordinal),evidence);
+        }
+    }
     [Fact] public void ReportsAllowOnlyTargetScopedOperationalRoles() { Guid target = Guid.NewGuid(); foreach (ApplicationRole role in new[] { ApplicationRole.Viewer, ApplicationRole.Operator, ApplicationRole.TargetAdministrator }) Assert.True(ReportAuthorization.CanAccess(target, new AuthorizationContext(new ActorSecurityIdentifier("S-1-5-21-1"), AuthorizationPrincipalState.Active, [new RoleAuthorizationGrant(role, TargetAuthorizationScope.ForTargets([new SqlObserver.Domain.Telemetry.MonitoredInstanceId(target)]))]))); foreach (ApplicationRole role in new[] { ApplicationRole.SecurityAdministrator, ApplicationRole.Auditor, ApplicationRole.CollectorService }) Assert.False(ReportAuthorization.CanAccess(target, new AuthorizationContext(new ActorSecurityIdentifier("S-1-5-21-1"), AuthorizationPrincipalState.Active, [new RoleAuthorizationGrant(role, TargetAuthorizationScope.ForTargets([new SqlObserver.Domain.Telemetry.MonitoredInstanceId(target)]))]))); }
 
     [Fact] public void HealthRejectsWindows() => Assert.Throws<ArgumentException>(() => ReportRequestValidation.Validate(new ReportCreateRequest(Guid.NewGuid(), new ReportRequest("instance-health", Guid.NewGuid(), DateTimeOffset.UtcNow.AddHours(-1), DateTimeOffset.UtcNow), TestAuthorization())));

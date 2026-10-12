@@ -12,6 +12,10 @@ MCP clients need structured access to diagnostic evidence, but protocol input an
 Expose only these allowlisted, read-only diagnostic tools:
 
 - `list_instances`
+- `list_metric_catalog`
+- `list_sql_metric_catalog_v2`
+- `get_sql_metric_baselines_v2`
+- `list_incidents`
 - `get_instance_capabilities`
 - `get_instance_health`
 - `get_active_alerts`
@@ -43,7 +47,26 @@ Protocol handling stays behind an adapter. At Milestone 11, use the latest stabl
 
 The stdio bridge authenticates to `SqlObserver.Server`; it has no target or repository credential. Tools invoke approved application services that apply the same server-side RBAC, target scope, field filtering, UTC semantics, pagination, and time/row/byte/execution/concurrency limits as other clients. Every invocation, including denial and bounded failure, is audited without copying sensitive result content into the audit record.
 
+`list_metric_catalog` returns embedded metric definitions without reading instance data or the repository. It accepts no arguments and requires an active Viewer, Operator, or TargetAdministrator role, including grants scoped to particular targets. Its audit has no target identifier. Catalog membership does not establish collection availability on an instance; subsequent instance queries retain their exact target-scope checks.
+
+The separate `list_sql_metric_catalog_v2` follows the same metadata authority
+and exposes only the seven activated SQL baseline keys. It does not expand the
+legacy catalog or its series/comparison/forecast contracts.
+`get_sql_metric_baselines_v2` requires a read role for the requested instance,
+current revision and exact 28-day UTC source window. It returns one bounded
+bundle of 168 hours or no rows, preserving nullable and partial evidence and
+source/publication cutoffs. Both calls retain mandatory terminal auditing.
+See [ADR-0027](ADR-0027-sql-metric-analytics.md) for the version and source contract.
+
 ## Consequences
+
+`list_incidents` is an instance-scoped metadata projection for Viewer, Operator,
+or TargetAdministrator grants on that instance. It returns thread identities,
+opening times, and generation counts/times at a fixed snapshot, without summary
+JSON or evidence content. Its signed cursor binds the target revision, opening
+window, repository snapshot, publication revision, and complete ordering key.
+Incident mutations invalidate continuations for that target/revision; callers
+restart when `cursor_stale` is returned. Evidence retrieval uses its own snapshot.
 
 - MCP adds a diagnostic representation without creating an alternative data or authorization path.
 - Tool schemas and allowlists need snapshot/contract tests; new tools require security review and an ADR update when authority changes.

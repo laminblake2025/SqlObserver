@@ -167,8 +167,8 @@ public sealed class RepositoryRuntimeIntegrationTests
         Assert.Equal(2, preview.Entries.Count);
         Assert.All(preview.Entries, static entry =>
         {
-            Assert.False(entry.PolicyEnabled);
-            Assert.Equal(RetentionPreviewReason.PolicyDisabled, entry.Reason);
+            Assert.True(entry.PolicyEnabled);
+            Assert.Equal(RetentionPreviewReason.MinimumPartitionFloor, entry.Reason);
             Assert.Equal(RetentionPreviewDisposition.Keep, entry.Disposition);
         });
     }
@@ -247,10 +247,10 @@ public sealed class RepositoryRuntimeIntegrationTests
             RandomNumberGenerator.GetBytes(64));
         var sensitivePayloads = new PostgreSqlSensitivePayloadPort(collectorDataSource);
         SensitivePayloadReference firstReference = await sensitivePayloads.GetOrAddAsync(
-            new SensitivePayloadGetOrAddRequest(protectedPayload, lease.Identity, DefaultTimeout),
+            new SensitivePayloadGetOrAddRequest(monitoredInstance, protectedPayload, lease.Identity, DefaultTimeout),
             CancellationToken.None);
         SensitivePayloadReference secondReference = await sensitivePayloads.GetOrAddAsync(
-            new SensitivePayloadGetOrAddRequest(protectedPayload, lease.Identity, DefaultTimeout),
+            new SensitivePayloadGetOrAddRequest(monitoredInstance, protectedPayload, lease.Identity, DefaultTimeout),
             CancellationToken.None);
         Assert.Equal(firstReference.PayloadId, secondReference.PayloadId);
 

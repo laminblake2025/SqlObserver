@@ -177,7 +177,9 @@ public sealed class MigrationExecutionResult
 
 public sealed class MigrationBatchResult
 {
-    public const int MaximumResults = 256;
+    // Fresh installs apply the embedded catalog in one request. Keep the batch
+    // bound aligned with the validated migration-number namespace.
+    public const int MaximumResults = MigrationNumber.MaximumValue;
 
     private readonly ReadOnlyCollection<MigrationExecutionResult> _results;
 

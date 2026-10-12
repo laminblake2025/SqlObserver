@@ -11,6 +11,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using SqlObserver.Application.Ports;
 using SqlObserver.Application.Services;
 using SqlObserver.Domain.Auditing;
 using SqlObserver.Domain.Authorization;
@@ -22,6 +23,7 @@ using SqlObserver.Server;
 
 namespace SqlObserver.ApiContractTests;
 
+[Collection("Timing-sensitive HTTP contracts")]
 public sealed class ObservationTargetHttpContractTests : IClassFixture<ObservationTargetApiFactory>
 {
     private readonly ObservationTargetApiFactory _factory;
@@ -57,6 +59,27 @@ public sealed class ObservationTargetHttpContractTests : IClassFixture<Observati
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
         Assert.Equal("forbidden", problem?.Code);
         Assert.True(Guid.TryParse(problem?.CorrelationId, out _));
+    }
+
+    [Fact]
+    public async Task GroupingUpdateRequiresTargetAdministratorAndItsOwnRevision()
+    {
+        using var factory = new ObservationTargetApiFactory();
+        Guid id = FakeTargetApplicationServices.ExistingInstanceId;
+        using HttpClient viewer = CreateClient(factory, "viewer");
+        using HttpClient admin = CreateClient(factory, "admin");
+        var body = new UpdateObservationTargetGroupingBody(0, "Production", ["East"]);
+        Assert.Equal(HttpStatusCode.Forbidden, (await viewer.PutAsJsonAsync(
+            $"/api/v1/observation-targets/{id:D}/grouping", body)).StatusCode);
+        HttpResponseMessage applied = await admin.PutAsJsonAsync(
+            $"/api/v1/observation-targets/{id:D}/grouping", body);
+        Assert.Equal(HttpStatusCode.OK, applied.StatusCode);
+        var updated = await applied.Content.ReadFromJsonAsync<ObservationTargetGroupingResponse>();
+        Assert.Equal("production", updated?.Environment);
+        Assert.Equal(["east"], updated?.Tags);
+        Assert.Equal(1, updated?.GroupingRevision);
+        Assert.Equal(HttpStatusCode.Conflict, (await admin.PutAsJsonAsync(
+            $"/api/v1/observation-targets/{id:D}/grouping", body)).StatusCode);
     }
 
     [Fact]
@@ -200,10 +223,9 @@ public sealed class ObservationTargetHttpContractTests : IClassFixture<Observati
         Task<HttpResponseMessage> blockingRequest = firstPrincipal.PostAsJsonAsync(
             "/api/v1/observation-targets",
             ValidRegistration(instanceKey: FakeTargetApplicationServices.BlockingInstanceKey));
-        await factory.Targets.BlockingCallStarted.WaitAsync(TimeSpan.FromSeconds(5));
-
         try
         {
+            await factory.Targets.BlockingCallStarted.WaitAsync(TimeSpan.FromSeconds(15));
             HttpResponseMessage samePrincipalResponse = await firstPrincipal.PostAsJsonAsync(
                 "/api/v1/observation-targets",
                 ValidRegistration(instanceKey: "lab.same-principal"));
@@ -416,6 +438,18 @@ public sealed class ObservationTargetApiFactory : WebApplicationFactory<Program>
 
     internal FakeTargetApplicationServices Targets { get; } = new();
 
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing) Targets.ReleaseBlockingCall();
+        base.Dispose(disposing);
+    }
+
+    public override async ValueTask DisposeAsync()
+    {
+        Targets.ReleaseBlockingCall();
+        await base.DisposeAsync();
+    }
+
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment("ContractTesting");
@@ -438,11 +472,13 @@ public sealed class ObservationTargetApiFactory : WebApplicationFactory<Program>
         {
             services.RemoveAll<IObservationTargetOnboardingService>();
             services.RemoveAll<IObservationTargetManagementService>();
+            services.RemoveAll<IObservationTargetGroupingService>();
             services.RemoveAll<IObservationTargetStatusQueryService>();
             services.RemoveAll<WindowsGroupRoleResolver>();
 
             services.AddSingleton<IObservationTargetOnboardingService>(Targets);
             services.AddSingleton<IObservationTargetManagementService>(Targets);
+            services.AddSingleton<IObservationTargetGroupingService>(Targets);
             services.AddSingleton<IObservationTargetStatusQueryService>(Targets);
             services.AddSingleton(CreateAuthorizationResolver());
             services
@@ -560,6 +596,7 @@ internal sealed class TestAuthenticationHandler : AuthenticationHandler<Authenti
 internal sealed class FakeTargetApplicationServices :
     IObservationTargetOnboardingService,
     IObservationTargetManagementService,
+    IObservationTargetGroupingService,
     IObservationTargetStatusQueryService
 {
     internal const string ErrorActorSid = "S-1-5-21-1003";
@@ -582,6 +619,7 @@ internal sealed class FakeTargetApplicationServices :
         [ExistingTarget.Key.Value] = ExistingTarget.TargetId.Value,
     };
     private readonly Dictionary<string, int> _onboardingCallsByActor = new(StringComparer.Ordinal);
+    private readonly Dictionary<Guid, long> _groupingRevisions = new();
     private readonly TaskCompletionSource<bool> _blockingCallStarted = new(
         TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly TaskCompletionSource<bool> _releaseBlockingCall = new(
@@ -684,6 +722,27 @@ internal sealed class FakeTargetApplicationServices :
         RequestCapabilityRediscoveryCommand command,
         CancellationToken cancellationToken) =>
         ValueTask.FromResult(Manage(command.Authorization, command.TargetId, command.ExpectedRevision));
+
+    public Task<ObservationTargetGroupingMutationResult> SetAsync(
+        SetObservationTargetGroupingCommand command, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (!command.Authorization.CanAccess(ApplicationRole.TargetAdministrator, command.TargetId))
+            throw new UnauthorizedAccessException();
+        lock (_sync)
+        {
+            if (!_registrationsById.ContainsKey(command.TargetId.Value))
+                return Task.FromResult(new ObservationTargetGroupingMutationResult(
+                    ObservationTargetGroupingMutationStatus.NotFound, null));
+            long revision = _groupingRevisions.GetValueOrDefault(command.TargetId.Value);
+            if (command.ExpectedRevision != revision)
+                return Task.FromResult(new ObservationTargetGroupingMutationResult(
+                    ObservationTargetGroupingMutationStatus.RevisionConflict, revision));
+            _groupingRevisions[command.TargetId.Value] = revision + 1;
+            return Task.FromResult(new ObservationTargetGroupingMutationResult(
+                ObservationTargetGroupingMutationStatus.Applied, revision + 1));
+        }
+    }
 
     public ValueTask<ObservationTargetStatusSnapshot?> GetAsync(
         GetObservationTargetStatusQuery query,

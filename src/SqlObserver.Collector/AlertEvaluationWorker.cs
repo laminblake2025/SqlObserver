@@ -15,6 +15,8 @@ public sealed class AlertEvaluationWorker(
 {
     private static readonly Action<ILogger, Exception?> EvaluationFailed = LoggerMessage.Define(
         LogLevel.Warning, new EventId(8101, "AlertEvaluationFailed"), "Alert evaluation cycle failed; the next bounded cycle will retry.");
+    private static readonly Action<ILogger, Guid, Exception?> TargetEvaluationFailed = LoggerMessage.Define<Guid>(
+        LogLevel.Warning, new EventId(8104, "AlertTargetEvaluationFailed"), "Alert evaluation failed for target {TargetId}; remaining targets will continue.");
     public static readonly TimeSpan Interval = TimeSpan.FromSeconds(15);
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -39,22 +41,33 @@ public sealed class AlertEvaluationWorker(
                             // malformed/mixed due batch from ever becoming a cross-target decision.
                             foreach (IGrouping<Guid, AlertEvaluationWork> targetGroup in dueWork.GroupBy(static work => work.Observations[0].TargetId.Value))
                             {
-                                var decisions = new List<AlertEvaluationDecision>(targetGroup.Count());
-                                AlertObservation[] targetObservations = targetGroup.SelectMany(static work => work.Observations).ToArray();
-                                IReadOnlyList<AlertRuleDefinition> rules = await repository.ListRulesAsync(targetObservations[0].TargetId, new RepositoryCallTimeout(TimeSpan.FromSeconds(5)), leaseCancellation.Token).ConfigureAwait(false);
-                                var evolving = new Dictionary<Guid, AlertRuleState>();
-                                foreach (AlertObservation observation in targetObservations.OrderBy(static x => x.ObservedAtUtc).ThenBy(static x => x.RuleId).ThenBy(static x => x.OperationId))
+                                leaseCancellation.Token.ThrowIfCancellationRequested();
+                                try
                                 {
-                                    AlertRuleDefinition? rule = rules.FirstOrDefault(candidate => candidate.RuleId == observation.RuleId);
-                                    if (rule is null) continue;
-                                    MaintenanceWindow? maintenance = await repository.GetMaintenanceAsync(observation.TargetId, observation.ObservedAtUtc, new RepositoryCallTimeout(TimeSpan.FromSeconds(5)), leaseCancellation.Token).ConfigureAwait(false);
-                                    AlertRuleState prior = evolving.TryGetValue(rule.RuleId, out AlertRuleState? inBatch) ? inBatch : await repository.GetStateAsync(observation.TargetId, rule.RuleId, new RepositoryCallTimeout(TimeSpan.FromSeconds(5)), leaseCancellation.Token).ConfigureAwait(false) ?? new AlertRuleState(rule.RuleId, observation.TargetId);
-                                    AlertEvaluationResult evaluated = AlertEvaluator.Evaluate(rule, prior, observation, maintenance);
-                                    evolving[rule.RuleId] = evaluated.State;
-                                    decisions.Add(new AlertEvaluationDecision(observation, evaluated.State, evaluated.Event, evaluated.DeliverySuppressed, evaluated.Reason));
+                                    var decisions = new List<AlertEvaluationDecision>(targetGroup.Count());
+                                    AlertObservation[] targetObservations = targetGroup.SelectMany(static work => work.Observations).ToArray();
+                                    IReadOnlyList<AlertRuleDefinition> rules = await repository.ListRulesAsync(targetObservations[0].TargetId, new RepositoryCallTimeout(TimeSpan.FromSeconds(5)), leaseCancellation.Token).ConfigureAwait(false);
+                                    var evolving = new Dictionary<Guid, AlertRuleState>();
+                                    foreach (AlertObservation observation in targetObservations.OrderBy(static x => x.ObservedAtUtc).ThenBy(static x => x.RuleId).ThenBy(static x => x.OperationId))
+                                    {
+                                        AlertRuleDefinition? rule = rules.FirstOrDefault(candidate => candidate.RuleId == observation.RuleId);
+                                        if (rule is null) continue;
+                                        MaintenanceWindow? maintenance = await repository.GetMaintenanceAsync(observation.TargetId, observation.ObservedAtUtc, new RepositoryCallTimeout(TimeSpan.FromSeconds(5)), leaseCancellation.Token).ConfigureAwait(false);
+                                        AlertRuleState prior = evolving.TryGetValue(rule.RuleId, out AlertRuleState? inBatch) ? inBatch : await repository.GetStateAsync(observation.TargetId, rule.RuleId, new RepositoryCallTimeout(TimeSpan.FromSeconds(5)), leaseCancellation.Token).ConfigureAwait(false) ?? new AlertRuleState(rule.RuleId, observation.TargetId);
+                                        AlertEvaluationResult evaluated = AlertEvaluator.Evaluate(rule, prior, observation, maintenance);
+                                        evolving[rule.RuleId] = evaluated.State;
+                                        decisions.Add(new AlertEvaluationDecision(observation, evaluated.State, evaluated.Event, evaluated.DeliverySuppressed, evaluated.Reason));
+                                    }
+                                    if (decisions.Count > 0)
+                                    {
+                                        leaseCancellation.Token.ThrowIfCancellationRequested();
+                                        await repository.EvaluateAndPersistAsync(new AlertEvaluationBatch(decisions.Select(static decision => decision.Observation).ToArray(), leaseResult.Lease.Identity, new RepositoryCallTimeout(TimeSpan.FromSeconds(5)), decisions, null, targetGroup.Select(static x => x.DueAtUtc).Min(), targetGroup.ToArray()), leaseCancellation.Token).ConfigureAwait(false);
+                                    }
                                 }
-                                if (decisions.Count > 0)
-                                    await repository.EvaluateAndPersistAsync(new AlertEvaluationBatch(decisions.Select(static decision => decision.Observation).ToArray(), leaseResult.Lease.Identity, new RepositoryCallTimeout(TimeSpan.FromSeconds(5)), decisions, null, targetGroup.Select(static x => x.DueAtUtc).Min(), targetGroup.ToArray()), leaseCancellation.Token).ConfigureAwait(false);
+                                catch (Exception ex) when (!leaseCancellation.IsCancellationRequested)
+                                {
+                                    TargetEvaluationFailed(logger, targetGroup.Key, ex);
+                                }
                             }
                         }
                     }

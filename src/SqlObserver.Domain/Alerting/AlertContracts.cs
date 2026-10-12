@@ -6,7 +6,13 @@ using SqlObserver.Domain.Telemetry;
 
 namespace SqlObserver.Domain.Alerting;
 
-public enum AlertRuleKind { MetricThreshold = 1, CollectorHealth = 2 }
+public enum AlertRuleKind
+{
+    MetricThreshold = 1, CollectorHealth = 2,
+    BackupFullPolicy = 3, BackupLogPolicy = 4, BackupObservedFaults = 5,
+    BlockingDuration = 6,
+    DeadlockCount = 7,
+}
 public enum AlertComparison { GreaterThan = 1, GreaterThanOrEqual = 2, LessThan = 3, LessThanOrEqual = 4, Equal = 5 }
 public enum AlertState { Normal = 1, Pending = 2, Firing = 3, Acknowledged = 4, Resolved = 5 }
 public enum AlertEventKind { Fired = 1, Resolved = 2, Acknowledged = 3 }
@@ -37,20 +43,41 @@ public sealed class AlertRuleDefinition
         int confirmationCount,
         TimeSpan confirmationWindow,
         TimeSpan evaluationInterval,
-        bool enabled = true)
+        bool enabled = true,
+        int clearConfirmationCount = 1)
     {
         if (ruleId == Guid.Empty) throw new ArgumentException("Rule identity is required.", nameof(ruleId));
         Name = DomainValidation.RequireAsciiToken(name, nameof(name), MaximumNameLength,
             static c => DomainValidation.IsAsciiLetter(c) || DomainValidation.IsAsciiDigit(c) || c is '.' or '_' or '-', true);
         if (!Enum.IsDefined(kind) || !Enum.IsDefined(comparison)) throw new ArgumentOutOfRangeException(nameof(kind));
         if (kind == AlertRuleKind.MetricThreshold && metricId is null) throw new ArgumentException("Metric rules require a metric identifier.", nameof(metricId));
-        if (kind == AlertRuleKind.CollectorHealth && metricId is not null) throw new ArgumentException("Collector-health rules cannot carry a metric identifier.", nameof(metricId));
+        if (kind != AlertRuleKind.MetricThreshold && metricId is not null) throw new ArgumentException("Non-metric rules cannot carry a metric identifier.", nameof(metricId));
+        if (BackupAlertRuleContract.IsBackup(kind) && (comparison != AlertComparison.GreaterThan || threshold != 0 || hysteresis != 0))
+            throw new ArgumentException("Backup rules compare confirmed affected-database counts with zero.", nameof(threshold));
         if (!double.IsFinite(threshold) || !double.IsFinite(hysteresis) || hysteresis < 0) throw new ArgumentOutOfRangeException(nameof(threshold));
         if (confirmationCount is < 1 or > 100) throw new ArgumentOutOfRangeException(nameof(confirmationCount));
+        if (clearConfirmationCount is < 1 or > 100) throw new ArgumentOutOfRangeException(nameof(clearConfirmationCount));
         if (confirmationWindow < TimeSpan.Zero || confirmationWindow > TimeSpan.FromDays(7)) throw new ArgumentOutOfRangeException(nameof(confirmationWindow));
         if (evaluationInterval < TimeSpan.FromSeconds(1) || evaluationInterval > TimeSpan.FromHours(1)) throw new ArgumentOutOfRangeException(nameof(evaluationInterval));
+        if (BackupAlertRuleContract.IsBackup(kind) && (evaluationInterval < TimeSpan.FromSeconds(15) ||
+            confirmationWindow < evaluationInterval * (Math.Max(confirmationCount, clearConfirmationCount) - 1)))
+            throw new ArgumentException("Backup confirmation windows must cover their distinct evaluation intervals.", nameof(confirmationWindow));
+        if (kind == AlertRuleKind.BlockingDuration &&
+            (comparison is not (AlertComparison.GreaterThan or AlertComparison.GreaterThanOrEqual) ||
+             threshold is < 0 or > 86400 || hysteresis > threshold ||
+             evaluationInterval < TimeSpan.FromSeconds(5) || evaluationInterval > TimeSpan.FromMinutes(1) ||
+             confirmationWindow < evaluationInterval * (Math.Max(confirmationCount, clearConfirmationCount) - 1)))
+            throw new ArgumentException("Blocking rules require a bounded duration threshold and distinct confirmation intervals.", nameof(threshold));
+        if (kind == AlertRuleKind.DeadlockCount &&
+            (comparison is not (AlertComparison.GreaterThan or AlertComparison.GreaterThanOrEqual) ||
+             threshold is < 0 or > 256 || threshold != Math.Truncate(threshold) ||
+             hysteresis > threshold || hysteresis != Math.Truncate(hysteresis) ||
+             evaluationInterval < TimeSpan.FromSeconds(15) || evaluationInterval > TimeSpan.FromMinutes(1) ||
+             confirmationWindow < evaluationInterval * (Math.Max(confirmationCount, clearConfirmationCount) - 1)))
+            throw new ArgumentException("Deadlock rules require bounded integer counts and distinct confirmation intervals.", nameof(threshold));
         RuleId = ruleId; Kind = kind; MetricId = metricId; Comparison = comparison; Threshold = threshold; Hysteresis = hysteresis;
         ConfirmationCount = confirmationCount; ConfirmationWindow = confirmationWindow; EvaluationInterval = evaluationInterval; Enabled = enabled;
+        ClearConfirmationCount = clearConfirmationCount;
     }
 
     public Guid RuleId { get; }
@@ -61,6 +88,7 @@ public sealed class AlertRuleDefinition
     public double Threshold { get; }
     public double Hysteresis { get; }
     public int ConfirmationCount { get; }
+    public int ClearConfirmationCount { get; }
     public TimeSpan ConfirmationWindow { get; }
     public TimeSpan EvaluationInterval { get; }
     public bool Enabled { get; }
@@ -101,13 +129,16 @@ public sealed class AlertRuleState
     public AlertRuleState(Guid ruleId, MonitoredInstanceId targetId, AlertState state = AlertState.Normal,
         int consecutiveMatches = 0, DateTimeOffset? firstMatchUtc = null, DateTimeOffset? lastObservedUtc = null,
         DateTimeOffset? firedUtc = null, DateTimeOffset? acknowledgedUtc = null,
-        Guid? alertId = null, Guid? episodeId = null, Guid? lastOperationId = null, string? evidenceDigest = null, string? reason = null, string? lastReason = null, bool deliverySuppressed = false, DateTimeOffset? resolvedUtc = null, DateTimeOffset? episodeStartedUtc = null, string? acknowledgedBy = null, long revision = 1, double? lastValue = null)
+        Guid? alertId = null, Guid? episodeId = null, Guid? lastOperationId = null, string? evidenceDigest = null, string? reason = null, string? lastReason = null, bool deliverySuppressed = false, DateTimeOffset? resolvedUtc = null, DateTimeOffset? episodeStartedUtc = null, string? acknowledgedBy = null, long revision = 1, double? lastValue = null, int consecutiveClears = 0)
     {
         if (ruleId == Guid.Empty) throw new ArgumentException("Rule identity is required.", nameof(ruleId));
         ArgumentNullException.ThrowIfNull(targetId);
         if (!Enum.IsDefined(state) || consecutiveMatches < 0 || revision <= 0) throw new ArgumentOutOfRangeException(nameof(state));
+        if (consecutiveClears is < 0 or > 100 || consecutiveClears > 0 && state is not (AlertState.Firing or AlertState.Acknowledged))
+            throw new ArgumentOutOfRangeException(nameof(consecutiveClears));
         if (alertId == Guid.Empty || episodeId == Guid.Empty || lastOperationId == Guid.Empty) throw new ArgumentException("Alert identifiers cannot be empty.", nameof(alertId));
         RuleId = ruleId; TargetId = targetId; State = state; ConsecutiveMatches = consecutiveMatches; Revision = revision;
+        ConsecutiveClears = consecutiveClears;
         FirstMatchUtc = firstMatchUtc; LastObservedUtc = lastObservedUtc; FiredUtc = firedUtc; AcknowledgedUtc = acknowledgedUtc;
         LastValue = lastValue;
         AlertId = alertId; EpisodeId = episodeId; LastOperationId = lastOperationId; EvidenceDigest = evidenceDigest is null ? null : AlertEvidenceDigest.Validate(evidenceDigest); Reason = reason; LastReason = lastReason ?? reason; DeliverySuppressed = deliverySuppressed; ResolvedUtc = resolvedUtc; EpisodeStartedUtc = episodeStartedUtc; AcknowledgedBy = acknowledgedBy;
@@ -116,6 +147,7 @@ public sealed class AlertRuleState
     public MonitoredInstanceId TargetId { get; }
     public AlertState State { get; }
     public int ConsecutiveMatches { get; }
+    public int ConsecutiveClears { get; }
     public DateTimeOffset? FirstMatchUtc { get; }
     public DateTimeOffset? LastObservedUtc { get; }
     public DateTimeOffset? FiredUtc { get; }
@@ -192,4 +224,43 @@ public sealed class MaintenanceWindow
 
 public sealed record AlertActiveDto(Guid AlertId, Guid RuleId, MonitoredInstanceId TargetId, string RuleName,
     AlertState State, DateTimeOffset FirstObservedUtc, DateTimeOffset? FiredUtc, DateTimeOffset? AcknowledgedUtc,
-    double? Value, string? Reason, bool DeliverySuppressed);
+    double? Value, string? Reason, bool DeliverySuppressed)
+{
+    public Guid? EpisodeId { get; init; }
+    public long? Revision { get; init; }
+    public DateTimeOffset? SnoozedUntilUtc { get; init; }
+    public string? SnoozeReason { get; init; }
+    public string? SnoozedBy { get; init; }
+    public DateTimeOffset? SnoozedAtUtc { get; init; }
+    public bool? Snoozed { get; init; }
+}
+
+/// <summary>Current repository evidence; a replayed mutation receipt cannot establish this state.</summary>
+public sealed record AlertSnoozeStatus(MonitoredInstanceId TargetId, Guid AlertId, Guid EpisodeId,
+    long Revision, AlertState State, DateTimeOffset ServerNowUtc, DateTimeOffset? SnoozedUntilUtc,
+    string? SnoozeReason, string? SnoozedBy, DateTimeOffset? SnoozedAtUtc, bool Snoozed, bool DeliverySuppressed);
+
+public static class AlertSnoozeContract
+{
+    public const int MaximumReasonUtf8Bytes = 512;
+    public static readonly TimeSpan MaximumDuration = TimeSpan.FromHours(24);
+
+    public static string ValidateReason(string reason) =>
+        DomainValidation.RequireSafeText(reason, nameof(reason), MaximumReasonUtf8Bytes);
+
+    public static string ComputeRequestDigest(MonitoredInstanceId targetId, Guid alertId, Guid episodeId,
+        long revision, DateTimeOffset? endsAtUtc, string reason)
+    {
+        ArgumentNullException.ThrowIfNull(targetId);
+        if (alertId == Guid.Empty || episodeId == Guid.Empty) throw new ArgumentException("Alert and episode identities are required.");
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(revision);
+        if (endsAtUtc is not null) DomainValidation.RequireUtcMicrosecondAligned(endsAtUtc.Value, nameof(endsAtUtc));
+        reason = ValidateReason(reason);
+        // Wall-clock bounds belong to the first atomic repository write, after replay lookup.
+        string end = endsAtUtc?.ToString("yyyy-MM-dd'T'HH:mm:ss.ffffff'Z'", System.Globalization.CultureInfo.InvariantCulture) ?? "<null>";
+        string canonical = string.Join('|', endsAtUtc is null ? "alert.unsnooze" : "alert.snooze",
+            targetId.Value.ToString("D"), alertId.ToString("D"), episodeId.ToString("D"),
+            revision.ToString(System.Globalization.CultureInfo.InvariantCulture), end, reason);
+        return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(canonical))).ToLowerInvariant();
+    }
+}

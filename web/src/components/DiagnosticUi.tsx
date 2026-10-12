@@ -124,19 +124,36 @@ export function Tabs({
   value,
   onChange,
   label,
+  revealFocusedTab = false,
 }: {
   readonly tabs: readonly { readonly value: string; readonly label: string }[];
   readonly value: string;
   readonly onChange: (value: string) => void;
   readonly label: string;
+  readonly revealFocusedTab?: boolean;
 }) {
   const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const selectedIndex = tabs.findIndex((tab) => tab.value === value);
+  const revealTab = (button: HTMLButtonElement) => {
+    if (!revealFocusedTab) return;
+    const scroller = button.parentElement;
+    if (!scroller || scroller.scrollWidth <= scroller.clientWidth) return;
+    const viewport = scroller.getBoundingClientRect();
+    const bounds = button.getBoundingClientRect();
+    const left = viewport.left + scroller.clientLeft;
+    const right = left + scroller.clientWidth;
+    // Keep the complete focused control within its own horizontal scrollport.
+    // Round outward so fractional tab widths cannot leave a clipped edge.
+    if (bounds.left < left) scroller.scrollLeft -= Math.ceil(left - bounds.left);
+    else if (bounds.right > right) scroller.scrollLeft += Math.ceil(bounds.right - right);
+  };
   const focusTab = (index: number) => {
     const next = tabs[index];
     if (!next) return;
     onChange(next.value);
-    tabRefs.current[index]?.focus();
+    const button = tabRefs.current[index];
+    button?.focus();
+    if (button) revealTab(button);
   };
   const handleKeyDown = (event: KeyboardEvent<HTMLButtonElement>, index: number) => {
     let nextIndex: number | undefined;
@@ -160,6 +177,7 @@ export function Tabs({
           ref={(element) => { tabRefs.current[index] = element; }}
           tabIndex={index === (selectedIndex < 0 ? 0 : selectedIndex) ? 0 : -1}
           onKeyDown={(event) => handleKeyDown(event, index)}
+          onFocus={(event) => revealTab(event.currentTarget)}
           onClick={() => onChange(tab.value)}
         >
           {tab.label}

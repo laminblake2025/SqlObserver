@@ -23,14 +23,107 @@ function number(value: unknown, label: string): number { if (typeof value !== "n
 function integer(value: unknown, label: string): number { const n = number(value, label); if (!Number.isSafeInteger(n) || n < 0) throw new Error(`Invalid ${label}`); return n; }
 function guid(value: unknown, label: string, nullable = false): string | null { if (value == null && nullable) return null; if (typeof value !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)) throw new Error(`Invalid ${label}`); return value; }
 function opaqueGuid(value: unknown, label: string, nullable = false): string | null { if (value == null && nullable) return null; if (typeof value !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value) || /^0{8}-0{4}-0{4}-0{4}-0{12}$/i.test(value)) throw new Error(`Invalid ${label}`); return value; }
-export function utc(value: unknown, label: string, nullable = false): string | null { if (value == null && nullable) return null; if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,7})?(?:Z|\+00:00)$/.test(value) || !Number.isFinite(Date.parse(value))) throw new Error(`Invalid ${label}`); return value; }
-function window(from: unknown, to: unknown, label: string): [string, string] | undefined { if (from === undefined && to === undefined) return undefined; const start = utc(from, `${label} start`)!; const end = utc(to, `${label} end`)!; if (Date.parse(end) <= Date.parse(start) || Date.parse(end) - Date.parse(start) > 1000 * 60 * 60 * 24 * 366) throw new Error(`Invalid ${label} window`); return [start, end]; }
+export function analyticsUtcTicks(value: string): bigint {
+  const match = /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})(?:\.(\d{1,7}))?(?:Z|\+00:00)$/.exec(value);
+  if (!match) throw new Error("Invalid analytics UTC timestamp");
+  const milliseconds = Date.parse(`${match[1]}Z`);
+  if (!Number.isFinite(milliseconds) || new Date(milliseconds).toISOString().slice(0, 19) !== match[1]) throw new Error("Invalid analytics UTC timestamp");
+  return BigInt(milliseconds) * 10000n + BigInt((match[2] ?? "").padEnd(7, "0"));
+}
+export function sameAnalyticsUtc(left: string, right: string): boolean { return analyticsUtcTicks(left) === analyticsUtcTicks(right); }
+export function utc(value: unknown, label: string, nullable = false): string | null { if (value == null && nullable) return null; if (typeof value !== "string") throw new Error(`Invalid ${label}`); try { analyticsUtcTicks(value); } catch { throw new Error(`Invalid ${label}`); } return value; }
+function window(from: unknown, to: unknown, label: string): [string, string] | undefined { if (from === undefined && to === undefined) return undefined; const start = utc(from, `${label} start`)!; const end = utc(to, `${label} end`)!; const duration = analyticsUtcTicks(end) - analyticsUtcTicks(start); if (duration <= 0n || duration > 366n * 864000000000n) throw new Error(`Invalid ${label} window`); return [start, end]; }
 function cursor(value: unknown): string | null { if (value == null) return null; const result = text(value, "cursor", 1024); if (!/^[-A-Za-z0-9_.:|/+=]+$/.test(result)) throw new Error("Invalid cursor"); return result; }
 function boundedState(value: unknown): string { const state = value === undefined ? "complete" : text(value, "state", 32); if (!states.has(state)) throw new Error("Invalid analytics state"); return state; }
 function dimensions(value: unknown): Record<string, string> { const row = object(value); if (Object.keys(row).length > 32) throw new Error("Too many dimensions"); const result: Record<string, string> = {}; for (const [key, item] of Object.entries(row)) { if (!/^[A-Za-z0-9_-]{1,64}$/.test(key) || typeof item !== "string" || item.length > 256 || /[\u0000-\u001f\u007f]/.test(item)) throw new Error("Invalid metric dimension"); result[key] = item; } return result; }
 function bindTarget(row: Record<string, unknown>, expectedTargetId?: string, expectedRevision?: number): string { const targetId = text(row.targetId, "targetId", 64); if (expectedTargetId !== undefined && targetId.toLowerCase() !== expectedTargetId.toLowerCase()) throw new Error("Analytics target binding mismatch"); if (expectedRevision !== undefined && (!Number.isSafeInteger(expectedRevision) || expectedRevision < 1)) throw new Error("Invalid expected target revision"); return targetId; }
 function bindRevision(value: unknown, expectedRevision?: number): number { const revision = integer(value, "targetRevision"); if (revision < 1 || expectedRevision !== undefined && revision !== expectedRevision) throw new Error("Analytics target revision mismatch"); return revision; }
 function catalogMetric(value: unknown, label: string): string { if (typeof value !== "string" || !metricKey.test(value) || !catalogMetrics.has(value)) throw new Error(`Invalid ${label}`); return value; }
+
+export interface AnalyticsSurfaceCursor {
+  readonly kind: "m10.surface.v1";
+  readonly surface: AnalyticsSurface;
+  readonly targetId: string;
+  readonly targetRevision: number;
+  readonly generation: number;
+  readonly snapshotUtc: string;
+  readonly sourceCutoffUtc: string;
+  readonly fromUtc: string;
+  readonly toUtc: string;
+  readonly filters: Readonly<Record<string, never>>;
+  readonly tieAt: string;
+  readonly tieId: string;
+  readonly tieMetric: string | null;
+  readonly tieDimensions: Readonly<Record<string, string>> | null;
+  readonly tieFingerprint: string | null;
+}
+
+/** Reads the existing repository cursor; this is validation, not signing. */
+export function decodeAnalyticsSurfaceCursor(value: string): AnalyticsSurfaceCursor {
+  if (!/^[A-Za-z0-9_-]{1,1024}$/.test(value) || value.length % 4 === 1) throw new Error("Invalid analytics surface cursor");
+  let row: Record<string, unknown>;
+  try {
+    const binary = atob(value.replace(/-/g, "+").replace(/_/g, "/") + "=".repeat((4 - value.length % 4) % 4));
+    row = object(JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(Uint8Array.from(binary, character => character.charCodeAt(0)))));
+  } catch { throw new Error("Invalid analytics surface cursor"); }
+  const fields = ["kind", "surface", "targetId", "targetRevision", "generation", "snapshotUtc", "sourceCutoffUtc", "fromUtc", "toUtc", "filters", "tieAt", "tieId", "tieMetric", "tieDimensions", "tieFingerprint"];
+  keys(row, fields, "surface cursor"); required(row, fields, "surface cursor");
+  if (row.kind !== "m10.surface.v1" || !surfaces.has(row.surface as AnalyticsSurface) || Object.keys(object(row.filters)).length !== 0) throw new Error("Invalid analytics surface cursor fence");
+  opaqueGuid(row.targetId, "cursor target"); opaqueGuid(row.tieId, "cursor tie identity");
+  bindRevision(row.targetRevision); if (integer(row.generation, "cursor generation") < 1) throw new Error("Invalid cursor generation");
+  for (const key of ["snapshotUtc", "sourceCutoffUtc", "fromUtc", "toUtc", "tieAt"]) utc(row[key], key);
+  if (analyticsUtcTicks(row.toUtc as string) <= analyticsUtcTicks(row.fromUtc as string)
+    || analyticsUtcTicks(row.sourceCutoffUtc as string) > analyticsUtcTicks(row.snapshotUtc as string)) throw new Error("Invalid cursor window");
+  if (row.surface === "host/metrics") { catalogMetric(row.tieMetric, "cursor metric"); dimensions(row.tieDimensions); }
+  else if (row.tieMetric !== null || row.tieDimensions !== null) throw new Error("Unexpected cursor metric tie");
+  if (row.surface === "replication/status" || row.surface === "replication/evidence") {
+    if (typeof row.tieFingerprint !== "string" || !/^[0-9a-f]{64}$/i.test(row.tieFingerprint)) throw new Error("Invalid cursor topology tie");
+  } else if (row.tieFingerprint !== null) throw new Error("Unexpected cursor topology tie");
+  return row as unknown as AnalyticsSurfaceCursor;
+}
+
+function surfaceTie(surface: AnalyticsSurface, row: Record<string, unknown>): { at: string; id: string } {
+  const atKey = surface === "jobs" || surface === "backfill" ? "requestedAtUtc" : surface === "incidents" ? "openedAtUtc" : surface === "diagnostics/search" || surface === "evidence-packets" ? "occurredAtUtc" : "observedAtUtc";
+  const idKey = surface === "host/status" ? "hostId" : surface === "jobs" || surface === "backfill" ? "jobId" : surface === "incidents" ? "threadId" : surface === "diagnostics/search" ? "eventId" : surface === "evidence-packets" ? "packetId" : "runId";
+  return { at: row[atKey] as string, id: row[idKey] as string };
+}
+
+function validateSurfaceEvidence(surface: AnalyticsSurface, items: readonly Record<string, unknown>[], fromUtc: string, toUtc: string, snapshotUtc?: string): void {
+  const from = analyticsUtcTicks(fromUtc), to = analyticsUtcTicks(toUtc);
+  for (let index = 0; index < items.length; index++) {
+    const item = items[index]!, tie = surfaceTie(surface, item), at = analyticsUtcTicks(tie.at);
+    // Job inventories are target-scoped current state, not window-filtered history.
+    if (surface !== "jobs" && surface !== "backfill" && (at < from || at >= to)) throw new Error("Analytics item is outside its window");
+    const snapshotAt = surface === "diagnostics/search" ? item.collectedAtUtc as string : tie.at;
+    if (snapshotUtc && analyticsUtcTicks(snapshotAt) > analyticsUtcTicks(snapshotUtc)) throw new Error("Analytics item is newer than its snapshot");
+    if (!index) continue;
+    const previous = surfaceTie(surface, items[index - 1]!);
+    const priorAt = analyticsUtcTicks(previous.at);
+    if (surface === "host/status" ? priorAt < at : priorAt > at) throw new Error("Analytics page is out of order");
+    if (priorAt === at && previous.id.toLowerCase() > tie.id.toLowerCase()) throw new Error("Analytics identity tie is out of order");
+    if (priorAt === at && previous.id.toLowerCase() === tie.id.toLowerCase()) {
+      // Replication topology is not present in every row. Metric dimensions use
+      // PostgreSQL jsonb ordering; neither hidden key is replaced by a UI key.
+      if (surface !== "replication/status" && surface !== "replication/evidence" && surface !== "host/metrics") throw new Error("Duplicate analytics identity");
+      if (surface === "host/metrics" && String(items[index - 1]!.metricKey) > String(item.metricKey)) throw new Error("Analytics metric tie is out of order");
+    }
+  }
+}
+
+function validateOutgoingSurfaceCursor(page: AnalyticsSurfacePage): void {
+  if (!page.nextCursor) return;
+  const decoded = decodeAnalyticsSurfaceCursor(page.nextCursor);
+  const last = page.items.at(-1); if (!last) throw new Error("Empty analytics continuation page");
+  const tie = surfaceTie(page.surface, last);
+  if (decoded.surface !== page.surface || decoded.targetId.toLowerCase() !== page.targetId.toLowerCase()
+    || decoded.targetRevision !== page.targetRevision || decoded.generation !== page.generation
+    || !sameAnalyticsUtc(decoded.snapshotUtc, page.snapshotUtc!) || !sameAnalyticsUtc(decoded.sourceCutoffUtc, page.cutoffUtc!)
+    || !sameAnalyticsUtc(decoded.fromUtc, page.fromUtc) || !sameAnalyticsUtc(decoded.toUtc, page.toUtc)
+    || !sameAnalyticsUtc(decoded.tieAt, tie.at) || decoded.tieId.toLowerCase() !== tie.id.toLowerCase()) throw new Error("Analytics cursor binding mismatch");
+  if (page.surface === "host/metrics" && (decoded.tieMetric !== last.metricKey || JSON.stringify(Object.entries(decoded.tieDimensions!).sort()) !== JSON.stringify(Object.entries(last.dimensions as Record<string, string>).sort()))) throw new Error("Analytics cursor dimension mismatch");
+  const gap = last.visibilityGap as { identity?: string } | null;
+  if ((page.surface === "replication/status" || page.surface === "replication/evidence") && gap?.identity && decoded.tieFingerprint!.toLowerCase() !== gap.identity.toLowerCase()) throw new Error("Analytics cursor topology mismatch");
+}
 
 export function parseMetricSeries(value: unknown, expectedTargetId?: string, expectedRevision?: number): MetricSeries {
   const row = object(value); keys(row, ["targetId", "metricKey", "state", "items", "fromUtc", "toUtc", "targetRevision"], "series"); required(row, ["targetId", "metricKey", "items"], "series");
@@ -52,16 +145,16 @@ export function parseRollupPage(value: unknown, expectedTargetId?: string, expec
 function validateSurfaceItem(surface: AnalyticsSurface, x: Record<string, unknown>, expectedRevision?: number): void {
   const revision = bindRevision(x.targetRevision, expectedRevision);
   switch (surface) {
-    case "host/status": if (typeof x.hostId !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(x.hostId) || x.hostId === "00000000-0000-0000-0000-000000000000") throw new Error("Invalid host identity"); if (x.generation !== undefined) integer(x.generation, "host generation"); text(x.hostName, "hostName", 512); if (!["pending", "active", "stale", "retired"].includes(String(x.bindingState)) || !["unknown", "available", "partial", "unsupported", "permission_denied"].includes(String(x.capabilityState))) throw new Error("Invalid host status"); integer(x.bindingRevision, "bindingRevision"); utc(x.observedAtUtc, "observedAtUtc"); break;
-    case "host/metrics": utc(x.observedAtUtc, "observedAtUtc"); guid(x.runId, "runId"); catalogMetric(x.metricKey, "host metric"); number(x.value, "value"); dimensions(x.dimensions); break;
-    case "replication/status": case "replication/evidence": utc(x.observedAtUtc, "observedAtUtc"); guid(x.runId, "runId"); if (typeof x.role !== "string" || x.role.length > 32 || typeof x.synchronizationState !== "string" || x.synchronizationState.length > 64) throw new Error("Invalid replication state"); if (x.sendQueueBytes !== null && x.sendQueueBytes !== undefined) integer(x.sendQueueBytes, "sendQueueBytes"); if (x.redoQueueBytes !== null && x.redoQueueBytes !== undefined) integer(x.redoQueueBytes, "redoQueueBytes"); if (x.pendingCommands != null && integer(x.pendingCommands, "pendingCommands") > 2_000_000_000) throw new Error("Invalid pendingCommands"); if (x.latencySeconds != null && (number(x.latencySeconds, "latencySeconds") < 0 || Number(x.latencySeconds) > 86400)) throw new Error("Invalid latencySeconds"); if (![1, 2, 3].includes(Number(x.visibilityScope)) || !["complete", "local_summary", "visibility_gap"].includes(String(x.coverage)) || typeof x.stateAvailable !== "boolean") throw new Error("Invalid replication visibility"); if (x.visibilityGap !== null && x.visibilityGap !== undefined) { const gap = object(x.visibilityGap); keys(gap, ["kind", "reason", "identity"], "visibility gap"); if (gap.kind !== "visibility_gap" || gap.reason !== "distribution_database_unbound" || typeof gap.identity !== "string" || !/^[0-9a-f]{64}$/.test(gap.identity)) throw new Error("Invalid visibility gap"); } if (x.coverage === "visibility_gap" && x.visibilityGap === undefined) throw new Error("Missing visibility gap evidence"); break;
-    case "diagnostics/search": utc(x.occurredAtUtc, "occurredAtUtc"); guid(x.eventId, "eventId"); text(x.eventKind, "eventKind", 64); integer(x.severity, "severity"); object(x.safeMetadata); utc(x.collectedAtUtc, "collectedAtUtc"); break;
+    case "host/status": if (typeof x.hostId !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(x.hostId) || x.hostId === "00000000-0000-0000-0000-000000000000") throw new Error("Invalid host identity"); if (x.generation !== undefined) integer(x.generation, "host generation"); text(x.hostName, "hostName", 512); if (!["pending", "active", "stale", "retired"].includes(String(x.bindingState)) || !["unknown", "available", "partial", "unsupported", "permission_denied", "unavailable"].includes(String(x.capabilityState))) throw new Error("Invalid host status"); integer(x.bindingRevision, "bindingRevision"); utc(x.observedAtUtc, "observedAtUtc"); break;
+    case "host/metrics": utc(x.observedAtUtc, "observedAtUtc"); opaqueGuid(x.runId, "runId"); catalogMetric(x.metricKey, "host metric"); number(x.value, "value"); dimensions(x.dimensions); break;
+    case "replication/status": case "replication/evidence": utc(x.observedAtUtc, "observedAtUtc"); opaqueGuid(x.runId, "runId"); if (typeof x.role !== "string" || x.role.length > 32 || typeof x.synchronizationState !== "string" || x.synchronizationState.length > 64) throw new Error("Invalid replication state"); if (x.sendQueueBytes !== null && x.sendQueueBytes !== undefined) integer(x.sendQueueBytes, "sendQueueBytes"); if (x.redoQueueBytes !== null && x.redoQueueBytes !== undefined) integer(x.redoQueueBytes, "redoQueueBytes"); if (x.pendingCommands != null && integer(x.pendingCommands, "pendingCommands") > 2_000_000_000) throw new Error("Invalid pendingCommands"); if (x.latencySeconds != null && (number(x.latencySeconds, "latencySeconds") < 0 || Number(x.latencySeconds) > 86400)) throw new Error("Invalid latencySeconds"); if (![1, 2, 3].includes(Number(x.visibilityScope)) || !["complete", "local_summary", "visibility_gap"].includes(String(x.coverage)) || typeof x.stateAvailable !== "boolean") throw new Error("Invalid replication visibility"); if (x.visibilityGap !== null && x.visibilityGap !== undefined) { const gap = object(x.visibilityGap); keys(gap, ["kind", "reason", "identity"], "visibility gap"); if (gap.kind !== "visibility_gap" || gap.reason !== "distribution_database_unbound" || typeof gap.identity !== "string" || !/^[0-9a-f]{64}$/.test(gap.identity)) throw new Error("Invalid visibility gap"); } if (x.coverage === "visibility_gap" && x.visibilityGap === undefined) throw new Error("Missing visibility gap evidence"); break;
+    case "diagnostics/search": utc(x.occurredAtUtc, "occurredAtUtc"); opaqueGuid(x.eventId, "eventId"); text(x.eventKind, "eventKind", 64); integer(x.severity, "severity"); if (typeof x.safeMetadata !== "string") throw new Error("Invalid diagnostic metadata"); try { x.safeMetadata = object(JSON.parse(x.safeMetadata)); } catch { throw new Error("Invalid diagnostic metadata"); } utc(x.collectedAtUtc, "collectedAtUtc"); break;
     case "backfill":
       if (x.jobKind !== "backfill") throw new Error("Unexpected non-backfill job");
       // Backfill rows share the validated job contract.
-    case "jobs": opaqueGuid(x.jobId, "jobId"); if (!["rollup", "baseline", "forecast", "correlation", "backfill", "retention", "evidence"].includes(String(x.jobKind)) || !["queued", "running", "succeeded", "partial", "failed", "cancelled"].includes(String(x.status))) throw new Error("Invalid analytics job"); utc(x.requestedAtUtc, "requestedAtUtc"); utc(x.startedAtUtc, "startedAtUtc", true); utc(x.completedAtUtc, "completedAtUtc", true); integer(x.attempt, "attempt"); break;
-    case "incidents": guid(x.threadId, "threadId"); utc(x.openedAtUtc, "openedAtUtc"); utc(x.closedAtUtc, "closedAtUtc", true); integer(x.currentGeneration, "currentGeneration"); break;
-    case "evidence-packets": utc(x.occurredAtUtc, "occurredAtUtc"); guid(x.packetId, "packetId"); text(x.evidenceKind, "evidenceKind", 64); guid(x.sourceRunId, "sourceRunId", true); if (typeof x.sourceDigest !== "string" || !/^[0-9a-f]{64}$/.test(x.sourceDigest)) throw new Error("Invalid source digest"); const confidence = number(x.confidence, "confidence"); if (confidence < 0 || confidence > 1 || !visibility.has(String(x.visibilityState))) throw new Error("Invalid evidence packet"); break;
+    case "jobs": opaqueGuid(x.jobId, "jobId"); if (!["rollup", "baseline", "forecast", "correlation", "backfill", "retention", "evidence", "incident"].includes(String(x.jobKind)) || !["queued", "running", "succeeded", "partial", "failed", "cancelled"].includes(String(x.status))) throw new Error("Invalid analytics job"); utc(x.requestedAtUtc, "requestedAtUtc"); utc(x.startedAtUtc, "startedAtUtc", true); utc(x.completedAtUtc, "completedAtUtc", true); integer(x.attempt, "attempt"); break;
+    case "incidents": opaqueGuid(x.threadId, "threadId"); utc(x.openedAtUtc, "openedAtUtc"); utc(x.closedAtUtc, "closedAtUtc", true); integer(x.currentGeneration, "currentGeneration"); break;
+    case "evidence-packets": utc(x.occurredAtUtc, "occurredAtUtc"); opaqueGuid(x.packetId, "packetId"); text(x.evidenceKind, "evidenceKind", 64); opaqueGuid(x.sourceRunId, "sourceRunId", true); if (typeof x.sourceDigest !== "string" || !/^[0-9a-f]{64}$/.test(x.sourceDigest)) throw new Error("Invalid source digest"); const confidence = x.confidence === null ? null : number(x.confidence, "confidence"); if (confidence !== null && (confidence < 0 || confidence > 1) || !visibility.has(String(x.visibilityState))) throw new Error("Invalid evidence packet"); break;
   }
   void revision;
 }
@@ -69,13 +162,18 @@ export function parseAnalyticsSurfacePage<T = Record<string, unknown>>(value: un
   const row = object(value); keys(row, ["targetId", "surface", "fromUtc", "toUtc", "items", "state", "nextCursor", "cutoffUtc", "snapshotUtc", "generation", "targetRevision"], "analytics surface"); required(row, ["targetId", "surface", "fromUtc", "toUtc", "items", "state", "nextCursor", "cutoffUtc", "snapshotUtc", "generation", "targetRevision"], "analytics surface");
   const targetId = bindTarget(row, expectedTargetId, expectedRevision); const surface = text(row.surface, "surface", 64) as AnalyticsSurface; if (!surfaces.has(surface)) throw new Error("Unsupported analytics surface"); if (expectedSurface && surface !== expectedSurface) throw new Error("Mismatched analytics surface");
   if (!Array.isArray(row.items) || row.items.length > 200) throw new Error("Invalid analytics page"); const state = boundedState(row.state); const nextCursor = cursor(row.nextCursor); const generation = integer(row.generation, "generation"); if (generation < 1) throw new Error("Invalid analytics generation"); const targetRevision = bindRevision(row.targetRevision, expectedRevision); const bounds = window(row.fromUtc, row.toUtc, "analytics"); if (!bounds) throw new Error("Analytics window is required"); const cutoffUtc = utc(row.cutoffUtc, "cutoffUtc")!; const snapshotUtc = utc(row.snapshotUtc, "snapshotUtc")!; if (Date.parse(snapshotUtc) < Date.parse(cutoffUtc)) throw new Error("Invalid analytics snapshot");
-  const items = row.items.map(item => { const x = object(item); keys(x, surface === "host/status" ? [...surfaceKeys[surface], "generation"] : surfaceKeys[surface], "analytics item"); required(x, surfaceKeys[surface], "analytics item"); validateSurfaceItem(surface, x, targetRevision); return x as T; });
-  return { targetId, surface, items, state: state as AnalyticsSurfacePage<T>["state"], nextCursor, cutoffUtc, snapshotUtc, targetRevision, generation, fromUtc: bounds[0], toUtc: bounds[1] };
+  if (analyticsUtcTicks(bounds[1]) - analyticsUtcTicks(bounds[0]) > 7n * 864000000000n) throw new Error("Invalid analytics surface window");
+  if (analyticsUtcTicks(snapshotUtc) < analyticsUtcTicks(cutoffUtc)) throw new Error("Invalid analytics snapshot");
+  const items = row.items.map(item => { const x = { ...object(item) }; keys(x, surface === "host/status" ? [...surfaceKeys[surface], "generation"] : surfaceKeys[surface], "analytics item"); required(x, surfaceKeys[surface], "analytics item"); validateSurfaceItem(surface, x, targetRevision); return x; });
+  validateSurfaceEvidence(surface, items, bounds[0], bounds[1], snapshotUtc);
+  const page = { targetId, surface, items, state: state as AnalyticsSurfacePage["state"], nextCursor, cutoffUtc, snapshotUtc, targetRevision, generation, fromUtc: bounds[0], toUtc: bounds[1] };
+  validateOutgoingSurfaceCursor(page);
+  return page as unknown as AnalyticsSurfacePage<T>;
 }
 
 function parseIncidentItem(value: unknown, expectedRevision?: number): AnalyticsIncidentItem {
   const x = object(value); keys(x, ["threadId", "openedAtUtc", "closedAtUtc", "currentGeneration", "packets", "generations", "targetRevision"], "incident item"); required(x, ["threadId", "openedAtUtc", "closedAtUtc", "currentGeneration"], "incident item");
-  const threadId = guid(x.threadId, "threadId")!; const openedAtUtc = utc(x.openedAtUtc, "openedAtUtc")!; const closedAtUtc = utc(x.closedAtUtc, "closedAtUtc", true); const currentGeneration = integer(x.currentGeneration, "currentGeneration"); if (currentGeneration < 1) throw new Error("Invalid incident generation");
+  const threadId = opaqueGuid(x.threadId, "threadId")!; const openedAtUtc = utc(x.openedAtUtc, "openedAtUtc")!; const closedAtUtc = utc(x.closedAtUtc, "closedAtUtc", true); const currentGeneration = integer(x.currentGeneration, "currentGeneration"); if (currentGeneration < 1) throw new Error("Invalid incident generation");
   if (x.packets !== undefined && (!Array.isArray(x.packets) || x.packets.length > 256)) throw new Error("Invalid incident packets");
   if (x.generations !== undefined && (!Array.isArray(x.generations) || x.generations.length > 256)) throw new Error("Invalid incident generations");
   if (x.targetRevision !== undefined) bindRevision(x.targetRevision, expectedRevision);
@@ -85,10 +183,10 @@ function parseIncidentItem(value: unknown, expectedRevision?: number): Analytics
 /** Parses the legacy incidents route, which returns a bounded list without the paged surface envelope. */
 export function parseIncidentsSurfacePage<T = AnalyticsIncidentItem>(value: unknown, expectedTargetId?: string, expectedRevision?: number): AnalyticsSurfacePage<T> {
   const row = object(value);
-  if (Object.prototype.hasOwnProperty.call(row, "surface") || Object.prototype.hasOwnProperty.call(row, "nextCursor") || Object.prototype.hasOwnProperty.call(row, "cutoffUtc") || Object.prototype.hasOwnProperty.call(row, "snapshotUtc") || Object.prototype.hasOwnProperty.call(row, "generation") || Object.prototype.hasOwnProperty.call(row, "targetRevision")) return parseAnalyticsSurfacePage<T>(value, "incidents", expectedTargetId, expectedRevision);
   keys(row, ["targetId", "fromUtc", "toUtc", "items", "state"], "incidents"); required(row, ["targetId", "fromUtc", "toUtc", "items", "state"], "incidents");
   const targetId = bindTarget(row, expectedTargetId, expectedRevision); const bounds = window(row.fromUtc, row.toUtc, "incidents"); if (!bounds || Date.parse(bounds[1]) - Date.parse(bounds[0]) > 31 * 24 * 60 * 60 * 1000) throw new Error("Invalid incidents window"); const state = boundedState(row.state); if (!Array.isArray(row.items) || row.items.length > 100) throw new Error("Invalid incidents page");
   const items = row.items.map(item => parseIncidentItem(item, expectedRevision)) as unknown as readonly T[];
+  validateSurfaceEvidence("incidents", items as unknown as readonly Record<string, unknown>[], bounds[0], bounds[1]);
   return { targetId, surface: "incidents", items, state: state as AnalyticsSurfacePage<T>["state"], nextCursor: null, fromUtc: bounds[0], toUtc: bounds[1] };
 }
 export function parseComparison(value: unknown, expectedTargetId?: string, expectedRevision?: number): AnalyticsComparison {
@@ -96,11 +194,14 @@ export function parseComparison(value: unknown, expectedTargetId?: string, expec
   const x = object(row.result); keys(x, ["leftValue", "rightValue", "delta", "percent", "leftSamples", "rightSamples", "complete"], "comparison result"); required(x, ["leftValue", "rightValue", "delta", "percent", "leftSamples", "rightSamples", "complete"], "comparison result"); for (const key of ["leftValue", "rightValue", "delta", "percent"]) if (x[key] !== null) number(x[key], key); if (typeof x.complete !== "boolean") throw new Error("Invalid comparison completeness"); return { leftValue: x.leftValue as number | null, rightValue: x.rightValue as number | null, delta: x.delta as number | null, percent: x.percent as number | null, leftSamples: integer(x.leftSamples, "leftSamples"), rightSamples: integer(x.rightSamples, "rightSamples"), complete: x.complete };
 }
 export function parseBaseline(value: unknown): Baseline {
-  const x = object(value); keys(x, ["metricKey", "hourOfWeek", "completeDays", "sampleCount", "median", "mad", "p10", "p90", "coverage", "confidence", "windowStartUtc", "windowEndUtc", "generation", "visibilityState"], "baseline"); required(x, ["metricKey", "hourOfWeek", "completeDays", "sampleCount", "coverage", "confidence"], "baseline");
+  const x = object(value); keys(x, ["metricKey", "hourOfWeek", "completeDays", "sampleCount", "mean", "stddev", "median", "mad", "p10", "p90", "lowerBound", "upperBound", "coverage", "confidence", "windowStartUtc", "windowEndUtc", "generation", "visibilityState", "dimensions", "dimensionsSha256"], "baseline"); required(x, ["metricKey", "hourOfWeek", "completeDays", "sampleCount", "coverage", "confidence"], "baseline");
   const key = catalogMetric(x.metricKey, "baseline metric"); const hourOfWeek = integer(x.hourOfWeek, "hourOfWeek"); const completeDays = integer(x.completeDays, "completeDays"); const sampleCount = integer(x.sampleCount, "sampleCount"); if (hourOfWeek > 167) throw new Error("Invalid baseline metric");
   const optional = (name: string): number | null => x[name] == null ? null : number(x[name], name); const median = optional("median"), mad = optional("mad"), p10 = optional("p10"), p90 = optional("p90"); const coverage = number(x.coverage, "coverage"); const confidence = number(x.confidence, "confidence"); if (coverage < 0 || coverage > 1 || confidence < 0 || confidence > 1) throw new Error("Invalid baseline confidence");
   const windowStartUtc = x.windowStartUtc == null ? null : utc(x.windowStartUtc, "windowStartUtc")!; const windowEndUtc = x.windowEndUtc == null ? null : utc(x.windowEndUtc, "windowEndUtc")!; if (windowStartUtc && windowEndUtc && Date.parse(windowEndUtc) <= Date.parse(windowStartUtc)) throw new Error("Invalid baseline window"); const visibilityState = x.visibilityState === undefined ? undefined : text(x.visibilityState, "visibilityState", 16); if (visibilityState !== undefined && !visibility.has(visibilityState)) throw new Error("Invalid baseline visibility");
-  return { metricKey: key, hourOfWeek, completeDays, sampleCount, median, mad, p10, p90, coverage, confidence, windowStartUtc, windowEndUtc, generation: x.generation === undefined ? undefined : integer(x.generation, "generation"), visibilityState: visibilityState as Baseline["visibilityState"] };
+  for (const name of ["mean", "stddev", "lowerBound", "upperBound"]) if (x[name] != null) number(x[name], name);
+  if (p10 !== null && p90 !== null && p10 > p90 || mad !== null && mad < 0 || x.stddev != null && Number(x.stddev) < 0) throw new Error("Invalid baseline spread");
+  if (x.dimensionsSha256 !== undefined && (typeof x.dimensionsSha256 !== "string" || !/^[0-9a-f]{64}$/i.test(x.dimensionsSha256))) throw new Error("Invalid baseline dimension identity");
+  return { metricKey: key, hourOfWeek, completeDays, sampleCount, median, mad, p10, p90, coverage, confidence, windowStartUtc, windowEndUtc, generation: x.generation === undefined ? undefined : integer(x.generation, "generation"), visibilityState: visibilityState as Baseline["visibilityState"], dimensions: x.dimensions === undefined ? undefined : dimensions(x.dimensions), dimensionsSha256: x.dimensionsSha256 as string | undefined };
 }
 export function parseForecast(value: unknown): Forecast {
   const x = object(value); keys(x, ["metricKey", "horizonStartUtc", "horizonEndUtc", "estimate", "lowerBound", "upperBound", "slopePerDay", "confidence", "residual", "forecastId", "model", "sourceGeneration", "visibilityState"], "forecast"); required(x, ["metricKey", "horizonStartUtc", "horizonEndUtc", "confidence", "residual"], "forecast");
@@ -108,8 +209,19 @@ export function parseForecast(value: unknown): Forecast {
   const optional = (name: string): number | null => x[name] == null ? null : number(x[name], name); const confidence = number(x.confidence, "confidence"), residual = number(x.residual, "residual"); if (confidence < 0 || confidence > 1) throw new Error("Invalid forecast confidence"); const visibilityState = x.visibilityState === undefined ? undefined : text(x.visibilityState, "visibilityState", 16); if (visibilityState !== undefined && !visibility.has(visibilityState)) throw new Error("Invalid forecast visibility");
   return { metricKey: key, horizonStartUtc, horizonEndUtc, estimate: optional("estimate"), lowerBound: optional("lowerBound"), upperBound: optional("upperBound"), slopePerDay: optional("slopePerDay"), confidence, residual, forecastId: x.forecastId === undefined ? undefined : guid(x.forecastId, "forecastId", true), model: x.model === undefined ? "forecast-v1" : text(x.model, "model", 64), sourceGeneration: x.sourceGeneration === undefined ? 1 : integer(x.sourceGeneration, "sourceGeneration"), visibilityState: visibilityState as Forecast["visibilityState"] };
 }
-const retentionDataClasses = new Set(["m10_host_metrics", "m10_replication", "m10_rollups", "m10_evidence"]);
-const retentionBlockReasons = new Set(["disabled", "duration_unconfigured", "recovery_attestation_missing", "reader_lease_active", "backfill_incomplete", "dependency_pending", "minimum_partition_floor", "utc_floor", "registry_missing", "lease_missing", "retention_disabled", "partition_not_attached", "within_retention_window"]);
+const retentionDataClasses = new Set([
+  "raw_metric_samples", "diagnostic_events",
+  "m5_activity", "m5_requests", "m5_waits", "m5_blocking",
+  "m6_deadlocks", "m7_query_performance", "m8_alert_history", "m8_alert_delivery",
+  "m9_backup_status", "m9_agent_history", "m9_agent_failures", "m9_agent_occurrences",
+  "m9_tempdb", "m9_tempdb_files", "m9_ag_replicas", "m9_ag_databases",
+  "m9_ag_replica_evidence", "m9_ag_database_evidence",
+  "m9_backup_evidence", "m6_deadlock_read_receipts",
+  "m10_host_metrics", "m10_replication", "m10_rollups", "m10_evidence",
+  "sql_volume_capacity", "m7_group_watermarks", "m7_group_deltas", "sql_metric_baselines",
+  "collection_run_original_copy", "collection_run_canonical",
+]);
+const retentionBlockReasons = new Set(["disabled", "duration_unconfigured", "recovery_attestation_missing", "reader_lease_active", "backfill_incomplete", "dependency_pending", "checkpoint_active", "minimum_partition_floor", "utc_floor", "registry_missing", "lease_missing", "retention_disabled", "partition_not_attached", "within_retention_window", "grace_in_progress", "retention_failed"]);
 function retentionDuration(value: unknown, enabled: boolean): string | null { if (value === null) { if (enabled) throw new Error("Enabled retention policy requires a duration"); return null; } if (!enabled) throw new Error("Disabled retention policy must not carry a duration"); if (typeof value !== "string" || !/^(?:\d{1,4}\.)?\d{2}:\d{2}:\d{2}(?:\.\d{1,7})?$/.test(value)) throw new Error("Invalid retention policy duration"); const match = /^(?:(\d{1,4})\.)?(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,7}))?$/.exec(value)!; const days = Number(match[1] ?? 0), hours = Number(match[2]), minutes = Number(match[3]), seconds = Number(match[4]); if (hours > 23 || minutes > 59 || seconds > 59 || days > 3650 || days * 86400 + hours * 3600 + minutes * 60 + seconds < 86400) throw new Error("Retention duration is outside its bounds"); return value; }
 export function parseRetentionPolicy(value: unknown): RetentionPolicyResult { const row = object(value); keys(row, ["policy", "revision", "readAtUtc"], "retention policy"); const p = object(row.policy); keys(p, ["dataClass", "enabled", "retainFor", "minimumPartitionsToKeep"], "retention policy"); if (typeof p.dataClass !== "string" || !retentionDataClasses.has(p.dataClass) || typeof p.enabled !== "boolean") throw new Error("Invalid retention policy"); const floor = integer(p.minimumPartitionsToKeep, "minimumPartitionsToKeep"); if (floor < 1 || floor > 10000) throw new Error("Invalid retention policy floor"); retentionDuration(p.retainFor, p.enabled); const revision = integer(row.revision, "revision"); if (revision < 1) throw new Error("Invalid retention policy revision"); utc(row.readAtUtc, "readAtUtc"); return row as unknown as RetentionPolicyResult; }
 export function parseRetentionPreview(value: unknown): RetentionPreview { const row = object(value); keys(row, ["entries", "truncated", "nextCursor", "evaluatedAtUtc"], "retention preview"); required(row, ["entries", "truncated", "nextCursor", "evaluatedAtUtc"], "retention preview"); if (!Array.isArray(row.entries) || row.entries.length > 1024 || typeof row.truncated !== "boolean") throw new Error("Invalid retention preview page"); const nextCursor = cursor(row.nextCursor); if (row.truncated !== (nextCursor !== null)) throw new Error("Invalid retention preview pagination"); utc(row.evaluatedAtUtc, "evaluatedAtUtc"); const identities = new Set<string>(); const entries = row.entries.map(item => { const x = object(item); keys(x, ["dataClass", "parentSchema", "parentTable", "partitionName", "rangeStartUtc", "rangeEndUtc", "eligible", "reason"], "retention preview entry"); required(x, ["dataClass", "parentSchema", "parentTable", "partitionName", "rangeStartUtc", "rangeEndUtc", "eligible", "reason"], "retention preview entry"); if (typeof x.dataClass !== "string" || !retentionDataClasses.has(x.dataClass) || typeof x.parentSchema !== "string" || !/^[A-Za-z0-9_.-]{1,128}$/.test(x.parentSchema) || typeof x.parentTable !== "string" || !/^[A-Za-z0-9_.-]{1,128}$/.test(x.parentTable) || typeof x.partitionName !== "string" || !/^[A-Za-z0-9_.-]{1,128}$/.test(x.partitionName) || typeof x.eligible !== "boolean" || typeof x.reason !== "string" || !retentionBlockReasons.has(x.reason) && x.reason !== "eligible") throw new Error("Invalid retention preview entry"); const start = utc(x.rangeStartUtc, "rangeStartUtc")!, end = utc(x.rangeEndUtc, "rangeEndUtc")!; if (Date.parse(end) <= Date.parse(start) || x.eligible !== (x.reason === "eligible")) throw new Error("Retention eligibility and reason disagree"); const identity = `${x.dataClass}\0${x.parentSchema}\0${x.parentTable}\0${x.partitionName}`; if (identities.has(identity)) throw new Error("Duplicate retention preview entry"); identities.add(identity); return { ...x, rangeStartUtc: start, rangeEndUtc: end } as RetentionPreview["entries"][number]; }); return { entries, truncated: row.truncated, nextCursor, evaluatedAtUtc: utc(row.evaluatedAtUtc, "evaluatedAtUtc")! }; }

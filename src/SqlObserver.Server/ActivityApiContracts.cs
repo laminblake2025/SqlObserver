@@ -96,6 +96,20 @@ public sealed record ServerWaitSummaryResponse(
     string? SignalWaitTimeMillisecondsDelta,
     DateTimeOffset ObservedAtUtc);
 
+/// <summary>Bounded newest-first server-wait history over an exact UTC window.</summary>
+public sealed record ServerWaitHistoryPageResponse(
+    Guid InstanceId,
+    DateTimeOffset FromUtc,
+    DateTimeOffset ToUtc,
+    DateTimeOffset RepositoryTimeUtc,
+    IReadOnlyList<ServerWaitHistoryResponse> Items,
+    string? NextCursor);
+
+public sealed record ServerWaitHistoryResponse(
+    ActivitySnapshotEvidenceResponse Evidence,
+    Guid? BaselineRunId,
+    ServerWaitSummaryResponse Wait);
+
 /// <summary>A bounded snapshot-bound page of current blocking edges.</summary>
 public sealed record CurrentBlockingPageResponse(
     Guid InstanceId,

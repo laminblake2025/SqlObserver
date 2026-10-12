@@ -34,7 +34,7 @@ public enum MigrationAssessmentStatus
 
 public sealed class MigrationAssessmentRequest
 {
-    public const int MaximumHistory = 256;
+    public const int MaximumHistory = MigrationNumber.MaximumValue;
 
     public MigrationAssessmentRequest(int maxHistory, RepositoryCallTimeout timeout)
     {

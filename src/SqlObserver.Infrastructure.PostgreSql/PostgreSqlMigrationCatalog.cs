@@ -7,6 +7,9 @@ using SqlObserver.Domain.Repository;
 
 namespace SqlObserver.Infrastructure.PostgreSql;
 
+internal readonly record struct ConcurrentIndexSpec(string IndexName, string TableName,
+    string Columns, bool Partitioned = false);
+
 /// <summary>An immutable migration and its verified embedded SQL.</summary>
 public sealed class PostgreSqlMigrationResource
 {
@@ -14,12 +17,14 @@ public sealed class PostgreSqlMigrationResource
         string fileName,
         MigrationDescriptor descriptor,
         string sql,
-        string checksumHex)
+        string checksumHex,
+        ConcurrentIndexSpec? concurrentIndex)
     {
         FileName = fileName;
         Descriptor = descriptor;
         Sql = sql;
         ChecksumHex = checksumHex;
+        ConcurrentIndex = concurrentIndex;
     }
 
     public string FileName { get; }
@@ -29,6 +34,8 @@ public sealed class PostgreSqlMigrationResource
     public string ChecksumHex { get; }
 
     internal string Sql { get; }
+
+    internal ConcurrentIndexSpec? ConcurrentIndex { get; }
 }
 
 /// <summary>
@@ -38,7 +45,7 @@ public sealed class PostgreSqlMigrationResource
 public sealed partial class PostgreSqlMigrationCatalog
 {
     private const int MaximumMigrationBytes = 4 * 1024 * 1024;
-    private const int MaximumManifestBytes = 64 * 1024;
+    private const int MaximumManifestBytes = 2 * 1024 * 1024;
     private const string ManifestFileName = "checksums.sha256";
 
     private static ReadOnlySpan<byte> Utf8ByteOrderMark => [0xEF, 0xBB, 0xBF];
@@ -93,8 +100,10 @@ public sealed partial class PostgreSqlMigrationCatalog
             if (ContainsTopLevelTransactionControl(sql))
             {
                 throw new InvalidDataException(
-                    $"Migration {fileName} contains transaction control; the runner owns exactly one transaction per migration.");
+                    $"Migration {fileName} contains transaction control; the runner owns migration transactions.");
             }
+
+            ConcurrentIndexSpec? concurrentIndex = ParseConcurrentIndexSpec(sql, fileName);
 
             int number = int.Parse(
                 match.Groups["number"].Value,
@@ -104,9 +113,9 @@ public sealed partial class PostgreSqlMigrationCatalog
                 new MigrationNumber(number),
                 name,
                 new MigrationChecksum(actualChecksumBytes),
-                isTransactional: true);
+                isTransactional: concurrentIndex is null);
 
-            migrations.Add(new PostgreSqlMigrationResource(fileName, descriptor, sql, actualChecksum));
+            migrations.Add(new PostgreSqlMigrationResource(fileName, descriptor, sql, actualChecksum, concurrentIndex));
         }
 
         ValidateSequence(migrations);
@@ -123,6 +132,52 @@ public sealed partial class PostgreSqlMigrationCatalog
 
         return new PostgreSqlMigrationCatalog(migrations);
     }
+
+    private static ConcurrentIndexSpec? ParseConcurrentIndexSpec(string sql, string fileName)
+    {
+        const string marker = "-- sqlobserver:nontransactional-index=";
+        const string partitionedMarker = "-- sqlobserver:partitioned-concurrent-index=";
+        if (sql.StartsWith(partitionedMarker, StringComparison.Ordinal))
+        {
+            Match partitioned = PartitionedConcurrentIndexMigrationPattern().Match(sql);
+            if (!partitioned.Success)
+                throw new InvalidDataException($"Migration {fileName} must contain one supported partitioned-index declaration.");
+            string partitionedSchema = partitioned.Groups["schema"].Value;
+            return new ConcurrentIndexSpec(
+                $"{partitionedSchema}.{partitioned.Groups["index"].Value}",
+                $"{partitionedSchema}.{partitioned.Groups["table"].Value}",
+                partitioned.Groups["columns"].Value, Partitioned: true);
+        }
+        if (!sql.StartsWith(marker, StringComparison.Ordinal))
+        {
+            if (sql.Contains("CREATE INDEX CONCURRENTLY", StringComparison.OrdinalIgnoreCase) ||
+                sql.Contains("sqlobserver:nontransactional-index", StringComparison.Ordinal) ||
+                sql.Contains("sqlobserver:partitioned-concurrent-index", StringComparison.Ordinal))
+            {
+                throw new InvalidDataException($"Migration {fileName} has an invalid concurrent-index declaration.");
+            }
+
+            return null;
+        }
+
+        Match match = ConcurrentIndexMigrationPattern().Match(sql);
+        if (!match.Success)
+        {
+            throw new InvalidDataException($"Migration {fileName} must contain one supported concurrent-index statement.");
+        }
+
+        string schema = match.Groups["schema"].Value;
+        return new ConcurrentIndexSpec(
+            $"{schema}.{match.Groups["index"].Value}",
+            $"{schema}.{match.Groups["table"].Value}",
+            match.Groups["columns"].Value);
+    }
+
+    [GeneratedRegex(@"\A-- sqlobserver:nontransactional-index=(?<schema>[a-z][a-z0-9_]*)\.(?<index>[a-z][a-z0-9_]*)\nCREATE INDEX CONCURRENTLY \k<index>\n    ON \k<schema>\.(?<table>[a-z][a-z0-9_]*) \((?<columns>[a-z][a-z0-9_, ]*)\);\n\z", RegexOptions.CultureInvariant)]
+    private static partial Regex ConcurrentIndexMigrationPattern();
+
+    [GeneratedRegex(@"\A-- sqlobserver:partitioned-concurrent-index=(?<schema>[a-z][a-z0-9_]*)\.(?<index>[a-z][a-z0-9_]*)\nCREATE INDEX \k<index>\n    ON ONLY \k<schema>\.(?<table>[a-z][a-z0-9_]*) \((?<columns>[a-z][a-z0-9_, ]*)\);\n\z", RegexOptions.CultureInvariant)]
+    private static partial Regex PartitionedConcurrentIndexMigrationPattern();
 
     private static List<MigrationManifestEntry> ParseManifest(string manifest)
     {
@@ -153,10 +208,10 @@ public sealed partial class PostgreSqlMigrationCatalog
             result.Add(new MigrationManifestEntry(fileName, checksum));
         }
 
-        if (result.Count is 0 or > MigrationBatchResult.MaximumResults)
+        if (result.Count is 0 or > MigrationNumber.MaximumValue)
         {
             throw new InvalidDataException(
-                $"The migration manifest must contain between 1 and {MigrationBatchResult.MaximumResults} entries.");
+                $"The migration manifest must contain between 1 and {MigrationNumber.MaximumValue} entries.");
         }
 
         return result;

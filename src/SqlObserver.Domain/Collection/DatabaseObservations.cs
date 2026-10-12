@@ -94,7 +94,8 @@ public sealed class DatabaseObservation : IIngestionRecord
         DatabaseUserAccess userAccess,
         bool isReadOnly,
         int compatibilityLevel,
-        DateTimeOffset observedAtUtc)
+        DateTimeOffset observedAtUtc,
+        string? logReuseWaitDescription = null)
     {
         ArgumentNullException.ThrowIfNull(targetId);
         ArgumentNullException.ThrowIfNull(targetRevision);
@@ -113,6 +114,16 @@ public sealed class DatabaseObservation : IIngestionRecord
         {
             throw new ArgumentOutOfRangeException(nameof(compatibilityLevel));
         }
+        if (logReuseWaitDescription is not null &&
+            (logReuseWaitDescription.Length is < 1 or > 60 ||
+             logReuseWaitDescription[0] is < 'A' or > 'Z' ||
+             logReuseWaitDescription.AsSpan(1).IndexOfAnyExcept(
+                 "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_".AsSpan()) >= 0))
+        {
+            throw new ArgumentException(
+                "A log-reuse wait description must be a bounded SQL Server state token.",
+                nameof(logReuseWaitDescription));
+        }
 
         TargetId = targetId;
         TargetRevision = targetRevision;
@@ -123,8 +134,10 @@ public sealed class DatabaseObservation : IIngestionRecord
         UserAccess = userAccess;
         IsReadOnly = isReadOnly;
         CompatibilityLevel = compatibilityLevel;
+        LogReuseWaitDescription = logReuseWaitDescription;
         ObservedAtUtc = DomainValidation.RequireUtcMicrosecondAligned(observedAtUtc, nameof(observedAtUtc));
-        EstimatedSizeBytes = checked(FixedEstimatedBytes + name.Utf8Bytes);
+        EstimatedSizeBytes = checked(FixedEstimatedBytes + name.Utf8Bytes +
+            (logReuseWaitDescription?.Length ?? 0));
     }
 
     public MonitoredInstanceId TargetId { get; }
@@ -136,6 +149,8 @@ public sealed class DatabaseObservation : IIngestionRecord
     public DatabaseUserAccess UserAccess { get; }
     public bool IsReadOnly { get; }
     public int CompatibilityLevel { get; }
+    /// <summary>Current log-reuse state as of the last checkpoint; null means unobserved.</summary>
+    public string? LogReuseWaitDescription { get; }
     public DateTimeOffset ObservedAtUtc { get; }
     public int EstimatedSizeBytes { get; }
 }
@@ -183,7 +198,9 @@ public sealed class DatabaseFileObservation : IIngestionRecord
         long bytesRead,
         long bytesWritten,
         long ioStallMilliseconds,
-        DateTimeOffset observedAtUtc)
+        DateTimeOffset observedAtUtc,
+        long? readStallMilliseconds = null,
+        long? writeStallMilliseconds = null)
     {
         ArgumentNullException.ThrowIfNull(targetId);
         ArgumentNullException.ThrowIfNull(targetRevision);
@@ -220,6 +237,20 @@ public sealed class DatabaseFileObservation : IIngestionRecord
         ArgumentOutOfRangeException.ThrowIfNegative(bytesRead);
         ArgumentOutOfRangeException.ThrowIfNegative(bytesWritten);
         ArgumentOutOfRangeException.ThrowIfNegative(ioStallMilliseconds);
+        if (readStallMilliseconds.HasValue != writeStallMilliseconds.HasValue)
+        {
+            throw new ArgumentException("Read and write stall counters must be supplied together.", nameof(readStallMilliseconds));
+        }
+
+        if (readStallMilliseconds is long readStall && writeStallMilliseconds is long writeStall)
+        {
+            ArgumentOutOfRangeException.ThrowIfNegative(readStall, nameof(readStallMilliseconds));
+            ArgumentOutOfRangeException.ThrowIfNegative(writeStall, nameof(writeStallMilliseconds));
+            if (checked(readStall + writeStall) != ioStallMilliseconds)
+            {
+                throw new ArgumentException("Read and write stall counters must equal the total I/O stall.", nameof(ioStallMilliseconds));
+            }
+        }
 
         TargetId = targetId;
         TargetRevision = targetRevision;
@@ -237,8 +268,10 @@ public sealed class DatabaseFileObservation : IIngestionRecord
         BytesRead = bytesRead;
         BytesWritten = bytesWritten;
         IoStallMilliseconds = ioStallMilliseconds;
+        ReadStallMilliseconds = readStallMilliseconds;
+        WriteStallMilliseconds = writeStallMilliseconds;
         ObservedAtUtc = DomainValidation.RequireUtcMicrosecondAligned(observedAtUtc, nameof(observedAtUtc));
-        EstimatedSizeBytes = checked(FixedEstimatedBytes + logicalName.Utf8Bytes);
+        EstimatedSizeBytes = checked(FixedEstimatedBytes + logicalName.Utf8Bytes + (readStallMilliseconds.HasValue ? 16 : 0));
     }
 
     public MonitoredInstanceId TargetId { get; }
@@ -257,6 +290,8 @@ public sealed class DatabaseFileObservation : IIngestionRecord
     public long BytesRead { get; }
     public long BytesWritten { get; }
     public long IoStallMilliseconds { get; }
+    public long? ReadStallMilliseconds { get; }
+    public long? WriteStallMilliseconds { get; }
     public DateTimeOffset ObservedAtUtc { get; }
     public int EstimatedSizeBytes { get; }
 }

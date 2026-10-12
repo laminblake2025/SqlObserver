@@ -164,6 +164,16 @@ public sealed class ListDueCollectorWorkRequest
     public RepositoryCallTimeout Timeout { get; }
 }
 
+public sealed record ClaimDueCollectorWorkRequest(
+    WorkerExecutionId Owner,
+    WorkerLeaseDuration LeaseDuration,
+    RepositoryCallTimeout Timeout);
+
+public sealed record CollectorClaimedWork(
+    CollectorDueWorkItem Work,
+    WorkerLease Lease,
+    DateTimeOffset LeaseRepositoryTimeUtc);
+
 public sealed class CollectorDueWorkItem
 {
     public CollectorDueWorkItem(
@@ -466,6 +476,10 @@ public interface ICollectorRuntimeRepositoryPort
 
     ValueTask<CollectorDueWorkBatch> ListDueAsync(
         ListDueCollectorWorkRequest request,
+        CancellationToken cancellationToken);
+
+    ValueTask<CollectorClaimedWork?> ClaimDueAsync(
+        ClaimDueCollectorWorkRequest request,
         CancellationToken cancellationToken);
 
     ValueTask<CollectorRunStartResult> BeginRunAsync(

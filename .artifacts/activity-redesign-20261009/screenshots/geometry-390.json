@@ -1,0 +1,90 @@
+[
+  {
+    "class": "topbar",
+    "x": 0,
+    "y": 69,
+    "width": 390,
+    "height": 113,
+    "minWidth": "0px"
+  },
+  {
+    "class": "page-heading",
+    "x": 16,
+    "y": 198,
+    "width": 358,
+    "height": 92,
+    "minWidth": "0px"
+  },
+  {
+    "class": "server-navigation",
+    "x": 16,
+    "y": 300,
+    "width": 358,
+    "height": 38,
+    "minWidth": "0px"
+  },
+  {
+    "class": "activity-capture-heading",
+    "x": 16,
+    "y": 350,
+    "width": 358,
+    "height": 40,
+    "minWidth": "0px"
+  },
+  {
+    "class": "activity-capture-status",
+    "x": 16,
+    "y": 398,
+    "width": 358,
+    "height": 40,
+    "minWidth": "0px"
+  },
+  {
+    "class": "activity-summary-grid",
+    "x": 16,
+    "y": 450,
+    "width": 358,
+    "height": 139,
+    "minWidth": "0px"
+  },
+  {
+    "class": "activity-quick-filters",
+    "x": 27,
+    "y": 647.390625,
+    "width": 336,
+    "height": 50,
+    "minWidth": "0px"
+  },
+  {
+    "class": "activity-list-toolbar",
+    "x": 27,
+    "y": 697.390625,
+    "width": 336,
+    "height": 40,
+    "minWidth": "0px"
+  },
+  {
+    "class": "activity-session-table",
+    "x": 27,
+    "y": 769.890625,
+    "width": 336,
+    "height": 8759.6875,
+    "minWidth": "0px"
+  },
+  {
+    "class": "activity-session-row",
+    "x": 27,
+    "y": 769.890625,
+    "width": 336,
+    "height": 166.59375,
+    "minWidth": "0px"
+  },
+  {
+    "class": "activity-inspect-cell",
+    "x": 287.984375,
+    "y": 780.890625,
+    "width": 64.015625,
+    "height": 44,
+    "minWidth": "auto"
+  }
+]

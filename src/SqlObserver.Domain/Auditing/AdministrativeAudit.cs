@@ -81,6 +81,13 @@ public enum AdministrativeAuditAction
     RetireAlertDestination = 15,
     CancelAlertDelivery = 16,
     ApproveAlertDestination = 17,
+    SnoozeAlert = 18,
+    UnsnoozeAlert = 19,
+    AssignAlert = 20,
+    UnassignAlert = 21,
+    CreateMaintenanceSeries = 22,
+    UpdateMaintenanceSeries = 23,
+    CancelMaintenanceSeries = 24,
 }
 
 public enum AdministrativeAuthorizationDecision

@@ -22,7 +22,17 @@ public sealed class PostgreSqlCollectorDataPlane : IAsyncDisposable
         LiveActivity = new PostgreSqlLiveActivityRepository(dataSource);
         _fingerprintKey = fingerprintKey ?? throw new ArgumentNullException(nameof(fingerprintKey));
         Runtime = new PostgreSqlCollectorRuntimeRepositoryPort(dataSource, fingerprintKey);
+        BackupZoneQualifications = new PostgreSqlBackupZoneQualificationPort(dataSource);
+        SqlAgentModuleEnrollments = new PostgreSqlSqlAgentModuleEnrollmentPort(dataSource);
+        QueryStoreGroupWindows = new PostgreSqlQueryStoreGroupWindowPort(dataSource);
+        SensitivePayloads = new PostgreSqlSensitivePayloadPort(dataSource);
         WorkerLeases = new PostgreSqlWorkerLeasePort(dataSource);
+        OverviewLatestMaterialization = new PostgreSqlOverviewLatestMaterializationPort(dataSource);
+        BackupFleetSummary = new PostgreSqlBackupFleetSummaryPort(dataSource);
+        BackupFleetCache = new PostgreSqlBackupFleetCachePort(dataSource);
+        BackupAlertEvidence = new PostgreSqlBackupAlertEvidencePort(dataSource);
+        BlockingAlertEvidence = new PostgreSqlBlockingAlertEvidencePort(dataSource);
+        DeadlockAlertEvidence = new PostgreSqlDeadlockAlertEvidencePort(dataSource);
         CapabilityProfiles = new PostgreSqlCapabilityProfilePort(dataSource);
         ReplicationDistributionBindings = new PostgreSqlReplicationDistributionBindingResolver(dataSource);
         Alerts = new PostgreSqlAlertRepositoryPort(dataSource);
@@ -38,8 +48,18 @@ public sealed class PostgreSqlCollectorDataPlane : IAsyncDisposable
     }
 
     public ICollectorRuntimeRepositoryPort Runtime { get; }
+    public IBackupHistoricalZoneQualificationPort BackupZoneQualifications { get; }
+    public ISqlAgentModuleEnrollmentResolver SqlAgentModuleEnrollments { get; }
+    public IQueryStoreGroupWindowPort QueryStoreGroupWindows { get; }
+    public ISensitivePayloadPort SensitivePayloads { get; }
     public ILiveActivityRepository LiveActivity { get; }
     public IWorkerLeasePort WorkerLeases { get; }
+    public IOverviewLatestMaterializationPort OverviewLatestMaterialization { get; }
+    public IBackupFleetSummaryPort BackupFleetSummary { get; }
+    public IBackupFleetCachePort BackupFleetCache { get; }
+    public IBackupAlertEvidencePort BackupAlertEvidence { get; }
+    public IBlockingAlertEvidencePort BlockingAlertEvidence { get; }
+    public IDeadlockAlertEvidencePort DeadlockAlertEvidence { get; }
     public ICapabilityProfileRepositoryPort CapabilityProfiles { get; }
     public IReplicationDistributionBindingResolver ReplicationDistributionBindings { get; }
     public IAlertRepositoryPort Alerts { get; }

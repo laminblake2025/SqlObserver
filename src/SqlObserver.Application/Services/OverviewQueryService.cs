@@ -1,7 +1,9 @@
 using System.Collections.Concurrent;
 using System.Globalization;
+using System.Text.Json;
 using SqlObserver.Application.Ports;
 using SqlObserver.Domain.Alerting;
+using SqlObserver.Domain.Authorization;
 using SqlObserver.Domain.Collection;
 using SqlObserver.Domain.Targets;
 using SqlObserver.Domain.Telemetry;
@@ -12,9 +14,13 @@ namespace SqlObserver.Application.Services;
 public sealed class OverviewQueryService(
     IObservationTargetStatusQueryService targets, IHealthProjectionQueryService health,
     IAlertQueryService alerts, IActivityProjectionQueryService activity, IDeadlockProjectionQueryService deadlocks,
-    IOperationalHealthQueryService operations, IMetricSeriesQueryService metrics, IOverviewHistoryRepositoryPort history) : IOverviewQueryService
+    IOperationalHealthQueryService operations, IMetricSeriesQueryService metrics,
+    IOverviewHistoryRepositoryPort history, IOverviewLatestStatusRepositoryPort latestStatus,
+    IObservationTargetGroupingPort grouping, IBackupFleetLatestRepositoryPort backupLatest) : IOverviewQueryService
 {
     private static readonly RepositoryCallTimeout Timeout = new(TimeSpan.FromSeconds(5));
+    private static readonly ApplicationRole[] ReadRoles =
+        [ApplicationRole.Viewer, ApplicationRole.Operator, ApplicationRole.TargetAdministrator];
     private const int MaxPages = 40;
     private static readonly OverviewValue Unknown = new(null, "unavailable", null);
 
@@ -23,30 +29,57 @@ public sealed class OverviewQueryService(
         if (query.FromUtc.Offset != TimeSpan.Zero || query.ToUtc.Offset != TimeSpan.Zero || query.ToUtc <= query.FromUtc ||
             query.ToUtc - query.FromUtc > TimeSpan.FromDays(31) || query.ToUtc > DateTimeOffset.UtcNow.AddMinutes(1))
             throw new ArgumentException("Select an increasing UTC window of at most 31 days.");
+        if (!ReadRoles.Any(query.Authorization.HasRole)) throw new UnauthorizedAccessException();
+        if (query.TargetId is { } selectedId)
+            query.Authorization.RequireAny(new MonitoredInstanceId(selectedId), ReadRoles);
+
+        // Inventory also permits audit/security roles. Restrict the Overview inventory
+        // before paging or loading capability profiles, preserving each read role's scope.
+        var inventoryAuthorization = new AuthorizationContext(
+            query.Authorization.ActorSid, query.Authorization.PrincipalState,
+            ReadRoles.Where(query.Authorization.HasRole)
+                .Select(role => new RoleAuthorizationGrant(role, query.Authorization.GetScopeForRoles([role])))
+                .ToArray());
         DateTimeOffset cutoff = DateTimeOffset.UtcNow;
         var inventory = new List<ObservationTargetStatusSnapshot>();
         ObservationTargetListCursor? cursor = null;
         do
         {
-            var page = await targets.ListAsync(new(query.Authorization, 100, cursor, false, Timeout), cancellationToken);
+            var page = await targets.ListAsync(new(inventoryAuthorization, 100, cursor, false, Timeout), cancellationToken);
             inventory.AddRange(page.Targets);
             if (page.NextCursor == cursor && cursor is not null) throw new InvalidDataException("Target cursor did not advance.");
             cursor = page.NextCursor;
             if (inventory.Count >= 1000 && cursor is not null) throw new InvalidOperationException("Overview scope exceeds the bounded inventory read.");
         } while (cursor is not null);
         inventory = inventory.DistinctBy(x => x.Target.TargetId).OrderBy(x => x.Target.DisplayName.Value, StringComparer.OrdinalIgnoreCase).ToList();
+        var inventoryIds = inventory.Select(x => x.Target.TargetId.Value).ToArray();
+        IReadOnlyDictionary<Guid, ObservationTargetGrouping> groupings = await grouping.ReadAsync(inventoryIds, Timeout, cancellationToken);
+        if (groupings.Count != inventoryIds.Length || groupings.Keys.Except(inventoryIds).Any() ||
+            groupings.Any(pair => pair.Value.TargetId != pair.Key))
+            throw new InvalidDataException("Target grouping read did not match the authorized inventory.");
         var selected = inventory.Where(x => query.TargetId.HasValue ? x.Target.TargetId.Value == query.TargetId : x.Target.Lifecycle is not (ObservationTargetLifecycle.Disabled or ObservationTargetLifecycle.Retired)).ToArray();
         if (query.TargetId.HasValue && selected.Length == 0) throw new UnauthorizedAccessException();
-        // Validate the entire scope before dispatching any evidence read, including roles on empty fleets.
-        if (!query.Authorization.IsActive || !new[] { Domain.Authorization.ApplicationRole.Viewer, Domain.Authorization.ApplicationRole.Operator, Domain.Authorization.ApplicationRole.TargetAdministrator }.Any(query.Authorization.HasRole)) throw new UnauthorizedAccessException();
+        // Validate the returned scope before dispatching any evidence read.
         foreach (var target in selected) MetricSeriesQueryService.Authorize(query.Authorization, target.Target.TargetId);
         using var concurrency = new SemaphoreSlim(8);
         using var evidenceDeadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         evidenceDeadline.CancelAfter(TimeSpan.FromSeconds(20));
         var evidence = await Task.WhenAll(selected.Select(target =>
             ReadTargetAsync(query, target.Target, cutoff, concurrency, evidenceDeadline.Token, cancellationToken)));
+        DateTimeOffset responseAt = DateTimeOffset.UtcNow;
+        evidence = evidence.Select(item => item.BackupSummary is { } backup && backup.ValidUntilUtc <= responseAt
+            ? item with { BackupSummary = null,
+                Issues = item.Issues.Where(i => i.Title is not ("Backup faults observed" or "Backup policy checks failed")).ToArray(),
+                Gaps = item.Gaps.Append("Backup policy summary expired; refresh current evidence").Order(StringComparer.Ordinal).ToArray() }
+            : item).ToArray();
         return new(cutoff, query.FromUtc, query.ToUtc, query.TargetId,
-            inventory.Select(x => new OverviewTarget(x.Target.TargetId.Value, x.Target.DisplayName.Value, x.Target.Lifecycle.ToString().ToLowerInvariant())).ToArray(),
+            inventory.Select(x => {
+                Guid id = x.Target.TargetId.Value;
+                ObservationTargetGrouping metadata = groupings[id];
+                return new OverviewTarget(id, x.Target.DisplayName.Value, x.Target.Lifecycle.ToString().ToLowerInvariant(),
+                    metadata.Environment, metadata.Tags, metadata.Revision,
+                    query.Authorization.CanAccess(ApplicationRole.TargetAdministrator, x.Target.TargetId));
+            }).ToArray(),
             inventory.Count(x => x.Target.Lifecycle is ObservationTargetLifecycle.Disabled or ObservationTargetLifecycle.Retired), evidence);
     }
 
@@ -76,13 +109,64 @@ public sealed class OverviewQueryService(
         void QueueRead(string label, Func<CancellationToken, Task> action) => reads.Add(Read(label, action));
         void Issue(string title, string detail, string destination, int priority, DateTimeOffset? at) => issues.Add(new(id.Value, target.DisplayName.Value, title, detail, destination, priority, at));
         void Resource(string label, double? value, string unit, string state, DateTimeOffset? at) => resources.Add(new(id.Value, target.DisplayName.Value, label, value, unit, state, at));
-        await Read("Collection health", async ct =>
+        OverviewLatestStatus? cached = null;
+        OverviewBackupSummary? backupSummary = null;
+        if (query.UseLatestStatus && target.Lifecycle == ObservationTargetLifecycle.Active)
+            QueueRead("Backup policy summary", async ct =>
+            {
+                BackupFleetSummary? candidate = await backupLatest.ReadAsync(id, target.Revision.Value, cutoff, Timeout, ct);
+                if (candidate is null)
+                {
+                    gaps.Add("No current backup policy summary; open Health checks to inspect collection and policy settings");
+                    return;
+                }
+                BackupFleetSummaryContract.Validate(candidate);
+                if (candidate.Context.TargetId != id || candidate.Context.TargetRevision != target.Revision.Value ||
+                    candidate.Context.AtUtc > cutoff || candidate.ValidUntilUtc <= cutoff || candidate.ValidUntilUtc <= DateTimeOffset.UtcNow)
+                    throw new InvalidDataException("Overview backup summary crossed its target, revision or freshness boundary.");
+                backupSummary = MapBackup(candidate);
+                if (candidate.ObservedFaultDatabases > 0)
+                    Issue("Backup faults observed", $"Backup damage or missing checksums observed in {candidate.ObservedFaultDatabases} databases; open Health checks for evidence", "operations", 0, candidate.Context.AtUtc);
+                if (candidate.Full.PolicyViolated + candidate.Log.PolicyViolated > 0)
+                    Issue("Backup policy checks failed", $"Full: {candidate.Full.PolicyViolated}; log: {candidate.Log.PolicyViolated}; open Health checks for affected databases", "operations", 1, candidate.Context.AtUtc);
+            });
+        if (query.UseLatestStatus && target.Lifecycle == ObservationTargetLifecycle.Active)
+        {
+            bool readReturned = false;
+            await Read("Latest status", async ct =>
+            {
+                OverviewLatestStatus? candidate = await latestStatus.ReadAsync(
+                    id, target.Revision.Value, cutoff, ct);
+                readReturned = true;
+                if (candidate is not null &&
+                    (candidate.TargetId != id.Value ||
+                     candidate.TargetRevision != target.Revision.Value ||
+                     candidate.Issues.Any(issue => issue.TargetId != id.Value) ||
+                     candidate.Resources.Any(resource => resource.TargetId != id.Value)))
+                    throw new InvalidDataException("Overview latest status crossed its target or revision boundary.");
+                cached = candidate;
+            });
+            if (cached is null && readReturned)
+                gaps.Add("No latest status projection; direct source reads used");
+            if (cached is not null)
+            {
+                alertValue = cached.ActiveAlerts;
+                blockedValue = cached.BlockedSessions;
+                foreach (OverviewIssue issue in cached.Issues)
+                    if (issue.Title != "Damaged backup") issues.Add(issue with { Server = target.DisplayName.Value });
+                foreach (OverviewResource resource in cached.Resources)
+                    if (resource.Label != "Backup evidence") resources.Add(resource with { Server = target.DisplayName.Value });
+                foreach (string gap in cached.Gaps)
+                    if (!gap.StartsWith("Backup ", StringComparison.Ordinal)) gaps.Add(gap);
+            }
+        }
+        if (cached is null) await Read("Collection health", async ct =>
         {
             snapshot = await health.GetInstanceAsync(new(query.Authorization, id, Timeout), ct);
             if (snapshot is null) { gaps.Add("No SQL collection snapshot"); return; }
             if (snapshot.TargetId != id) throw new InvalidDataException();
             if (snapshot.CoreCollector.State != CollectorHealthState.Current) gaps.Add($"SQL collection {snapshot.CoreCollector.State.ToString().ToLowerInvariant()}");
-            foreach (var pair in new[] { ("engine.user_connections", "Connections", "connections"), ("engine.process_physical_memory_bytes", "SQL physical memory", "GiB") })
+            foreach (var pair in new[] { ("engine.user_connections", "Connections", "connections"), ("engine.process_physical_memory_bytes", "SQL physical memory", "GiB"), ("engine.os_available_memory_bytes", "OS available memory via SQL", "GiB"), ("engine.memory_grants_pending", "SQL memory grants pending", "grants"), ("engine.scheduler_runnable_tasks", "SQL runnable tasks", "tasks") })
             {
                 var metric = snapshot.CoreMetrics.Where(x => x.MetricId.Value == pair.Item1 && x.Dimensions.Count == 0).OrderByDescending(x => x.ObservedAtUtc).FirstOrDefault();
                 Resource(pair.Item2, metric is null ? null : metric.Value / (pair.Item3 == "GiB" ? 1073741824d : 1), pair.Item3, snapshot.CoreCollector.State.ToString().ToLowerInvariant(), metric?.ObservedAtUtc);
@@ -90,7 +174,7 @@ public sealed class OverviewQueryService(
         });
         if (target.Lifecycle is ObservationTargetLifecycle.Disabled or ObservationTargetLifecycle.Retired)
             return new(id.Value, target.DisplayName.Value, target.Lifecycle.ToString().ToLowerInvariant(), snapshot?.CoreCollector.LastSuccessAtUtc, Unknown, Unknown, Unknown, issues.ToArray(), resources.ToArray(), series.ToArray(), ["Monitoring is disabled; live analytics are unavailable."]);
-        QueueRead("Alerts", async ct =>
+        if (cached is null) QueueRead("Alerts", async ct =>
         {
             var items = new Dictionary<Guid, AlertActiveDto>(); AlertActiveCursor? cursor = null; DateTimeOffset at = cutoff;
             for (int i = 0; i < MaxPages; i++)
@@ -106,7 +190,7 @@ public sealed class OverviewQueryService(
                 Issue(row.RuleName, $"{row.State}: {row.Reason ?? "Threshold or collector condition"}", "alerts", row.State == AlertState.Pending ? 3 : 1, row.FiredUtc ?? row.FirstObservedUtc);
             if (cursor is not null) gaps.Add("Alert count is a lower bound");
         });
-        QueueRead("Blocking", async ct =>
+        if (cached is null) QueueRead("Blocking", async ct =>
         {
             var blocked = new HashSet<int>(); BlockingEdgeCursor? cursor = null; ActivitySnapshotEvidence? ev = null;
             for (int i = 0; i < MaxPages; i++)
@@ -146,6 +230,24 @@ public sealed class OverviewQueryService(
             foreach (var item in await history.ReadAsync(id, target.Revision.Value, query.FromUtc, query.ToUtc, cutoff, ct) ?? [])
             {
                 if (item.TargetId != id.Value) throw new InvalidDataException("Overview history crossed target scope.");
+                if (!query.TargetId.HasValue && item.Metric is
+                    ("engine.sql_scheduler_cpu_percent" or "engine.os_available_memory_bytes"))
+                {
+                    bool cpu = item.Metric == "engine.sql_scheduler_cpu_percent";
+                    string unit = cpu ? "%" : "GiB";
+                    if (item.Dimension is not null || item.Unit != unit ||
+                        item.Points.Any(point => point.Value is { } value &&
+                            (!double.IsFinite(value) || value < 0 || cpu && value > 100)))
+                        throw new InvalidDataException("Overview SQL resource history is invalid.");
+                    OverviewPoint? latest = item.Points.MaxBy(point => point.TimeUtc);
+                    string state = latest?.Value is null || latest.Samples == 0 ? "no_data" :
+                        query.ToUtc - latest.TimeUtc > TimeSpan.FromSeconds(BucketSeconds(query) + 120)
+                            ? "stale" : item.State;
+                    Resource(cpu ? "SQL scheduler CPU · selected window" : "OS available memory via SQL · selected window",
+                        latest?.Value, unit, state, latest?.TimeUtc);
+                    continue;
+                }
+                if (!query.TargetId.HasValue && item.Metric is ("engine.process_physical_memory_bytes" or "engine.memory_grants_pending" or "engine.scheduler_runnable_tasks")) continue;
                 series.Add(item with { Label = target.DisplayName.Value });
             }
         });
@@ -161,7 +263,7 @@ public sealed class OverviewQueryService(
                 }
             });
         }
-        QueueRead("Waits", async ct =>
+        if (cached is null) QueueRead("Waits", async ct =>
         {
             var items = new List<ServerWaitSummaryItem>(); ServerWaitSummaryCursor? cursor = null; ActivitySnapshotEvidence? evidence = null;
             for (int i = 0; i < MaxPages; i++)
@@ -224,7 +326,7 @@ public sealed class OverviewQueryService(
                 }
                 if (cursor is not null || points.Select(x => string.Join("|", x.Dimensions)).Distinct().Count() > 20) gaps.Add($"{metric}: bounded history is partial");
             });
-        QueueRead("Database states", async ct =>
+        if (cached is null) QueueRead("Database states", async ct =>
         {
             DatabaseHealthCursor? cursor = null;
             for (int i = 0; i < MaxPages; i++)
@@ -238,12 +340,12 @@ public sealed class OverviewQueryService(
             if (cursor is not null) gaps.Add("Database state scan partial");
         });
         var request = new OperationalHealthRequest(id, null, null, 100, null, Timeout);
-        QueueRead("TempDB", async ct =>
+        if (cached is null) QueueRead("TempDB", async ct =>
         {
             var temp = await operations.GetTempDbAsync(query.Authorization, request, ct);
             if (temp is not null) Resource("TempDB used", temp.TotalBytes > 0 && temp.UsedBytes.HasValue ? 100d * temp.UsedBytes.Value / temp.TotalBytes.Value : null, "%", temp.State.ToString().ToLowerInvariant(), temp.ObservedAtUtc);
         });
-        QueueRead("Backups", async ct =>
+        if (cached is null && !query.UseLatestStatus) QueueRead("Backups", async ct =>
         {
             var backup = await operations.GetBackupsAsync(query.Authorization, request, ct);
             if (backup is not null)
@@ -258,11 +360,12 @@ public sealed class OverviewQueryService(
             var agent = await operations.GetAgentFailuresAsync(query.Authorization, request with { FromUtc = query.FromUtc, ToUtc = query.ToUtc }, ct);
             if (agent is not null)
             {
-                Resource("SQL Agent failures", agent.Items.Select(x => x.FailureFingerprint).Distinct().Count(), "observed events", agent.Truncated || agent.NextCursor is not null ? "partial" : agent.State.ToString().ToLowerInvariant(), agent.ObservedAtUtc);
-                if (agent.Items.Count > 0) Issue("SQL Agent failures", $"{agent.Items.Select(x => x.JobId).Distinct().Count()} jobs affected in the selected window", "operations", 2, agent.ObservedAtUtc);
+                var failedOutcomes = agent.Items.Where(SqlAgentFailureSemantics.CountsAsJobFailure).DistinctBy(x => x.FailureFingerprint).ToArray();
+                Resource("SQL Agent failures", failedOutcomes.Length, "failed job outcomes", agent.Truncated || agent.NextCursor is not null ? "partial" : agent.State.ToString().ToLowerInvariant(), agent.ObservedAtUtc);
+                if (failedOutcomes.Length > 0) Issue("SQL Agent failures", $"{failedOutcomes.Select(x => x.JobId).Distinct().Count()} jobs affected in the selected window", "operations", 2, agent.ObservedAtUtc);
             }
         });
-        QueueRead("Availability groups", async ct =>
+        if (cached is null) QueueRead("Availability groups", async ct =>
         {
             var ag = await operations.GetAvailabilityGroupReplicasAsync(query.Authorization, request, ct);
             if (ag is not null)
@@ -276,15 +379,31 @@ public sealed class OverviewQueryService(
         if (alertValue.Value is null) gaps.Add("No active-alert snapshot");
         if (blockedValue.Value is null) gaps.Add("No current blocking snapshot");
         if (deadlockValue.Value is null) gaps.Add("No deadlock evidence");
-        return new(id.Value, target.DisplayName.Value, snapshot?.CoreCollector.State.ToString().ToLowerInvariant() ?? "unavailable", snapshot?.CoreCollector.LastSuccessAtUtc,
-            alertValue, blockedValue, deadlockValue, issues.OrderBy(x => x.Priority).ThenBy(x => x.ObservedAtUtc).Take(10).ToArray(), resources.OrderBy(x => x.Label, StringComparer.Ordinal).ToArray(), series.OrderBy(x => x.Metric, StringComparer.Ordinal).ThenBy(x => x.Dimension, StringComparer.Ordinal).ToArray(), gaps.Order(StringComparer.Ordinal).ToArray());
+        return new(id.Value, target.DisplayName.Value,
+            cached?.CollectionState ?? snapshot?.CoreCollector.State.ToString().ToLowerInvariant() ?? "unavailable",
+            cached?.LastSuccessAtUtc ?? snapshot?.CoreCollector.LastSuccessAtUtc,
+            alertValue, blockedValue, deadlockValue, issues.OrderBy(x => x.Priority).ThenBy(x => x.ObservedAtUtc).Take(10).ToArray(), resources.OrderBy(x => x.Label, StringComparer.Ordinal).ToArray(), series.OrderBy(x => x.Metric, StringComparer.Ordinal).ThenBy(x => x.Dimension, StringComparer.Ordinal).ToArray(), gaps.Order(StringComparer.Ordinal).ToArray(), backupSummary);
+    }
+
+    private static OverviewBackupSummary MapBackup(BackupFleetSummary summary)
+    {
+        static string Name<T>(T value) where T : Enum => JsonNamingPolicy.SnakeCaseLower.ConvertName(value.ToString());
+        static OverviewBackupChecks Checks(BackupFleetCheckCounts counts) => new(counts.WithinThreshold,
+            counts.PolicyViolated, counts.Indeterminate, counts.NotRequired, counts.Disabled,
+            counts.UnknownReasons.Select(r => new OverviewBackupUnknownReason(Name(r.Reason), r.Count)).ToArray());
+        return new(summary.Context.TargetId.Value, summary.Context.AtUtc, summary.ValidUntilUtc,
+            Name(summary.Status), Name(summary.Context.EvidenceStatus), Name(summary.Context.Coverage),
+            summary.Context.DatabaseCount, summary.Context.CollectorEnabled, Checks(summary.Full), Checks(summary.Log), summary.ObservedFaultDatabases);
     }
 
     private static DateTimeOffset Bucket(DateTimeOffset at, OverviewQuery query)
     {
-        int seconds = query.ToUtc - query.FromUtc > TimeSpan.FromDays(1) ? 3600 : query.ToUtc - query.FromUtc > TimeSpan.FromHours(6) ? 900 : 300;
+        int seconds = BucketSeconds(query);
         return DateTimeOffset.FromUnixTimeSeconds(at.ToUnixTimeSeconds() / seconds * seconds);
     }
+    private static int BucketSeconds(OverviewQuery query) =>
+        query.ToUtc - query.FromUtc > TimeSpan.FromDays(1) ? 3600 :
+        query.ToUtc - query.FromUtc > TimeSpan.FromHours(6) ? 900 : 300;
     private static string Unit(string metric) => metric.EndsWith("_bytes", StringComparison.Ordinal) ? "GiB" : metric.EndsWith("_ms", StringComparison.Ordinal) ? "ms" : metric.EndsWith("seconds", StringComparison.Ordinal) ? "seconds" : "%";
     // Internal scheduler, flush, and maintenance workers are background engine activity, not user contention.
     private static bool IdleWait(string wait) => wait.StartsWith("SLEEP", StringComparison.Ordinal) || wait is

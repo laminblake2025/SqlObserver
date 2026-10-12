@@ -341,7 +341,7 @@ public sealed class McpProtocolHttpContractTests
         Assert.False(second.StructuredContent.Value.GetProperty("data").TryGetProperty("nextCursor", out _));
     }
 
-    private static WebApplication BuildHost()
+    internal static WebApplication BuildHost(Action<IServiceCollection>? configure = null)
     {
         WebApplicationBuilder builder = WebApplication.CreateBuilder();
         builder.WebHost.UseTestServer();
@@ -355,6 +355,7 @@ public sealed class McpProtocolHttpContractTests
         builder.Services.AddSingleton<IObservationTargetQueryService, PagingTargetQueryService>();
         builder.Services.AddSingleton<RecordingAuditPort>();
         builder.Services.AddSingleton<IMcpInvocationAuditPort>(services => services.GetRequiredService<RecordingAuditPort>());
+        configure?.Invoke(builder.Services);
         WebApplication app = builder.Build();
         app.UseAuthentication();
         app.UseMiddleware<McpHttpAuditBoundaryMiddleware>();

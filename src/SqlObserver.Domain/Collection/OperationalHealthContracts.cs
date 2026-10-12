@@ -22,7 +22,9 @@ public static class SqlServerTimestamp
     public static (DateTimeOffset? Utc, DateTime Local, bool SourceTimeUnknown) ToUtc(
         DateTime local, short? timeZoneOffsetMinutes)
     {
-        if (timeZoneOffsetMinutes is >= -2_880 and <= 2_880 && timeZoneOffsetMinutes.Value % 15 == 0)
+        // backupset.time_zone supports -48 through +48 quarter-hour units.
+        // The collector supplies minutes; unknown and invalid offsets stay unresolved.
+        if (timeZoneOffsetMinutes is >= -720 and <= 720 && timeZoneOffsetMinutes.Value % 15 == 0)
         {
             var offset = TimeSpan.FromMinutes(timeZoneOffsetMinutes.Value);
             DateTime unspecified = DateTime.SpecifyKind(local, DateTimeKind.Unspecified);

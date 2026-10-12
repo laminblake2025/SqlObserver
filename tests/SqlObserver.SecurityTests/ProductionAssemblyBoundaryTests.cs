@@ -12,7 +12,7 @@ public sealed class ProductionAssemblyBoundaryTests
     [Fact]
     public void ServerDoesNotReferenceSqlServerTargetAdapterOrDriver()
     {
-        string[] references = GetDirectAssemblyReferences(typeof(Server.ScaffoldEndpoints));
+        string[] references = GetDirectAssemblyReferences(typeof(Server.ServiceStatusEndpoints));
 
         Assert.DoesNotContain("SqlObserver.Infrastructure.SqlServer", references);
         Assert.DoesNotContain("Microsoft.Data.SqlClient", references);

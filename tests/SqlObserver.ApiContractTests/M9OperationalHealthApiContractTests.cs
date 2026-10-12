@@ -117,6 +117,84 @@ public sealed class M9OperationalHealthApiContractTests : IClassFixture<M9Operat
         Assert.Equal(TimeSpan.FromDays(7), factory.Repository.LastToUtc!.Value - factory.Repository.LastFromUtc!.Value);
     }
 
+    [Theory]
+    [InlineData(0, true)]
+    [InlineData(1, false)]
+    public async Task AgentHttpProjectionDistinguishesJobOutcomesFromStepFailures(int step, bool jobFailure)
+    {
+        factory.Repository.AgentStepId = step;
+        try
+        {
+            using HttpClient client = CreateClient("viewer");
+            using HttpResponseMessage response = await client.GetAsync(Route("sql-agent/failures"));
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            using JsonDocument body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+            JsonElement item = Assert.Single(body.RootElement.GetProperty("items").EnumerateArray());
+            Assert.Equal(step, item.GetProperty("stepId").GetInt32());
+            Assert.Equal(jobFailure, item.GetProperty("isJobOutcome").GetBoolean());
+            Assert.Equal(jobFailure, item.GetProperty("countsAsJobFailure").GetBoolean());
+            Assert.Equal("firstObservedUtc", body.RootElement.GetProperty("coverage").GetString());
+        }
+        finally { factory.Repository.AgentStepId = 1; }
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task AgentHttpProjectionKeepsSourceLocalTimeSeparateFromFirstObservedUtc(bool known)
+    {
+        factory.Repository.AgentSourceLocalStart = known
+            ? new DateTime(2026, 11, 1, 1, 30, 0, DateTimeKind.Unspecified)
+            : null;
+        try
+        {
+            using HttpClient client = CreateClient("viewer");
+            using HttpResponseMessage response = await client.GetAsync(Route("sql-agent/failures"));
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            using JsonDocument body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+            JsonElement item = Assert.Single(body.RootElement.GetProperty("items").EnumerateArray());
+            Assert.Equal(known ? "2026-11-01T01:30:00" : null, item.GetProperty("sourceLocalStart").GetString());
+            Assert.EndsWith("Z", item.GetProperty("firstObservedAtUtc").GetString(), StringComparison.Ordinal);
+            Assert.Equal("firstObservedUtc", body.RootElement.GetProperty("coverage").GetString());
+        }
+        finally { factory.Repository.AgentSourceLocalStart = null; }
+    }
+
+    [Fact]
+    public async Task MeReportsRoleScopesForTheExactSelectedTarget()
+    {
+        using HttpClient client = CreateClient("mixed");
+        using HttpResponseMessage first = await client.GetAsync($"/api/v1/me?targetId={M9OperationalHealthApiFactory.Target:D}");
+        Assert.Equal(HttpStatusCode.OK, first.StatusCode);
+        using JsonDocument onViewerTarget = JsonDocument.Parse(await first.Content.ReadAsStringAsync());
+        Assert.True(onViewerTarget.RootElement.GetProperty("active").GetBoolean());
+        Assert.Equal(["Viewer", "Auditor"], onViewerTarget.RootElement.GetProperty("grantedRoles").EnumerateArray().Select(x => x.GetString()!).ToArray());
+        Assert.Empty(onViewerTarget.RootElement.GetProperty("allTargetRoles").EnumerateArray());
+        Assert.Equal(["Viewer"], onViewerTarget.RootElement.GetProperty("targetRoles").EnumerateArray().Select(x => x.GetString()!).ToArray());
+
+        using HttpResponseMessage second = await client.GetAsync($"/api/v1/me?targetId={M9OperationalHealthApiFactory.MissingTarget:D}");
+        Assert.Equal(HttpStatusCode.OK, second.StatusCode);
+        using JsonDocument onAuditorTarget = JsonDocument.Parse(await second.Content.ReadAsStringAsync());
+        Assert.Equal(["Auditor"], onAuditorTarget.RootElement.GetProperty("targetRoles").EnumerateArray().Select(x => x.GetString()!).ToArray());
+        using HttpResponseMessage noTarget = await client.GetAsync("/api/v1/me");
+        using JsonDocument withoutTarget = JsonDocument.Parse(await noTarget.Content.ReadAsStringAsync());
+        Assert.Empty(withoutTarget.RootElement.GetProperty("targetRoles").EnumerateArray());
+    }
+
+    [Fact]
+    public async Task MeRequiresAuthenticationAndRejectsInvalidTargetIds()
+    {
+        using HttpClient anonymous = factory.CreateClient();
+        Assert.Equal(HttpStatusCode.Unauthorized, (await anonymous.GetAsync("/api/v1/me")).StatusCode);
+        using HttpClient client = CreateClient("viewer");
+        Assert.Equal(HttpStatusCode.BadRequest, (await client.GetAsync("/api/v1/me?targetId=not-a-guid")).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await client.GetAsync($"/api/v1/me?targetId={Guid.Empty:D}")).StatusCode);
+        using HttpResponseMessage response = await client.GetAsync($"/api/v1/me?targetId={M9OperationalHealthApiFactory.Target:D}");
+        using JsonDocument body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.Equal(["Viewer"], body.RootElement.GetProperty("allTargetRoles").EnumerateArray().Select(x => x.GetString()!).ToArray());
+        Assert.Equal(["Viewer"], body.RootElement.GetProperty("targetRoles").EnumerateArray().Select(x => x.GetString()!).ToArray());
+    }
+
     [Fact]
     public async Task MissingTargetIsHonestNotFoundAndNoDataIsExplicit()
     {
@@ -243,6 +321,8 @@ public sealed class M9OperationalHealthApiFactory : WebApplicationFactory<Progra
             new WindowsGroupRoleBinding(new ActorSecurityIdentifier(M9AuthenticationHandler.OperatorSid), [ApplicationRole.Operator], true),
             new WindowsGroupRoleBinding(new ActorSecurityIdentifier(M9AuthenticationHandler.AdminSid), [ApplicationRole.TargetAdministrator], true),
             new WindowsGroupRoleBinding(new ActorSecurityIdentifier(M9AuthenticationHandler.ScopeSid), [ApplicationRole.Viewer], false, [new MonitoredInstanceId(MissingTarget)]),
+            new WindowsGroupRoleBinding(new ActorSecurityIdentifier(M9AuthenticationHandler.MixedViewerSid), [ApplicationRole.Viewer], false, [new MonitoredInstanceId(Target)]),
+            new WindowsGroupRoleBinding(new ActorSecurityIdentifier(M9AuthenticationHandler.MixedAuditorSid), [ApplicationRole.Auditor], false, [new MonitoredInstanceId(MissingTarget)]),
         ]));
         services.PostConfigure<OperationalHealthServerOptions>(options => options.RequestTimeout = TimeSpan.FromMilliseconds(50));
         services.AddAuthentication(options => { options.DefaultAuthenticateScheme = M9AuthenticationHandler.SchemeName; options.DefaultChallengeScheme = M9AuthenticationHandler.SchemeName; }).AddScheme<AuthenticationSchemeOptions, M9AuthenticationHandler>(M9AuthenticationHandler.SchemeName, static _ => { });
@@ -255,6 +335,8 @@ internal sealed class M9OperationalHealthRepository : IOperationalHealthReposito
 {
     internal M9RepositoryMode Mode { get; set; }
     internal bool NoData { get; set; }
+    internal int AgentStepId { get; set; } = 1;
+    internal DateTime? AgentSourceLocalStart { get; set; }
     internal bool CancellationObserved { get; private set; }
     internal TaskCompletionSource<bool> Started { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
     internal TaskCompletionSource<bool> CancellationObservedTask { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -285,7 +367,7 @@ internal sealed class M9OperationalHealthRepository : IOperationalHealthReposito
     private MonitoredInstanceId Target(OperationalHealthRequest request) => new(Mode == M9RepositoryMode.Drift ? M9OperationalHealthApiFactory.DriftTarget : request.TargetId.Value);
     private string? Cursor(OperationalHealthRequest request, string route) => NoData || request.Cursor is not null ? null : new OperationalHealthCursor(request.TargetId, Observed, route + "-page-2").Encode();
     public ValueTask<BackupStatusSnapshot?> GetBackupsAsync(OperationalHealthRequest request, CancellationToken cancellationToken) => ValueTask.FromResult<BackupStatusSnapshot?>(Read(request, () => new BackupStatusSnapshot(Target(request), Revision, NoData ? null : Run, Observed, NoData ? OperationalObservationState.NoData : OperationalObservationState.Complete, NoData ? [] : [new BackupStatusObservation(Target(request), Revision, new string('a', 64), BackupKind.Full, Observed, null, false, 100, false, true, false, BackupCoverage.Complete) { BackupSetId = request.Cursor is null ? 1 : 2 }], 1, false) { NextCursor = Cursor(request, "backups") }, cancellationToken));
-    public ValueTask<SqlAgentFailureSnapshot?> GetAgentFailuresAsync(OperationalHealthRequest request, CancellationToken cancellationToken) => ValueTask.FromResult<SqlAgentFailureSnapshot?>(Read(request, () => new SqlAgentFailureSnapshot(Target(request), Revision, NoData ? null : Run, Observed, NoData ? OperationalObservationState.NoData : OperationalObservationState.Complete, NoData ? [] : [new SqlAgentFailureObservation(Target(request), Revision, Guid.Parse("cccccccc-cccc-4ccc-8ccc-cccccccccccc"), request.Cursor is null ? 1 : 2, 1, 0, AgentFailureKind.Failed, null, null, 0, 1, new DateTime(2026, 8, 25), TimeSpan.FromMinutes(1), Observed, new string('b', 64))], 1, false, request.FromUtc, request.ToUtc) { NextCursor = Cursor(request, "agent") }, cancellationToken));
+    public ValueTask<SqlAgentFailureSnapshot?> GetAgentFailuresAsync(OperationalHealthRequest request, CancellationToken cancellationToken) => ValueTask.FromResult<SqlAgentFailureSnapshot?>(Read(request, () => new SqlAgentFailureSnapshot(Target(request), Revision, NoData ? null : Run, Observed, NoData ? OperationalObservationState.NoData : OperationalObservationState.Complete, NoData ? [] : [new SqlAgentFailureObservation(Target(request), Revision, Guid.Parse("cccccccc-cccc-4ccc-8ccc-cccccccccccc"), request.Cursor is null ? 1 : 2, AgentStepId, 0, AgentFailureKind.Failed, null, null, 0, 1, new DateTime(2026, 8, 25), TimeSpan.FromMinutes(1), Observed, new string('b', 64)) { SourceLocalStart = AgentSourceLocalStart }], 1, false, request.FromUtc, request.ToUtc) { NextCursor = Cursor(request, "agent") }, cancellationToken));
     public ValueTask<TempDbSnapshot?> GetTempDbAsync(OperationalHealthRequest request, CancellationToken cancellationToken) => ValueTask.FromResult<TempDbSnapshot?>(Read(request, () => new TempDbSnapshot(Target(request), Revision, NoData ? null : Run, Observed, NoData ? OperationalObservationState.NoData : OperationalObservationState.Complete, 100, 50, 50, 25, [], false), cancellationToken));
     public ValueTask<TempDbSnapshot?> GetTempDbFilesAsync(OperationalHealthRequest request, CancellationToken cancellationToken) => ValueTask.FromResult<TempDbSnapshot?>(Read(request, () => new TempDbSnapshot(Target(request), Revision, NoData ? null : Run, Observed, NoData ? OperationalObservationState.NoData : OperationalObservationState.Complete, null, null, null, null, NoData ? [] : [new TempDbFileObservation(Target(request), Revision, request.Cursor is null ? 1 : 2, 100, 50, 50, TempDbComponentState.Healthy)], false) { NextCursor = Cursor(request, "tempdb-files") }, cancellationToken));
     public ValueTask<AvailabilityGroupsSnapshot?> GetAvailabilityGroupsAsync(OperationalHealthRequest request, CancellationToken cancellationToken) => GetAvailabilityGroupReplicasAsync(request, cancellationToken);
@@ -297,12 +379,14 @@ internal sealed class M9AuthenticationHandler(IOptionsMonitor<AuthenticationSche
 {
     internal const string SchemeName = "M9.Tests"; internal const string IdentityHeader = "X-SqlObserver-M9-Identity";
     internal const string ViewerSid = "S-1-5-21-9101"; internal const string OperatorSid = "S-1-5-21-9102"; internal const string AdminSid = "S-1-5-21-9103"; internal const string ScopeSid = "S-1-5-21-9104";
+    internal const string MixedViewerSid = "S-1-5-21-9105"; internal const string MixedAuditorSid = "S-1-5-21-9106";
     protected override Task<AuthenticateResult> HandleAuthenticateAsync()
     {
         if (!Request.Headers.TryGetValue(IdentityHeader, out var values) || values.Count != 1) return Task.FromResult(AuthenticateResult.NoResult());
-        string? sid = values[0] switch { "viewer" => ViewerSid, "operator" => OperatorSid, "administrator" => AdminSid, "scope" => ScopeSid, "denied" => "S-1-5-21-9199", _ => null };
+        string? sid = values[0] switch { "viewer" => ViewerSid, "operator" => OperatorSid, "administrator" => AdminSid, "scope" => ScopeSid, "mixed" => MixedViewerSid, "denied" => "S-1-5-21-9199", _ => null };
         if (sid is null) return Task.FromResult(AuthenticateResult.Fail("unknown identity"));
-        var claims = new[] { new Claim(ClaimTypes.NameIdentifier, "S-1-5-21-9200"), new Claim(ClaimTypes.GroupSid, sid) };
+        var claims = new List<Claim> { new(ClaimTypes.NameIdentifier, "S-1-5-21-9200"), new(ClaimTypes.GroupSid, sid) };
+        if (values[0] == "mixed") claims.Add(new Claim(ClaimTypes.GroupSid, MixedAuditorSid));
         return Task.FromResult(AuthenticateResult.Success(new AuthenticationTicket(new ClaimsPrincipal(new ClaimsIdentity(claims, SchemeName)), SchemeName)));
     }
 }

@@ -26,7 +26,10 @@ SET NOCOUNT ON;
                CASE WHEN DATALENGTH(raw.event_data) <= 1048576 THEN raw.event_data END AS event_xml,
                DATALENGTH(raw.event_data) AS raw_bytes
         FROM sys.fn_xe_file_target_read_file(source_file.file_pattern, NULL, NULL, NULL) AS raw
-        WHERE raw.object_name = N'xml_deadlock_report' AND raw.timestamp_utc >= source_window.start_utc
+        -- Keep the timestamp test residual. Native XE timestamp predicate
+        -- pushdown can return an empty scan despite retained matching events.
+        WHERE CASE WHEN raw.object_name = N'xml_deadlock_report'
+                    AND raw.timestamp_utc >= source_window.start_utc THEN 1 ELSE 0 END = 1
         ORDER BY raw.timestamp_utc DESC, raw.file_name DESC, raw.file_offset DESC
     ) AS candidate
 ), source_rows AS

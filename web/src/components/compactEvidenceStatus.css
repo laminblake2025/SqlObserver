@@ -1,0 +1,12 @@
+.compact-evidence { min-width: 0; color: var(--muted); font-size: .8rem; margin-block: .5rem; overflow-wrap: anywhere; }
+.compact-evidence summary { cursor: pointer; color: var(--text); padding: .35rem 0; }
+.compact-evidence summary:focus-visible { outline: 2px solid var(--teal); outline-offset: 3px; border-radius: 3px; }
+.compact-evidence-dot { display: inline-block; width: .5rem; height: .5rem; border-radius: 50%; border: 1px solid var(--teal); background: var(--teal); margin-inline: .35rem .5rem; }
+.compact-evidence-attention .compact-evidence-dot { background: transparent; border-color: var(--border-warning); border-width: 2px; }
+.compact-evidence-content { padding: .2rem .75rem; border-inline-start: 1px solid var(--border); }
+.compact-evidence-content p { margin-block: .5rem; }
+.compact-evidence-content ul { padding-inline-start: 1.25rem; margin-block: .5rem; }
+.compact-evidence-footer { min-width: 0; margin-block: 1rem; padding: .75rem 1rem; border: 1px solid var(--border); border-radius: var(--radius); color: var(--muted); font-size: .8rem; overflow-wrap: anywhere; }
+.compact-evidence-footer > p { margin-block: .25rem .5rem; }
+.compact-evidence-action { color: var(--text); margin-block: .5rem; }
+@media (forced-colors: active) { .compact-evidence-dot { background: CanvasText; border-color: CanvasText; } .compact-evidence-attention .compact-evidence-dot { background: Canvas; border-color: CanvasText; } .compact-evidence summary:focus-visible { outline-color: Highlight; } }

@@ -6,7 +6,10 @@ param(
     [string] $GodotPath,
 
     [ValidateSet('Local', 'Release')]
-    [string] $Profile = 'Local'
+    [string] $Profile = 'Local',
+
+    # Optional CI output; a distinct TRX filename is emitted for every test project.
+    [string] $TestResultsDirectory
 )
 
 Set-StrictMode -Version Latest
@@ -20,6 +23,9 @@ $repositoryRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $solutionPath = Join-Path $repositoryRoot 'SqlObserver.slnx'
 $nugetConfigPath = Join-Path $repositoryRoot 'NuGet.Config'
 $webPath = Join-Path $repositoryRoot 'web'
+if (-not ('SqlObserver.Tools.SqlPolicyTokens' -as [type])) {
+    Add-Type -Path (Join-Path $repositoryRoot 'tools/SqlPolicyTokens.cs')
+}
 
 function Invoke-CheckedCommand {
     param(
@@ -461,6 +467,10 @@ function Assert-RepositoryShape {
         '.github/workflows/validate.yml',
         'tools/dev-up.ps1',
         'tools/seed-lab.ps1',
+        'tools/development-common.ps1',
+        'docker-compose.yml',
+        'database/seeds/development.sql',
+        'docs/development.md',
         'tools/generate-permissions.ps1',
         'web/package.json',
         'web/pnpm-lock.yaml',
@@ -702,7 +712,11 @@ function Assert-RepositoryShape {
         'ADR-0013-host-observation-boundary.md', 'ADR-0014-analytics-retention-boundary.md',
         'ADR-0015-reports-and-exports.md', 'ADR-0016-windows-installer-and-postgresql-lifecycle.md',
         'ADR-0017-deployment-identities-secrets-and-transport.md', 'ADR-0018-web-assets-and-signalr.md',
-        'ADR-0019-release-identity-and-evidence.md'
+        'ADR-0019-release-identity-and-evidence.md', 'ADR-0020-development-authentication.md',
+        'ADR-0021-canonical-retention-graph.md', 'ADR-0022-overview-latest-status.md',
+        'ADR-0023-server-configuration-and-database-option-evidence.md',
+        'ADR-0024-incremental-system-health-reader.md', 'ADR-0025-availability-group-replica-evidence.md',
+        'ADR-0026-backup-freshness-and-replica-coverage.md', 'ADR-0027-sql-metric-analytics.md'
     )
     $adrFiles = @(Get-ChildItem -LiteralPath $adrPath -Filter 'ADR-*.md' -File | Sort-Object Name)
     $actualAdrNames = @($adrFiles | ForEach-Object { $_.Name })
@@ -789,7 +803,6 @@ function Assert-RepositoryShape {
     }
 
     $placeholderOnlyDirectories = @(
-        'database/seeds',
         'database/testdata',
         'installer/wix',
         'installer/postgres'
@@ -898,9 +911,28 @@ function Assert-RepositoryShape {
     }
 
     if ($migrationSql -match '(?i)\bPASSWORD\s+' -or
-        $migrationSql -match '(?i)(?<!NO)\bSUPERUSER\b' -or
-        $migrationSql -match '(?i)timestamp\s+without\s+time\s+zone') {
-        throw 'M2 migrations must not embed passwords, create superusers, or persist non-UTC timestamp types.'
+        $migrationSql -match '(?i)(?<!NO)\bSUPERUSER\b') {
+        throw 'M2 migrations must not embed passwords or create superusers.'
+    }
+
+    # SQL Agent and AG source-local evidence deliberately has no invented UTC
+    # offset. Permit only these exact, checksum-verified declarations; repository
+    # observation times and any other timestamp declaration must remain UTC.
+    $sourceLocalTimestampDeclarations = @{
+        '0087_agent_source_local_start.sql' = 'source_local_start'
+        '0264_availability_replica_evidence_foundation.sql' = 'source_last_commit_local'
+        '0268_availability_groups_v2_paged_read.sql' = 'source_last_commit_local'
+    }
+    foreach ($migrationFile in $migrationFiles) {
+        $sql = Get-Content -LiteralPath $migrationFile.FullName -Raw
+        $localTypes = [regex]::Matches($sql, '(?i)\btimestamp\s+without\s+time\s+zone\b')
+        $declarations = [regex]::Matches($sql, '(?i)\b([a-z_][a-z_0-9]*)\s+timestamp\s+without\s+time\s+zone\b')
+        if ($localTypes.Count -eq 0 -and -not $sourceLocalTimestampDeclarations.ContainsKey($migrationFile.Name)) { continue }
+        if (-not $sourceLocalTimestampDeclarations.ContainsKey($migrationFile.Name) -or
+            $localTypes.Count -ne 1 -or $declarations.Count -ne 1 -or
+            $declarations[0].Groups[1].Value -cne $sourceLocalTimestampDeclarations[$migrationFile.Name]) {
+            throw "M2 migration contains an unqualified non-UTC timestamp declaration: $($migrationFile.Name)"
+        }
     }
 
     $postgresIntegrationSource = @(
@@ -976,6 +1008,19 @@ function Assert-RepositoryShape {
         'queries.performance.sqlserver16-windows.v1.sql',
         'queries.performance.sqlserver17-windows.v1.sql'
     ) | Sort-Object
+    $contentM7CollectorSqlNames = @(
+        'queries.performance.text.sqlserver15-windows.v1.sql',
+        'queries.performance.text.sqlserver16-windows.v1.sql',
+        'queries.performance.text.sqlserver17-windows.v1.sql',
+        'queries.performance.plan.sqlserver15-windows.v1.sql',
+        'queries.performance.plan.sqlserver16-windows.v1.sql',
+        'queries.performance.plan.sqlserver17-windows.v1.sql'
+    ) | Sort-Object
+    $waitM7CollectorSqlNames = @(
+        'queries.performance.waits.sqlserver15-windows.v1.sql',
+        'queries.performance.waits.sqlserver16-windows.v1.sql',
+        'queries.performance.waits.sqlserver17-windows.v1.sql'
+    ) | Sort-Object
     $expectedM9CollectorSqlNames = @(
         'capability.connection.sqlserver15-windows.v2.sql',
         'capability.connection.sqlserver16-windows.v2.sql',
@@ -1006,14 +1051,58 @@ function Assert-RepositoryShape {
         'replication.health.sqlserver16-windows.v1.sql',
         'replication.health.sqlserver17-windows.v1.sql'
     ) | Sort-Object
+    $stagedCollectorSqlNames = @(
+        'database.inventory.sqlserver15-windows.v2.sql',
+        'database.inventory.sqlserver16-windows.v2.sql',
+        'database.inventory.sqlserver17-windows.v2.sql',
+        'availability-groups.health.sqlserver15-windows.v2.sql',
+        'availability-groups.health.sqlserver16-windows.v2.sql',
+        'availability-groups.health.sqlserver17-windows.v2.sql',
+        'backups.status.sqlserver15-windows.v2.sql',
+        'backups.status.sqlserver16-windows.v2.sql',
+        'backups.status.sqlserver17-windows.v2.sql'
+    ) | Sort-Object
+    $additionalCollectorSqlNames = @(
+        'engine.buffer-node-ple.sqlserver15-17-windows.v1.sql',
+        'engine.configurations.sqlserver15-windows.v1.sql',
+        'engine.configurations.sqlserver16-windows.v1.sql',
+        'engine.configurations.sqlserver17-windows.v1.sql',
+        'storage.volume.sqlserver15-17-windows.v1.sql',
+        'cpu.target-witness.sqlserver15-17-windows.v1.sql',
+        'cpu.target-witness.sqlserver15-17-windows.v2.sql',
+        'server.lifecycle.sqlserver15-17-windows.v1.sql',
+        'sql-agent.activity-observations.sqlserver17-windows.v1.sql',
+        'sql-agent.activity.module-identity.sqlserver17-windows.v1.sql',
+        'sql-agent.activity.module-metadata.sqlserver17-windows.v1.sql',
+        'sql-agent.activity.service-projection.v2.sql',
+        'sql-agent.activity.sqlserver15-windows.v1.sql',
+        'sql-agent.activity.sqlserver15-windows.v2.sql',
+        'sql-agent.activity.sqlserver16-windows.v1.sql',
+        'sql-agent.activity.sqlserver16-windows.v2.sql',
+        'sql-agent.activity.sqlserver17-windows.v1.sql',
+        'sql-agent.activity.sqlserver17-windows.v2.sql'
+    ) | Sort-Object
     $expectedCollectorSqlNames = @(
-        $expectedM3CollectorSqlNames + $expectedM4CollectorSqlNames + $activeM5CollectorSqlNames + $activeM6CollectorSqlNames + $activeM7CollectorSqlNames + $expectedM9CollectorSqlNames + $expectedM10CollectorSqlNames
+        $expectedM3CollectorSqlNames + $expectedM4CollectorSqlNames + $activeM5CollectorSqlNames + $activeM6CollectorSqlNames + $activeM7CollectorSqlNames + $contentM7CollectorSqlNames + $waitM7CollectorSqlNames + $expectedM9CollectorSqlNames + $expectedM10CollectorSqlNames + $stagedCollectorSqlNames + $additionalCollectorSqlNames
         'activity.live.v1.sql'
     ) | Sort-Object
     if (($collectorSqlFiles.Name -join '|') -cne ($expectedCollectorSqlNames -join '|')) {
-        throw 'Collector SQL must contain exactly the reviewed M3/M4/M5/M6/M7/M9/M10 assets.'
+        throw 'Collector SQL must contain exactly the reviewed active and staged assets.'
     }
 
+    # Catalog-only signed-module invocation and staged Agent probes are exact
+    # reviewed assets. The probes write only their local @services table;
+    # runtime attestation and execution bounds are independently tested.
+    $reviewedAgentProbeHashes = @{
+        'sql-agent.activity.service-projection.v2.sql' = '3798715b1aa9fcc71eb445e2fcd7f7fcb1b0f64b532672d07757e0fb36b9a99c'
+        'sql-agent.activity-observations.sqlserver17-windows.v1.sql' = 'a2f440c4b9d36cb8059329234ad5ff2c3489f5813e4aa801d9ff2ee1475745e0'
+        'sql-agent.activity.sqlserver15-windows.v1.sql' = 'a2a6ffed75e28aeb8b0ba1b1328a53007558fc55d0f45c16096f0b5de4b8962d'
+        'sql-agent.activity.sqlserver16-windows.v1.sql' = 'a2a6ffed75e28aeb8b0ba1b1328a53007558fc55d0f45c16096f0b5de4b8962d'
+        'sql-agent.activity.sqlserver17-windows.v1.sql' = 'a2a6ffed75e28aeb8b0ba1b1328a53007558fc55d0f45c16096f0b5de4b8962d'
+        'sql-agent.activity.sqlserver15-windows.v2.sql' = '11e3036e17e0b509eeb121a271fef21fae24e132799a135354d907b20578659a'
+        'sql-agent.activity.sqlserver16-windows.v2.sql' = '11e3036e17e0b509eeb121a271fef21fae24e132799a135354d907b20578659a'
+        'sql-agent.activity.sqlserver17-windows.v2.sql' = '11e3036e17e0b509eeb121a271fef21fae24e132799a135354d907b20578659a'
+    }
     foreach ($collectorSqlFile in $collectorSqlFiles) {
         if ($collectorSqlFile.Name -ceq 'activity.live.v1.sql') {
             $liveSqlPin = [IO.File]::ReadAllText((Join-Path $repositoryRoot 'collectors/manifests/activity.live.v1.sha256')).Trim()
@@ -1024,10 +1113,24 @@ function Assert-RepositoryShape {
         }
 
         $collectorSql = Get-Content -LiteralPath $collectorSqlFile.FullName -Raw
+        if ($reviewedAgentProbeHashes.ContainsKey($collectorSqlFile.Name)) {
+            $probeHash = (Get-FileHash -LiteralPath $collectorSqlFile.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+            if ($probeHash -cne $reviewedAgentProbeHashes[$collectorSqlFile.Name]) { throw "Reviewed Agent source checksum mismatch: $($collectorSqlFile.Name)" }
+            continue
+        }
+        # Check executable tokens, not permission names, THROW messages, or
+        # comments. Unsupported interfaces are still checked on full source.
+        $collectorSqlStatements = [SqlObserver.Tools.SqlPolicyTokens]::WithoutQuotedTextAndComments($collectorSql)
         if ($collectorSql -notmatch '(?i)\bSET\s+NOCOUNT\s+ON\s*;' -or
-            $collectorSql -match '(?i)\b(INSERT|UPDATE|DELETE|MERGE|CREATE|ALTER|DROP|TRUNCATE|EXEC(?:UTE)?|DBCC|BACKUP|RESTORE|RECONFIGURE|KILL)\b' -or
+            $collectorSqlStatements -match '(?i)\b(INSERT|UPDATE|DELETE|MERGE|CREATE|ALTER|DROP|TRUNCATE|EXEC(?:UTE)?|DBCC|BACKUP|RESTORE|RECONFIGURE|KILL)\b' -or
             $collectorSql -match '(?i)\b(xp_|sp_OA|sp_executesql|OPENROWSET|OPENDATASOURCE)') {
             throw "Collector SQL must remain fixed, bounded, read-only, and supported: $($collectorSqlFile.Name)"
+        }
+
+        if ($collectorSqlFile.Name -in $stagedCollectorSqlNames -and
+            ($collectorSql -notmatch '(?i)\bSELECT\s+TOP\s*\(\s*@maximum_rows\s*\)' -or
+             $collectorSql -notmatch '(?i)\bORDER\s+BY\b')) {
+            throw "Staged collector SQL must remain row-bounded and deterministic: $($collectorSqlFile.Name)"
         }
 
         if ($collectorSqlFile.Name -in $expectedM3CollectorSqlNames -and
@@ -1076,11 +1179,29 @@ function Assert-RepositoryShape {
              $collectorSql -match '(?i)\b(sql_handle|plan_handle|sys\.dm_exec_sql_text|query_plan|EXEC(?:UTE)?|ALTER|UPDATE|DELETE|INSERT)\b')) {
             throw "M7 collector SQL must be bounded, metadata-only, and passive: $($collectorSqlFile.Name)"
         }
+        if ($collectorSqlFile.Name -in $contentM7CollectorSqlNames -and
+            ($collectorSql -notmatch '(?i)\bTOP\s*\(\s*(?:4|32)\s*\)' -or
+             $collectorSql -notmatch '(?i)\bORDER\s+BY\b' -or
+             $collectorSql -notmatch '(?i)has_restricted_text\s*=\s*0' -or
+             $collectorSql -notmatch '(?i)is_part_of_encrypted_module\s*=\s*0' -or
+             $collectorSql -notmatch '(?i)DATALENGTH\s*\(' -or
+             $collectorSql -match '(?i)\b(EXEC(?:UTE)?|ALTER|UPDATE|DELETE|INSERT|DROP)\b')) {
+            throw "M7 protected-content SQL must be bounded, filtered, and passive: $($collectorSqlFile.Name)"
+        }
+        if ($collectorSqlFile.Name -in $waitM7CollectorSqlNames -and
+            ($collectorSql -notmatch '(?i)\bTOP\s*\(\s*256\s*\)' -or
+             $collectorSql -notmatch '(?i)sys\.query_store_wait_stats' -or
+             $collectorSql -notmatch '(?i)wait_stats_capture_mode_desc' -or
+             $collectorSql -notmatch '(?i)\bGROUP\s+BY\s+ws\.plan_id\s*,\s*ws\.wait_category' -or
+             $collectorSql -notmatch '(?i)\bORDER\s+BY\s+ws\.plan_id' -or
+             $collectorSql -match '(?i)\b(EXEC(?:UTE)?|ALTER|UPDATE|DELETE|INSERT|DROP)\b')) {
+            throw "M7 query-wait SQL must be bounded, grouped, and passive: $($collectorSqlFile.Name)"
+        }
         if ($collectorSqlFile.Name -in $expectedM9CollectorSqlNames -and
             $collectorSqlFile.Name -notlike 'capability.connection.*.v2.sql' -and
             ($collectorSql -notmatch '(?i)\bSELECT\s+TOP\s*(?:\(\s*@(?:maximum_rows|scan_rows)\s*\)|\(\s*1\s*\))' -or
              $collectorSql -notmatch '(?i)\bORDER\s+BY\b' -or
-             $collectorSql -match '(?i)\b(INSERT|UPDATE|DELETE|MERGE|CREATE|ALTER|DROP|TRUNCATE|EXEC(?:UTE)?|DBCC|BACKUP|RESTORE|RECONFIGURE|KILL)\b')) {
+             $collectorSqlStatements -match '(?i)\b(INSERT|UPDATE|DELETE|MERGE|CREATE|ALTER|DROP|TRUNCATE|EXEC(?:UTE)?|DBCC|BACKUP|RESTORE|RECONFIGURE|KILL)\b')) {
             throw "M9 collector SQL must remain bounded, ordered, and passive: $($collectorSqlFile.Name)"
         }
         if ($collectorSqlFile.Name -in $expectedM10ReplicationSqlNames -and
@@ -1102,8 +1223,8 @@ function Assert-RepositoryShape {
             throw "Availability-group assets must source state descriptions from the DMF for local/remote semantics: $($collectorSqlFile.Name)"
         }
         if ($collectorSqlFile.Name -like 'sql-agent.failures.*' -and
-            $collectorSql -match '(?i)SELECT[\s\S]*\b(run_date|run_time)\b') {
-            throw "SQL Agent source-local timestamps must not be emitted: $($collectorSqlFile.Name)"
+            $collectorSql -notmatch '(?i)\bh\.run_date\s*,\s*h\.run_time\b') {
+            throw "SQL Agent assets must retain source-local date/time evidence for the typed parser: $($collectorSqlFile.Name)"
         }
     }
 
@@ -1240,7 +1361,7 @@ function Assert-RepositoryShape {
         'collector-manifest.v4.schema.json' = Join-Path $repositoryRoot 'collectors/manifests/collector-manifest.v4.schema.json'
         'queries.performance.v1.json' = Join-Path $repositoryRoot 'collectors/manifests/queries.performance.v1.json'
     }
-    foreach ($collectorSqlFile in $collectorSqlFiles | Where-Object { $_.Name -in $activeM7CollectorSqlNames }) { $m7CollectorAssetPaths[$collectorSqlFile.Name] = $collectorSqlFile.FullName }
+    foreach ($collectorSqlFile in $collectorSqlFiles | Where-Object { $_.Name -in ($activeM7CollectorSqlNames + $contentM7CollectorSqlNames + $waitM7CollectorSqlNames) }) { $m7CollectorAssetPaths[$collectorSqlFile.Name] = $collectorSqlFile.FullName }
     $m7CollectorChecksumPath = Join-Path $repositoryRoot 'collectors/manifests/m7-query-performance.assets.sha256'; $m7CollectorChecksums = @{}
     foreach ($line in Get-Content -LiteralPath $m7CollectorChecksumPath) {
         if ([string]::IsNullOrWhiteSpace($line) -or $line.StartsWith('#', [StringComparison]::Ordinal)) { continue }
@@ -1331,7 +1452,8 @@ function Assert-RepositoryShape {
             throw "M9 manifest does not conform to the strict v5 schema: $manifestId"
         }
         foreach ($major in @('15','16','17')) {
-            if (@($manifest.requiredPermissionsByMajor.$major).Count -lt 1 -or @($manifest.requiredPermissionsByMajor.$major).Count -gt 2) { throw "M9 manifest permission bounds are invalid: $manifestId/$major" }
+            $maximumPermissions = if ($manifestId -ceq 'backups.status') { 3 } else { 2 }
+            if (@($manifest.requiredPermissionsByMajor.$major).Count -lt 1 -or @($manifest.requiredPermissionsByMajor.$major).Count -gt $maximumPermissions) { throw "M9 manifest permission bounds are invalid: $manifestId/$major" }
             if ($manifest.queryResources.supportedByMajor.$major -notmatch "^$([regex]::Escape($manifestId)).sqlserver$major-windows.v1.sql$") { throw "M9 manifest query resource is invalid: $manifestId/$major" }
         }
         if ($manifest.cadence.defaultIntervalSeconds -lt 30 -or $manifest.cadence.defaultIntervalSeconds -gt 300 -or
@@ -1346,9 +1468,9 @@ function Assert-RepositoryShape {
     }
     $m9BundleDigest = (Get-FileHash -LiteralPath $m9CollectorChecksumPath -Algorithm SHA256).Hash.ToLowerInvariant()
     $runtimeRepositorySource = Get-Content -LiteralPath (Join-Path $repositoryRoot 'src/SqlObserver.Infrastructure.PostgreSql/PostgreSqlCollectorRuntimeRepositoryPort.cs') -Raw
-    $m9MigrationSource = Get-Content -LiteralPath (Join-Path $repositoryRoot 'database/migrations/0013_backups_jobs_tempdb_availability_groups.sql') -Raw
+    $m9MigrationSource = Get-Content -LiteralPath (Join-Path $repositoryRoot 'database/migrations/0243_backup_missing_first_bundle_binding.sql') -Raw
     if (([regex]::Matches($runtimeRepositorySource, [regex]::Escape('"' + $m9BundleDigest + '"'))).Count -ne 4 -or
-        ([regex]::Matches($m9MigrationSource, [regex]::Escape("'$m9BundleDigest'"))).Count -ne 4) {
+        ([regex]::Matches($m9MigrationSource, [regex]::Escape("'$m9BundleDigest'"))).Count -ne 1) {
         throw "M9 bundle digest does not match the checksum manifest: $m9BundleDigest"
     }
 
@@ -1498,25 +1620,35 @@ function Assert-RepositoryShape {
         'new CollectorRegistration\(\s*executionOrder:\s*5,.*?SqlServerActivityRequestsCollector',
         'new CollectorRegistration\(\s*executionOrder:\s*6,.*?SqlServerServerWaitsCollector',
         'new CollectorRegistration\(\s*executionOrder:\s*7,.*?SqlServerCurrentBlockingCollector',
-        'new CollectorRegistration\(\s*executionOrder:\s*8,.*?SqlServerDeadlockCollector',
+        'new CollectorRegistration\(\s*executionOrder:\s*8,.*?SqlServerIncrementalDeadlockCollector',
         'new CollectorRegistration\(\s*executionOrder:\s*9,.*?SqlServerQueryPerformanceCollector',
         'new CollectorRegistration\(\s*10,.*?SqlServerBackupsStatusCollector',
         'new CollectorRegistration\(\s*11,.*?SqlServerSqlAgentFailuresCollector',
         'new CollectorRegistration\(\s*12,.*?SqlServerTempDbHealthCollector',
         'new CollectorRegistration\(\s*13,.*?SqlServerAvailabilityGroupsHealthCollector',
         'new CollectorRegistration\(\s*14,.*?HostMetricsCollectorAdapter',
-        'new CollectorRegistration\(\s*15,.*?SqlServerReplicationCollector'
+        'new CollectorRegistration\(\s*15,.*?SqlServerReplicationCollector',
+        'new CollectorRegistration\(\s*16,.*?SqlServerVolumeCapacityCollector',
+        'new CollectorRegistration\(\s*17,.*?SqlServerQueryStoreGroupCollector',
+        'new CollectorRegistration\(\s*18,.*?SqlServerBufferNodePleCollector',
+        'new CollectorRegistration\(\s*19,.*?SqlServerConfigurationsCollector',
+        'new CollectorRegistration\(\s*20,.*?CpuComponentsCollector',
+        'new CollectorRegistration\(\s*21,.*?SqlServerLifecycleCollector',
+        'new CollectorRegistration\(\s*22,.*?SqlAgentActivityObservationsCollector'
     )
+    if ([regex]::Matches($registeredSource, 'new CollectorRegistration\s*\(').Count -ne $registeredOrderPatterns.Count) {
+        throw 'CollectorServiceRegistration.cs must contain exactly 22 runtime registrations.'
+    }
     $registrationOffset = 0
     foreach ($pattern in $registeredOrderPatterns) {
         $match = [regex]::Match($registeredSource.Substring($registrationOffset), $pattern, [Text.RegularExpressions.RegexOptions]::Singleline)
-        if (-not $match.Success) { throw "CollectorServiceRegistration.cs does not preserve the exact ordered 15-collector runtime catalog: $pattern" }
+        if (-not $match.Success) { throw "CollectorServiceRegistration.cs does not preserve the exact ordered 22-collector runtime catalog: $pattern" }
         $registrationOffset += $match.Index + $match.Length
     }
     if ($registeredSource -match 'new CollectorRegistration\([^\r\n]*capability\.connection') { throw 'capability.connection is control-plane discovery and must not be registered as a scheduled collector.' }
-    $exactReadmeCollectors = '`engine.core`, `database.inventory`, `database.files`, `activity.sessions`, `activity.requests`, `waits.server`, `blocking.current`, `deadlocks.system-health`, `queries.performance`, `backups.status`, `sql-agent.failures`, `tempdb.health`, `availability-groups.health`, `host.metrics`, and `replication.health`'
+    $exactReadmeCollectors = '`engine.core`, `database.inventory`, `database.files`, `activity.sessions`, `activity.requests`, `waits.server`, `blocking.current`, `deadlocks.system-health`, `queries.performance`, `backups.status`, `sql-agent.failures`, `tempdb.health`, `availability-groups.health`, `host.metrics`, `replication.health`, `storage.volume`, `queries.performance-groups`, `engine.buffer-nodes`, `engine.configurations`, `cpu.components`, `server.lifecycle`, and `sql-agent.activity-observations`'
     if ($readmeStatus.IndexOf($exactReadmeCollectors, [StringComparison]::Ordinal) -lt 0 -or $readmeStatus.IndexOf('`capability.connection` is control-plane discovery', [StringComparison]::Ordinal) -lt 0) {
-        throw 'README must list the exact ordered 1-15 registered collectors and identify capability.connection as control-plane discovery.'
+        throw 'README must list the exact ordered 1-22 registered collectors and identify capability.connection as control-plane discovery.'
     }
     foreach ($staleText in @('dormant M5', 'M5-activity-migration.sql.wip', 'no M5 migration', 'no M5 activity', 'M6 remains incomplete', 'M6 deadlocks/Extended Events remain outside')) {
         $staleMatches = @(Get-ChildItem -LiteralPath $repositoryRoot -File -Force |
@@ -1560,8 +1692,13 @@ function Assert-RepositoryShape {
         Get-ChildItem -LiteralPath (Join-Path $repositoryRoot 'src') -Recurse -Filter '*.cs' -File |
             Where-Object { $_.FullName -notmatch '\\(bin|obj)\\' }
     )
+    # ADR-0020 permits forwarding the supplied PostgreSQL password only in the
+    # guarded local bootstrap. This exact assignment is not a SQL Server target
+    # credential; all other matches, including elsewhere in that file, still fail.
+    $developmentBootstrapPath = Join-Path $repositoryRoot 'src/SqlObserver.Infrastructure.PostgreSql/PostgreSqlDevelopmentBootstrap.cs'
     $forbiddenTargetSecurity = @(
-        $productionCSharp | Select-String -Pattern '(?i)TrustServerCertificate\s*=\s*true|User\s*ID\s*=|Password\s*=|SqlException\.Message'
+        $productionCSharp | Select-String -Pattern '(?i)TrustServerCertificate\s*=\s*true|User\s*ID\s*=|Password\s*=|SqlException\.Message' |
+            Where-Object { $_.Path -ne $developmentBootstrapPath -or $_.Line -cnotmatch '^\s*Password = supplied\.Password,\s*$' }
     )
     if ($forbiddenTargetSecurity.Count -ne 0) {
         throw 'Production source contains a target credential, certificate bypass, or raw SQL provider error surface.'
@@ -1572,8 +1709,9 @@ function Assert-RepositoryShape {
         $webPackage.dependencies.PSObject.Properties
         $webPackage.devDependencies.PSObject.Properties
     )
-    if ($frontendDependencies.Count -ne 7) {
-        throw "Expected seven declared frontend dependencies, found $($frontendDependencies.Count)."
+    $expectedFrontendDependencyNames = @('@axe-core/playwright', '@playwright/test', '@types/react', '@types/react-dom', '@vitejs/plugin-react', 'react', 'react-dom', 'typescript', 'vite') | Sort-Object
+    if ((($frontendDependencies.Name | Sort-Object) -join '|') -cne ($expectedFrontendDependencyNames -join '|')) {
+        throw 'Frontend dependencies must contain exactly the reviewed runtime, type, build, browser and accessibility packages.'
     }
 
     foreach ($dependency in $frontendDependencies) {
@@ -1588,16 +1726,18 @@ function Assert-RepositoryShape {
         -not $workflow.Contains('persist-credentials: false') -or
         -not $workflow.Contains('DOTNET_INSTALL_DIR: ${{ runner.temp }}/dotnet') -or
         -not $workflow.Contains('global-json-file: global.json') -or
-        -not $workflow.Contains('run: ./tools/validate.ps1') -or
+        $workflow -notmatch '(?m)^\s+(?:run:\s+)?\./tools/validate\.ps1(?:\s|$)' -or
         -not $workflow.Contains('Require PowerShell 7.5+')) {
         throw 'CI must use a GitHub-hosted Windows runner, least permissions, non-persistent checkout credentials, the pinned SDK, and the canonical validator.'
     }
 
-    $pinnedActions = [regex]::Matches(
-        $workflow,
-        '(?m)^\s+uses:\s+\S+@([0-9a-f]{40})(?:\s+#.*)?$')
-    if ($pinnedActions.Count -ne 4) {
-        throw 'Every third-party GitHub Action must be pinned to an immutable commit SHA.'
+    $actionReferences = [regex]::Matches($workflow, '(?m)^\s*(?:-\s*)?uses:\s*([^\r\n]+)')
+    if ($actionReferences.Count -eq 0) { throw 'CI must declare its reviewed GitHub Actions.' }
+    foreach ($reference in $actionReferences) {
+        $action = ($reference.Groups[1].Value -split '\s+#', 2)[0].Trim()
+        if ($action -notmatch '^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)*@[0-9a-f]{40}$') {
+            throw 'Every third-party GitHub Action must be pinned to an immutable commit SHA.'
+        }
     }
 
     $scriptFiles = @(Get-ChildItem -LiteralPath (Join-Path $repositoryRoot 'tools') -Filter '*.ps1' -File)
@@ -1794,7 +1934,7 @@ function Assert-RepositoryShape {
     foreach ($m12SqlPath in @($m12SqlContractPath,$m12SqlSchemaPath,$m12SqlPinPath)) { if (-not (Test-Path -LiteralPath $m12SqlPath -PathType Leaf)) { throw 'M12 SQL Server passive contract asset is missing.' } }
     $m12SqlContractHash = (Get-FileHash -LiteralPath $m12SqlContractPath -Algorithm SHA256).Hash.ToLowerInvariant()
     $m12SqlSchemaHash = (Get-FileHash -LiteralPath $m12SqlSchemaPath -Algorithm SHA256).Hash.ToLowerInvariant()
-    if ($m12SqlContractHash -cne '9616bb6516240fe61351a27391ddec9572043d50e5f8b1dcddbee21bb1b2d34f' -or $m12SqlSchemaHash -cne '5539bba4fe0139b92aadbcd6203526cb3377b689d732e68c70aff60bac843406') { throw 'M12 SQL Server passive contract/schema checksum does not match the approved pin.' }
+    if ($m12SqlContractHash -cne '3ecd422896381a2a27ab0174acee61bf2da581825b5b868b57255b0f331d5ede' -or $m12SqlSchemaHash -cne '5539bba4fe0139b92aadbcd6203526cb3377b689d732e68c70aff60bac843406') { throw 'M12 SQL Server passive contract/schema checksum does not match the approved pin.' }
     $m12SqlPin = Get-Content -LiteralPath $m12SqlPinPath -Raw
     if ($m12SqlPin -cne "$m12SqlContractHash  m12-sqlserver-passive-contract.v1.json`n$m12SqlSchemaHash  m12-sqlserver-passive-contract.v1.schema.json`n") { throw 'M12 SQL Server passive contract pin is not exact LF-closed.' }
     $m12SqlContract = Get-Content -LiteralPath $m12SqlContractPath -Raw | ConvertFrom-Json
@@ -1811,30 +1951,36 @@ function Assert-RepositoryShape {
     $m12ReportsTestPath = Join-Path $repositoryRoot 'tests/SqlObserver.IntegrationTests.PostgreSql/M12ReportsCertificationTests.cs'
     foreach ($m12ReportsPath in @($m12ReportsContractPath, $m12ReportsSchemaPath, $m12ReportsPinPath, $m12ReportsProducerPath, $m12ReportsTestPath)) { if (-not (Test-Path -LiteralPath $m12ReportsPath -PathType Leaf)) { throw 'M12 reports certification asset is missing.' } }
     $m12ReportsContractHash = (Get-FileHash -LiteralPath $m12ReportsContractPath -Algorithm SHA256).Hash.ToLowerInvariant(); $m12ReportsSchemaHash = (Get-FileHash -LiteralPath $m12ReportsSchemaPath -Algorithm SHA256).Hash.ToLowerInvariant()
-    if ($m12ReportsContractHash -cne '6fa0b844c300de656382981c57e5ec8c897eacc8f209a2b7153252444440acb1' -or $m12ReportsSchemaHash -cne '80defd27f366b29b46e48bba9d9a7eec2934a41a2aaf5ca38a79ab979e4354ad') { throw 'M12 reports contract/schema checksum does not match the approved pin.' }
+    if ($m12ReportsContractHash -cne '0c8e8d075c513ff973a91a584090ac8cc683c40abc0ad89a47fc4473593c5c22' -or $m12ReportsSchemaHash -cne 'cbb3780fb0833ca4c9b8d633cc72ff45200aac336b5a0790860b12e167a07266') { throw 'M12 reports contract/schema checksum does not match the approved pin.' }
     if ([IO.File]::ReadAllText($m12ReportsPinPath) -cne "$m12ReportsContractHash  m12-reports-contract.v1.json`n$m12ReportsSchemaHash  m12-reports-contract.v1.schema.json`n") { throw 'M12 reports contract pin is not exact LF-closed.' }
     $m12ReportsSchema = Get-Content -LiteralPath $m12ReportsSchemaPath -Raw | ConvertFrom-Json; $m12ReportsContract = Get-Content -LiteralPath $m12ReportsContractPath -Raw | ConvertFrom-Json
     if ($m12ReportsSchema.additionalProperties -ne $false -or $m12ReportsContract.'$schema' -cne 'm12-reports-contract.v1.schema.json' -or $m12ReportsContract.producerId -cne 'm12-reports-harness') { throw 'M12 reports contract/schema must be closed and self-identifying.' }
     $m12ReportsAssets = [ordered]@{
-        'database/migrations/0021_reports_exports.sql' = 'e861400591c82000d9bb329c52a983680c3c2a0fc2f66fa93e37472be8b49986'
-        'database/migrations/0022_runtime_startup_repairs.sql' = '1c2726afe570ff7a8db169afc6469196d3c27ad73d33b2f5702de5130b31d64d'
-        'database/migrations/0023_report_expiry_lock_privilege.sql' = '1647cdaa465f1e216a87f8d47c50575ba7fdc5c43198285b8bdc5fa453ad02b0'
-        'database/migrations/0024_report_materialization_column_binding.sql' = '8786730998c3e120664a046519796a24afb8851d41fc5689e66b917aacd068a6'
-        'database/migrations/0025_report_run_scoped_read.sql' = 'dd397e02f0faa079befc1a9a804fd0b82eceacb9598a12c48cf9c9a98b3d88e6'
-        'database/migrations/checksums.sha256' = 'f9955446e144500f7c5b23031c8fb1d29f1abade6869ee6d6e0be871ea1e19e4'
-        'src/SqlObserver.Reporting/ReportContracts.cs' = '95613db9340aba8120066a88c5a7062c5f6377c64d08c3d8a1d1fc2c43eb5af8'
-        'src/SqlObserver.Reporting/ReportRendering.cs' = '6c89ce15c5463b8e56bc72cf78f28f979579e69719e36ef64b40f32b0ce9de61'
-        'src/SqlObserver.Infrastructure.PostgreSql/PostgreSqlReportRepository.cs' = '6dce0d1b5dc6bbd930367059153872e5df3eaa38aeeb31650b0fdb1afd73b8ee'
-        'src/SqlObserver.Infrastructure.PostgreSql/PostgreSqlReportAuditPort.cs' = '9e7c8a3af79809f955f8fa7042d095a950a016c43a318bf26676caa3f1c16b74'
-        'tests/SqlObserver.IntegrationTests.PostgreSql/M12ReportsCertificationTests.cs' = '5a743f8e7500fa9cc7d058a76f60c58d66d76d5b6c760ba0664251b404a33e22'
-        'tests/SqlObserver.IntegrationTests.PostgreSql/SqlObserver.IntegrationTests.PostgreSql.csproj' = '1e42d8ee02bc687988cc17b44f6200f4bf04dc48d1c93b7e298b195e6c521910'
+    'database/migrations/0021_reports_exports.sql' = 'e861400591c82000d9bb329c52a983680c3c2a0fc2f66fa93e37472be8b49986'
+    'database/migrations/0022_runtime_startup_repairs.sql' = '1c2726afe570ff7a8db169afc6469196d3c27ad73d33b2f5702de5130b31d64d'
+    'database/migrations/0023_report_expiry_lock_privilege.sql' = '1647cdaa465f1e216a87f8d47c50575ba7fdc5c43198285b8bdc5fa453ad02b0'
+    'database/migrations/0024_report_materialization_column_binding.sql' = '8786730998c3e120664a046519796a24afb8851d41fc5689e66b917aacd068a6'
+    'database/migrations/0025_report_run_scoped_read.sql' = 'dd397e02f0faa079befc1a9a804fd0b82eceacb9598a12c48cf9c9a98b3d88e6'
+    'database/migrations/checksums.sha256' = 'b69dfafa038e9ec335fca6b23af5c4ef41b18533a4c2ac49a338077387f2f010'
+    'src/SqlObserver.Reporting/ReportContracts.cs' = 'f22cb37ebc9fba15fa01d1215e902a38b5e43f02c494585f06bcac0214b89dd0'
+    'src/SqlObserver.Reporting/ReportRendering.cs' = '08bba74ded22122a4a08f03dbfd6a254a7b786b352a3c3390a000a64552a824c'
+    'src/SqlObserver.Infrastructure.PostgreSql/PostgreSqlReportRepository.cs' = '61e1b6a3f5b66a9583089572ee2ebfe2fb0e7fa08a50ff6c23450441561e7865'
+    'src/SqlObserver.Infrastructure.PostgreSql/PostgreSqlReportAuditPort.cs' = '9e7c8a3af79809f955f8fa7042d095a950a016c43a318bf26676caa3f1c16b74'
+    'tests/SqlObserver.IntegrationTests.PostgreSql/M12ReportsCertificationTests.cs' = '6596309e5ff693b47c6952f8f3be12314c14e15bc601e588705b3ac990e64cdd'
+    'tests/SqlObserver.IntegrationTests.PostgreSql/SqlObserver.IntegrationTests.PostgreSql.csproj' = 'e7aa4a9e68a5ccc512ea141c7f34e25cd963c30c41d3be5a6455ee639293d938'
+    'database/migrations/0288_saved_incident_workspace.sql' = '6e04b0c7d6ae18827b273a2742dce33369ef0c6d11d7e2a461a3a4814cd7b2e3'
+    'database/migrations/0289_saved_incident_listing.sql' = '91f8a79793e3ba7fa36199a676a46ce26664af0b3d9e531fc8ee792c021daf12'
+    'database/migrations/0290_saved_investigation_reports.sql' = '61fd92379f9a0e95bf8affabf43865b225913c8dd11bfffe73ff7289bf00012b'
+    'src/SqlObserver.Application/Ports/SavedIncidentPorts.cs' = 'a7c7b6990802f04c3bf799693cd3c91ba39e95a2980cf9343fff3735fbf165c6'
+    'src/SqlObserver.Infrastructure.PostgreSql/PostgreSqlSavedIncidentPort.cs' = '8a355aed69c8479eb3be51a5a541900d13c4104336f84c99809f8eaa1e17c87c'
+    'database/migrations/0291_report_materialization_row_budget.sql' = '599eed19372b3654a07561a63ad041455b55cdd1f1f821074c1ce22e3436a4c4'
     }
     if (((@($m12ReportsContract.assetPins.PSObject.Properties.Name) -join '|') -cne (@($m12ReportsAssets.Keys) -join '|'))) { throw 'M12 reports execution asset pin inventory is not exact.' }
     foreach ($m12ReportsAsset in $m12ReportsAssets.Keys) {
         if ($m12ReportsContract.assetPins.$m12ReportsAsset -cne $m12ReportsAssets[$m12ReportsAsset] -or (Get-FileHash -LiteralPath (Join-Path $repositoryRoot $m12ReportsAsset) -Algorithm SHA256).Hash.ToLowerInvariant() -cne $m12ReportsAssets[$m12ReportsAsset]) { throw "M12 reports asset pin mismatch: $m12ReportsAsset" }
     }
     $m12ReportsProducerText = Get-Content -LiteralPath $m12ReportsProducerPath -Raw; $m12ReportsTestText = Get-Content -LiteralPath $m12ReportsTestPath -Raw
-    if ((Get-FileHash -LiteralPath $m12ReportsProducerPath -Algorithm SHA256).Hash.ToLowerInvariant() -cne '996aafb798df6a99d1d4ffc639a36310ace8c96e0e159f67a34b6e349884d408') { throw 'M12 reports producer source does not match the approved external execution pin.' }
+    if ((Get-FileHash -LiteralPath $m12ReportsProducerPath -Algorithm SHA256).Hash.ToLowerInvariant() -cne '6c5adc1242fa64c87d23b12d619781476860331a291078daedb4a1ee02395c6b') { throw 'M12 reports producer source does not match the approved external execution pin.' }
     foreach ($m12ReportsMarker in @('Assert-M12Contract', 'Assert-M12ContractValues', 'ContractOnly', 'ConnectionOnly', 'VerifyFull', 'Assert-ReportsConnection', 'Assert-M12CleanTree', 'Invoke-M12GitStatus', '/t:Rebuild', '--output', 'Remove-M12RawArtifactsDirectory', 'GIT_CONFIG_NOSYSTEM', 'GIT_CONFIG_GLOBAL', 'GIT_CONFIG_SYSTEM', 'GIT_TERMINAL_PROMPT', '--no-optional-locks', 'detailedWindowDays=7', 'trendWindowDays=31', 'm12-reports-harness', 'reports-exports-evidence', 'LiveReleaseReportsExportsRepresentativeVolumeIsBounded', 'LiveReleaseReportContractIsSnapshotScopedAndAudited', 'LiveReleaseExportContractIsInertAndFormulaSafe', 'Read-M12LockedBytes', 'FileMode]::CreateNew', 'FileShare]::None', 'Assert-M12NoDescendants', 'Read-M12ReportsTrx', 'XmlResolver', 'DocumentType', 'Counters', 'expectedCounters', 'TestCount=$trxResult.TestCount', 'testCount-ne$ExpectedTestCount', 'notExecuted=0', 'warning=0', 'Assert-M12ObservedPidsExited', '[IO.Directory]::Move($build,$verify)', '[IO.Directory]::Move($verify,$final)')) { if (-not $m12ReportsProducerText.Contains($m12ReportsMarker, [StringComparison]::Ordinal)) { throw "M12 reports producer is missing invariant: $m12ReportsMarker" } }
     if ($m12ReportsTestText -notmatch '\[Trait\("Category",\s*"RequiresM12ReportsRelease"\)\]' -or $m12ReportsTestText -notmatch 'ReportRenderer\.RenderHtml' -or $m12ReportsTestText -notmatch 'formulaNeutralization') { throw 'M12 reports release tests must be explicit release-only product-path proofs.' }
     $m12ObservabilityContractPath = Join-Path $repositoryRoot 'release/certification/m12-observability-contract.v1.json'
@@ -1844,32 +1990,32 @@ function Assert-RepositoryShape {
     $m12ObservabilityTestPath = Join-Path $repositoryRoot 'tests/SqlObserver.IntegrationTests.PostgreSql/M12ObservabilityCertificationTests.cs'
     foreach ($m12ObservabilityPath in @($m12ObservabilityContractPath, $m12ObservabilitySchemaPath, $m12ObservabilityPinPath, $m12ObservabilityProducerPath, $m12ObservabilityTestPath)) { if (-not (Test-Path -LiteralPath $m12ObservabilityPath -PathType Leaf)) { throw 'M12 observability certification asset is missing.' } }
     $m12ObservabilityContractHash = (Get-FileHash -LiteralPath $m12ObservabilityContractPath -Algorithm SHA256).Hash.ToLowerInvariant(); $m12ObservabilitySchemaHash = (Get-FileHash -LiteralPath $m12ObservabilitySchemaPath -Algorithm SHA256).Hash.ToLowerInvariant()
-    if ($m12ObservabilityContractHash -cne 'cb55533e6bfebd861dde2bf11dadfa5d8af04f12b95c6e924021816a2e09cd25' -or $m12ObservabilitySchemaHash -cne '67bb52221c61df57b463842623f9ccd9f9770d8d7bde78017adc3067ce1b9a58') { throw 'M12 observability contract/schema checksum does not match the approved pin.' }
+    if ($m12ObservabilityContractHash -cne '079418db5baa7a11e4f100dac60119c9cfcbc5c97d398f5f6590e75c0aabdbff' -or $m12ObservabilitySchemaHash -cne '67bb52221c61df57b463842623f9ccd9f9770d8d7bde78017adc3067ce1b9a58') { throw 'M12 observability contract/schema checksum does not match the approved pin.' }
     if ([IO.File]::ReadAllText($m12ObservabilityPinPath) -cne "$m12ObservabilityContractHash  m12-observability-contract.v1.json`n$m12ObservabilitySchemaHash  m12-observability-contract.v1.schema.json`n") { throw 'M12 observability contract pin is not exact LF-closed.' }
     $m12ObservabilityContract = Get-Content -LiteralPath $m12ObservabilityContractPath -Raw | ConvertFrom-Json; $m12ObservabilitySchema = Get-Content -LiteralPath $m12ObservabilitySchemaPath -Raw | ConvertFrom-Json
     if ($m12ObservabilitySchema.additionalProperties -ne $false -or $m12ObservabilityContract.'$schema' -cne 'm12-observability-contract.v1.schema.json' -or $m12ObservabilityContract.producerId -cne 'm12-observability-harness' -or $m12ObservabilityContract.artifactKind -cne 'observability-evidence') { throw 'M12 observability contract/schema must be closed and self-identifying.' }
     $m12ObservabilityAssets = [ordered]@{
-        'Directory.Packages.props' = '4cf413c59bb6ace1d19a4a42a6d5be47cc3072fb4376495ecded1230e334908d'
+        'Directory.Packages.props' = '5699d9704833cac0565ca7f91db7545f85594859dad1bc2c7f263361a9032280'
         'src/SqlObserver.Observability/SqlObserver.Observability.csproj' = '60576c36aab91800264f4e35c58943fded212a53c029a90171a87e897f0828c5'
         'src/SqlObserver.Observability/ObservabilityContracts.cs' = '7113bcc81e331cf73417d4538ac713e03b2cee8e23d2294edf123e945f544a21'
         'src/SqlObserver.Observability/packages.lock.json' = '9921a06f61fbd419a030273ecc8a58e96cffaf02bcf95e1c07088e62098b2468'
-        'src/SqlObserver.Server/Program.cs' = '71410a49184622ea1d08fc59572be407c27886ba2eac9ffb422772f96730a71c'
+        'src/SqlObserver.Server/Program.cs' = '44ac4595ff7ed9c730225764c35d111929382ca629088785965e9a6d4b5bd09a'
         'src/SqlObserver.Server/ServerServiceRegistration.cs' = '6486f74a42216f3e8686019afe3a74f3cf991a8af8be9c125c955590560e1939'
         'src/SqlObserver.Server/SqlObserver.Server.csproj' = '168a9680121046f74bc64e2baa9e4313ba4c8279bf3bde89762da30d6385be93'
         'src/SqlObserver.Server/packages.lock.json' = 'f398f1863d3a8164d26059be0b6e82b3c48ebe6f856d675d6d20034452e512fd'
         'src/SqlObserver.Collector/Program.cs' = 'a267f4428236dc0755ce31dac75576175c0190fe685865fd2cbe468726a76090'
-        'src/SqlObserver.Collector/CollectorServiceRegistration.cs' = '5dc5f01a14630892c681b3135543a6cd7952ee9b16f511639532f4d9efea2300'
-        'src/SqlObserver.Collector/SqlObserver.Collector.csproj' = '87c4794857248be281692e58b75a402e7b342e341812c2f1d28a0e02f11d1f6b'
+        'src/SqlObserver.Collector/CollectorServiceRegistration.cs' = '308414fb6b64d260fc082d6be56db67e74b28df3032db1cd83e98b17628843c2'
+        'src/SqlObserver.Collector/SqlObserver.Collector.csproj' = '0896fbf3a2b5bd0cfa6bf67ad8d89f6b78cb0c2de1dec4a225825fc3714c54d5'
         'src/SqlObserver.Collector/packages.lock.json' = 'be84e9538e32ca205ecb96713a33d1fccbe8fbab5c47f514e33c847c4e1f22bf'
-        'src/SqlObserver.Collectors/CollectorExecutionEngine.cs' = '838789741108903bc74742aa8fa423bc34304d0de3b17949c8e6447d479e9883'
-        'src/SqlObserver.Collectors/CollectorScheduler.cs' = 'b8d78dfc9fe45fdce6cad5de0e9f43efa6cf976a9809f521e48f16bb361adb63'
-        'src/SqlObserver.Infrastructure.PostgreSql/PostgreSqlCollectorDataPlane.cs' = 'adf452e64a8156e003334cbea0e54864196497230bb9be8466a38432dcc89608'
-        'src/SqlObserver.Infrastructure.PostgreSql/PostgreSqlTargetControlPlane.cs' = '7755c91264f1d3a29e944da29dae41e88656283cdea4135078c86f04cd386f7a'
+        'src/SqlObserver.Collectors/CollectorExecutionEngine.cs' = '2d2058a969ac0363d90112a61128c10858d6fdae8e45de1d3a89e247a9863601'
+        'src/SqlObserver.Collectors/CollectorScheduler.cs' = 'ce7f7123cc95485a5b1290768bda9fb271e624b45e5fef657919a8a7cc551a12'
+        'src/SqlObserver.Infrastructure.PostgreSql/PostgreSqlCollectorDataPlane.cs' = '0fa9c2ecc09fe5699376a3e3b3a0d468247d43d278340e2d9f03651b92001ee5'
+        'src/SqlObserver.Infrastructure.PostgreSql/PostgreSqlTargetControlPlane.cs' = '1d75cf62503ccb172bb62961dab0dd830d55fa270c45f5bb46845daacefa4f4a'
         'src/SqlObserver.Infrastructure.PostgreSql/PostgreSqlCompatibilityPort.cs' = '41ef7ad9222fc32fde5a637fe356e5f17961766762f1fd7bcfdec9e12a0e98be'
         'src/SqlObserver.Infrastructure.PostgreSql/packages.lock.json' = '8e59cdd654f5c8f859219cb3c27a94915981e6dec3dec2f6048af724e22de3ec'
-        'tests/SqlObserver.IntegrationTests.PostgreSql/SqlObserver.IntegrationTests.PostgreSql.csproj' = '1e42d8ee02bc687988cc17b44f6200f4bf04dc48d1c93b7e298b195e6c521910'
-        'tests/SqlObserver.IntegrationTests.PostgreSql/packages.lock.json' = '17801451d0e48d8783769ad110b69efdba323ba263e1618f8b69c0987598526f'
-        'tests/SqlObserver.IntegrationTests.PostgreSql/M12ObservabilityCertificationTests.cs' = 'd61833c838a900174f92ad17f8a70d70cece480e70942dc3d02728015c4423f6'
+        'tests/SqlObserver.IntegrationTests.PostgreSql/SqlObserver.IntegrationTests.PostgreSql.csproj' = 'e7aa4a9e68a5ccc512ea141c7f34e25cd963c30c41d3be5a6455ee639293d938'
+        'tests/SqlObserver.IntegrationTests.PostgreSql/packages.lock.json' = '06459e6ec740ee4bae0abe298795c42568a17c6a5b0d8f573ad32033028fa311'
+        'tests/SqlObserver.IntegrationTests.PostgreSql/M12ObservabilityCertificationTests.cs' = 'a0c43cf977cd867df8ca68fd2883249f59b18e1f21e7a0ab63af43f9d3e3fe3a'
         'tests/SqlObserver.UnitTests/SqlObserver.UnitTests.csproj' = '6f9c982af8bb9d2cb3613c8725a87a6d66b4fe0d3d22dc2bf117c02022111ebe'
         'tests/SqlObserver.UnitTests/packages.lock.json' = '2744738e0fdd11a85b738c0f005003e0aeecdb2ffe11f1e41364fda1e82410b5'
         'tests/SqlObserver.UnitTests/M12ObservabilityContractTests.cs' = 'abe0e1230b848f22f534020d8795ac41771bbbcc63d9fdf686d67b979502dd5d'
@@ -1878,7 +2024,7 @@ function Assert-RepositoryShape {
     if (((@($m12ObservabilityContract.assetPins.PSObject.Properties.Name) -join '|') -cne (@($m12ObservabilityAssets.Keys) -join '|'))) { throw 'M12 observability asset pin inventory is not exact.' }
     foreach ($m12ObservabilityAsset in $m12ObservabilityAssets.Keys) { if ($m12ObservabilityContract.assetPins.$m12ObservabilityAsset -cne $m12ObservabilityAssets[$m12ObservabilityAsset] -or (Get-FileHash -LiteralPath (Join-Path $repositoryRoot $m12ObservabilityAsset) -Algorithm SHA256).Hash.ToLowerInvariant() -cne $m12ObservabilityAssets[$m12ObservabilityAsset]) { throw "M12 observability asset pin mismatch: $m12ObservabilityAsset" } }
     $m12ObservabilityProducerText = Get-Content -LiteralPath $m12ObservabilityProducerPath -Raw; $m12ObservabilityTestText = Get-Content -LiteralPath $m12ObservabilityTestPath -Raw
-    if ((Get-FileHash -LiteralPath $m12ObservabilityProducerPath -Algorithm SHA256).Hash.ToLowerInvariant() -cne '0ff6c18e7eae0d43a5ff7ae409059f2c604f55b5e19c95911daaad88d1d6bcfa') { throw 'M12 observability producer checksum does not match the externally held release pin.' }
+    if ((Get-FileHash -LiteralPath $m12ObservabilityProducerPath -Algorithm SHA256).Hash.ToLowerInvariant() -cne '2bf18b4a7778448cb021e83edeb9c195589817d77937739b62336a0ff5720f59') { throw 'M12 observability producer checksum does not match the externally held release pin.' }
     $m12ObservabilityRuntimeText = Get-Content -LiteralPath (Join-Path $repositoryRoot 'src/SqlObserver.Observability/ObservabilityContracts.cs') -Raw
     $m12ObservabilityServerRegistrationText = Get-Content -LiteralPath (Join-Path $repositoryRoot 'src/SqlObserver.Server/ServerServiceRegistration.cs') -Raw
     $m12ObservabilityCollectorRegistrationText = Get-Content -LiteralPath (Join-Path $repositoryRoot 'src/SqlObserver.Collector/CollectorServiceRegistration.cs') -Raw
@@ -1898,8 +2044,8 @@ function Assert-RepositoryShape {
     $m12SbomPinPath = Join-Path $repositoryRoot 'release/certification/m12-supply-chain-contract.v1.assets.sha256'
     $m12SbomProducerPath = Join-Path $repositoryRoot 'tools/run-m12-supply-chain-certification.ps1'
     $m12SbomGeneratorPath = Join-Path $repositoryRoot 'tools/generate-m12-sbom.mjs'
-    $m12SbomProducerSha256 = '82fa0947e0887fc1f78e930161a75e436b0914ba4d5412c8aa1fad16b2825b42'
-    $m12SbomAssetManifestSha256 = '8605a378b3d72d7ab08897c3f95f1ade89d66b3e51f462b6fe65df91ac84bfdb'
+    $m12SbomProducerSha256 = '13afa949acb4e347fcca9982c62650be7b935814ca6656824d5fdaa7b75ab03a'
+    $m12SbomAssetManifestSha256 = '0850c1930985051902f5df0091b64450f142c1233b93f35dfa963358d5d21851'
     foreach ($p in @($m12SbomContractPath,$m12SbomSchemaPath,$m12SbomInputsPath,$m12SbomInputsSchemaPath,$m12SbomSchema,$m12SbomPinPath,$m12SbomProducerPath,$m12SbomGeneratorPath)) { if (-not (Test-Path -LiteralPath $p -PathType Leaf)) { throw 'M12 SBOM certification asset is missing.' } }
     $m12SbomContract = Get-Content -LiteralPath $m12SbomContractPath -Raw | ConvertFrom-Json
     $m12SbomContractSchema = Get-Content -LiteralPath $m12SbomSchemaPath -Raw | ConvertFrom-Json
@@ -1909,7 +2055,7 @@ function Assert-RepositoryShape {
         'release/certification/m12-supply-chain-contract.v1.json' = 'c3d057f5a572e4a68fa0bdfb4d2ca000e1585f69c1c77f2b28db3aef0c50c152'
         'release/certification/m12-supply-chain-contract.v1.schema.json' = 'd15155d6bf41e6b5e90382595d1f2cb7d4ba30d54db293a6be5673aab4ad135d'
         'release/certification/m12-sbom.v1.schema.json' = '1b50c743245f19202639372f1c94335442a2ab52cf5ab298b36e436f4afe6d62'
-        'release/certification/m12-sbom-inputs.v1.json' = '53c43cfd8eb1f981339437a3aa755b24536f446ff6dad2c5f43be9779c135fa1'
+        'release/certification/m12-sbom-inputs.v1.json' = 'e66393b23ec08728fee6b57c4b2add8fdac80441b0a04c9692758d32bb88f1b0'
         'release/certification/m12-sbom-inputs.v1.schema.json' = 'b01e0d97ca0190d5b814d8254a2079185e8d46792001f3424bfe10c53f0791e8'
         'release/certification/m12-certification-matrix.v1.json' = '8b87625c2a56ea07b1dfe826201557e54891341803a75f2a77d2296509f07aac'
         'BACKLOG.md' = '0b1eba608b357aeb9efd016e7c688c8d754ed3851ecf070d3967d778f48c667a'
@@ -1919,7 +2065,7 @@ function Assert-RepositoryShape {
         'tools/generate-m12-sbom.mjs' = 'ea8887aa4b6ef4c04be0cb4e7e120d2ce67bfe8e967b3b0267a895d2d3de8614'
         'web/tests/m12-sbom-generator-contract.test.mjs' = '1a75390422b14b00dfcbbca0401b0a82bfa5874447b84384a2a9dc003fbc55b1'
         'web/contracts/web-asset-manifest.v1.schema.json' = '1f1e5b785dde79c492773f7298074fbf4668a1cebe75764cecdf97983fed682a'
-        'web/tools/web-asset-manifest.mjs' = '04370684e850b3cf9aaa0c5ed6db61dcdd6fb6fbbb7d0e67c8f5cb3197dcf17a'
+        'web/tools/web-asset-manifest.mjs' = '2fd70c625aff7f5cb77422f1efef3cc674061f91a57e1a93853938f52bf42bf0'
         'release/certification/m12-provenance-contract.v1.json' = 'c7d4c9e5dd56adfa61ec5e871e2f7759936b555001504bcd49c2a540c3a12c40'
         'release/certification/m12-provenance-contract.v1.schema.json' = '4546d686a21d46234982c2814019bda4f45ca3d8c0ff4c4758d3c2d7f859b7b9'
         'release/certification/m12-provenance-subjects.v1.schema.json' = '91cb87342a323efe412c524da6bae4c6c232cb2070df00ebcecb520cd8941f2e'
@@ -1948,6 +2094,13 @@ function Assert-RepositoryShape {
     if ((Get-FileHash -LiteralPath $m12SbomProducerPath -Algorithm SHA256).Hash.ToLowerInvariant() -cne $m12SbomProducerSha256) { throw 'M12 SBOM producer source checksum mismatch.' }
     if ((Get-FileHash -LiteralPath $m12SbomPinPath -Algorithm SHA256).Hash.ToLowerInvariant() -cne $m12SbomAssetManifestSha256) { throw 'M12 SBOM asset manifest checksum mismatch.' }
     if ($m12SbomContractSchema.additionalProperties -ne $false -or $m12SbomInputs.'$schema' -cne 'm12-sbom-inputs.v1.schema.json' -or @($m12SbomInputs.files).Count -ne 41) { throw 'M12 SBOM schemas or input manifest are not closed.' }
+    foreach ($inputAsset in $m12SbomInputs.files) {
+        $inputPath = Join-Path $repositoryRoot $inputAsset.path
+        if (-not (Test-Path -LiteralPath $inputPath -PathType Leaf) -or
+            (Get-FileHash -LiteralPath $inputPath -Algorithm SHA256).Hash.ToLowerInvariant() -cne $inputAsset.sha256) {
+            throw "M12 SBOM input checksum mismatch: $($inputAsset.path)"
+        }
+    }
     $m12SbomProducerText = Get-Content -LiteralPath $m12SbomProducerPath -Raw; $m12SbomGeneratorText = Get-Content -LiteralPath $m12SbomGeneratorPath -Raw
     foreach ($marker in @('ContractOnly','m12-sbom.cdx.json','m12-sbom-test-evidence.json','m12-supply-chain-contract.v1.assets.sha256','Assert-M12TrustedTree','M12SuspendedProcess','CreateSuspended','KillOnClose','ProcessIds','ReadAsync','FileMode]::CreateNew','FileShare]::None','Flush($true)','Assert-M12NoDescendants','XmlResolver','DocumentType','UnitTestResult','Counters','expectedCounters','CycloneDX','1.7','4096','8192')) { if (-not $m12SbomProducerText.Contains($marker, [StringComparison]::Ordinal) -and -not $m12SbomGeneratorText.Contains($marker, [StringComparison]::Ordinal)) { throw "M12 SBOM producer is missing invariant: $marker" } }
     $m12SbomMatrix = Get-Content -LiteralPath (Join-Path $repositoryRoot 'release/certification/m12-certification-matrix.v1.json') -Raw | ConvertFrom-Json
@@ -2035,10 +2188,10 @@ function Assert-RepositoryShape {
         $postgresFixtureText -notmatch 'new PostgreSqlBuilder') {
         throw 'PostgreSQL fixture must explicitly switch between the validated Release connection and local Testcontainers.'
     }
-    $releaseBranchOffset = $postgresFixtureText.IndexOf('string.Equals(profile, "Release"', [StringComparison]::Ordinal)
+    $externalResolutionOffset = $postgresFixtureText.IndexOf('string? externalConnection = ResolveExternalConnection(', [StringComparison]::Ordinal)
     $containerOffset = $postgresFixtureText.IndexOf('new PostgreSqlBuilder', [StringComparison]::Ordinal)
-    if ($releaseBranchOffset -lt 0 -or $containerOffset -le $releaseBranchOffset -or $postgresFixtureText.Substring($releaseBranchOffset, $containerOffset - $releaseBranchOffset) -notmatch 'return;') {
-        throw 'PostgreSQL Release fixture path must return before constructing a Testcontainers container.'
+    if ($externalResolutionOffset -lt 0 -or $containerOffset -le $externalResolutionOffset -or $postgresFixtureText.Substring($externalResolutionOffset, $containerOffset - $externalResolutionOffset) -notmatch 'if\s*\(externalConnection is not null\)\s*\{\s*_adminConnectionString = externalConnection;\s*return;') {
+        throw 'PostgreSQL validated external connection must return before constructing a Testcontainers container.'
     }
 }
 
@@ -2220,7 +2373,16 @@ function Invoke-TestProject {
     }
     finally { Pop-Location }
     $arguments = @('test', $resolved, '--configuration', 'Release', '--no-build', '--no-restore')
+    if ($Project -like '*SqlObserver.ApiContractTests.csproj') {
+        $arguments += @('--blame-hang', '--blame-hang-timeout', '2m', '--blame-hang-dump-type', 'none')
+    }
     if (-not [string]::IsNullOrWhiteSpace($Filter)) { $arguments += @('--filter', $Filter) }
+    if (-not [string]::IsNullOrWhiteSpace($TestResultsDirectory)) {
+        $resultsPath = [IO.Path]::GetFullPath($TestResultsDirectory, $repositoryRoot)
+        [void] [IO.Directory]::CreateDirectory($resultsPath)
+        $resultName = [IO.Path]::GetFileNameWithoutExtension($resolved) + '.trx'
+        $arguments += @('--logger', "trx;LogFileName=$resultName", '--results-directory', $resultsPath)
+    }
     Invoke-CheckedCommand -Executable 'dotnet' -Arguments $arguments -WorkingDirectory $repositoryRoot
 }
 
@@ -2286,10 +2448,49 @@ foreach ($testProject in $testProjectsToRun) {
         $filter = 'Category!=RequiresSqlServer'
     }
     if ($testProject -like '*SqlObserver.IntegrationTests.SqlServer.csproj') {
+        # AG qualification requires an explicit trusted primary/secondary pair.
+        $filter = if ([string]::IsNullOrWhiteSpace($filter)) { 'Category!=RequiresAvailabilityGroup' } else { "($filter)&Category!=RequiresAvailabilityGroup" }
+        # Paired CPU qualification runs co-located with SQL under its own
+        # monitoring identity and independently provisioned host binding.
+        $filter = if ([string]::IsNullOrWhiteSpace($filter)) { 'Category!=RequiresPairedCpuQualification' } else { "($filter)&Category!=RequiresPairedCpuQualification" }
+        # Independent CPU components require the same explicitly provisioned
+        # co-located monitor lab and are selected only by their native runner.
+        $filter = if ([string]::IsNullOrWhiteSpace($filter)) { 'Category!=RequiresCpuComponentsQualification' } else { "($filter)&Category!=RequiresCpuComponentsQualification" }
+        $filter = if ([string]::IsNullOrWhiteSpace($filter)) { 'Category!=RequiresServerLifecycleQualification' } else { "($filter)&Category!=RequiresServerLifecycleQualification" }
+        $filter = if ([string]::IsNullOrWhiteSpace($filter)) { 'Category!=RequiresSqlAgentActivityReadiness' } else { "($filter)&Category!=RequiresSqlAgentActivityReadiness" }
+        # Signed-module qualification requires its separately reviewed temporary
+        # SQL objects and actual monitoring identity; ordinary sweeps must not run it.
+        $filter = if ([string]::IsNullOrWhiteSpace($filter)) { 'Category!=RequiresSqlAgentActivitySignedModule' } else { "($filter)&Category!=RequiresSqlAgentActivitySignedModule" }
+        $filter = if ([string]::IsNullOrWhiteSpace($filter)) { 'Category!=RequiresSqlAgentActivityUnsignedModule' } else { "($filter)&Category!=RequiresSqlAgentActivityUnsignedModule" }
+        $filter = if ([string]::IsNullOrWhiteSpace($filter)) { 'Category!=RequiresSqlAgentActivityMetadataModule' } else { "($filter)&Category!=RequiresSqlAgentActivityMetadataModule" }
+        $filter = if ([string]::IsNullOrWhiteSpace($filter)) { 'Category!=RequiresSqlAgentActivityProductionModule' } else { "($filter)&Category!=RequiresSqlAgentActivityProductionModule" }
+        $filter = if ([string]::IsNullOrWhiteSpace($filter)) { 'Category!=RequiresSqlAgentActivityExplicitDenyModule' } else { "($filter)&Category!=RequiresSqlAgentActivityExplicitDenyModule" }
+        # This test creates and drops its own Query Store databases. It is
+        # selected explicitly for a disposable SQL Server lab, never by the
+        # ordinary Local or Release sweep.
+        $filter = if ([string]::IsNullOrWhiteSpace($filter)) { 'Category!=RequiresSqlServerDisposable' } else { "($filter)&Category!=RequiresSqlServerDisposable" }
         # The M12 release producer is the sole selector for the live passive
         # certification. Ordinary Local and Release sweeps must never invoke
         # it (and must not turn a missing release lab into a skip).
         $filter = if ([string]::IsNullOrWhiteSpace($filter)) { 'Category!=RequiresM12SqlServerRelease' } else { "($filter)&Category!=RequiresM12SqlServerRelease" }
+    }
+    if ($testProject -like '*SqlObserver.IntegrationTests.PostgreSql.csproj') {
+        # Exact native-receipt replay requires a separately hash-pinned lab artifact.
+        $filter = if ([string]::IsNullOrWhiteSpace($filter)) { 'Category!=RequiresCpuNativeReceipt' } else { "($filter)&Category!=RequiresCpuNativeReceipt" }
+        $filter = if ([string]::IsNullOrWhiteSpace($filter)) { 'Category!=RequiresServerLifecycleNativeReceipt' } else { "($filter)&Category!=RequiresServerLifecycleNativeReceipt" }
+        # Connected Agent acceptance owns a disposable repository and Chromium
+        # journey, and requires explicitly provisioned local browser inputs.
+        $filter = if ([string]::IsNullOrWhiteSpace($filter)) { 'Category!=RequiresAgentConnectedAcceptance' } else { "($filter)&Category!=RequiresAgentConnectedAcceptance" }
+        # Native Agent replay requires a fresh, hash-pinned original authorization
+        # sidecar and capture; ordinary sweeps cannot provide those inputs.
+        $filter = if ([string]::IsNullOrWhiteSpace($filter)) { 'Category!=RequiresAgentNativeReplayAcceptance' } else { "($filter)&Category!=RequiresAgentNativeReplayAcceptance" }
+        # The explicitly synthetic rehearsal also owns disposable repository/browser inputs.
+        $filter = if ([string]::IsNullOrWhiteSpace($filter)) { 'Category!=RequiresAgentNativeReplayRehearsal' } else { "($filter)&Category!=RequiresAgentNativeReplayRehearsal" }
+        # Exporting a native repository fixture requires explicit owned output and Docker inputs.
+        $filter = if ([string]::IsNullOrWhiteSpace($filter)) { 'Category!=RequiresAgentNativeRepositoryArchive' } else { "($filter)&Category!=RequiresAgentNativeRepositoryArchive" }
+        # Cross-store live blocking qualification owns disposable SQL objects
+        # and is selected explicitly rather than by an ordinary validation sweep.
+        $filter = if ([string]::IsNullOrWhiteSpace($filter)) { 'Category!=RequiresSqlServerDisposable' } else { "($filter)&Category!=RequiresSqlServerDisposable" }
     }
     Invoke-TestProject -Project $testProject -Filter $filter
 }
@@ -2303,8 +2504,12 @@ Invoke-CheckedCommand -Executable 'pnpm' -Arguments @(
 $trustedPowerShellEnvironmentName = 'SQLOBSERVER_M12_TRUSTED_PWSH_PATH'
 $trustedPowerShellWasPresent = Test-Path -LiteralPath "Env:$trustedPowerShellEnvironmentName"
 $previousTrustedPowerShellPath = [Environment]::GetEnvironmentVariable($trustedPowerShellEnvironmentName)
+$permissionParityEnvironmentName = 'SQLOBSERVER_PERMISSION_PARITY'
+$permissionParityWasPresent = Test-Path -LiteralPath "Env:$permissionParityEnvironmentName"
+$previousPermissionParity = [Environment]::GetEnvironmentVariable($permissionParityEnvironmentName)
 try {
     Set-Item -LiteralPath "Env:$trustedPowerShellEnvironmentName" -Value (Get-TrustedPowerShellPath)
+    Set-Item -LiteralPath "Env:$permissionParityEnvironmentName" -Value '1'
     foreach ($script in @('typecheck', 'test', 'build')) {
         Invoke-CheckedCommand -Executable 'pnpm' -Arguments @(
             '--dir', $webPath,
@@ -2318,6 +2523,12 @@ finally {
     }
     else {
         Remove-Item -LiteralPath "Env:$trustedPowerShellEnvironmentName" -ErrorAction SilentlyContinue
+    }
+    if ($permissionParityWasPresent) {
+        Set-Item -LiteralPath "Env:$permissionParityEnvironmentName" -Value $previousPermissionParity
+    }
+    else {
+        Remove-Item -LiteralPath "Env:$permissionParityEnvironmentName" -ErrorAction SilentlyContinue
     }
 }
 

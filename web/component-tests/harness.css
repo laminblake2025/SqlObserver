@@ -1,0 +1,10 @@
+.component-harness { max-width: 730px; margin: 0 auto; padding: 20px; }
+.harness-controls { display: flex; flex-wrap: wrap; gap: 16px; margin: 20px 0; padding: 16px; }
+.harness-controls label { display: grid; gap: 6px; min-width: 0; max-width: 100%; }
+.harness-controls select { min-width: 0; width: 100%; }
+.harness-controls .harness-checkbox { display: flex; align-items: center; }
+.harness-controls input[type="checkbox"] { flex: 0 0 auto; }
+.harness-observations { overflow-wrap: anywhere; }
+.harness-chart-panel { min-width: 0; margin-top: 24px; padding: 18px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
+.harness-chart-panel figure { margin: 0; }
+.harness-chart-panel figcaption { font-size: 14px; line-height: 1.5; }

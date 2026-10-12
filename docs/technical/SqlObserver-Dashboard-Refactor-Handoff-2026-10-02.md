@@ -1,0 +1,2041 @@
+# Dashboard refactor checkpoint and next-work handoff
+
+This checkpoint implements the dashboard refactor, including the native contracts and persistence needed for cohesive dashboard features. It does **not** complete the full repository review and plan, or every feature in its interface direction. The latest human instruction confines implementation to the dashboard refactor; unrelated collector and runtime redesign remain outside this pass.
+
+## Current takeover status: effective Agent DENY and connected fixture qualified — 2026-10-07
+
+The local qualification (local output: `artifacts/dashboard-agent-deny-connected-2026-10-07/local-qualification-v1.json`) passes554 trial contracts,211 SQL gate/receipt contracts, one connected synthetic-source journey and52 synthetic cleanup-fence decisions. The repository regression run passed67 ordinary cases; two isolated-clock fixtures failed setup because the required image setting was omitted, then those exact two passed using the previously qualified image. Every failed attempt is preserved. These are separate groups, not an aggregate unique-test count.
+
+The connected journey uses the production collector, real restricted PostgreSQL18.4 enrollment and canonical writer, scoped root Kestrel HTTP and the hash-verified built Operations UI. Source/capability evidence and fixture authentication are synthetic. Real enablement/lease/start/commit/replay, revocation disabling collection, historical exact success/failure/missing reads, source precision/privacy,320/1440px keyboard/viewport/axe and URL/reload checks pass without API interception.
+
+The fresh Run16 record (local output: `artifacts/dashboard-agent-deny-connected-2026-10-07/native-qualification-v1.json`) passes four actual-monitor native cases through signed capture, the exact package-owned `SELECT ON msdb.dbo.syssessions` DENY and grant restoration. Public reader refusal, independent SQL229, invalid-bound50001 and restored public collector capture pass. Original SQL baseline cleanup, direct child exits and temporary service deletions are verified; Agent remains stopped and the five existing core services are running. Unconfirmed worker termination closes/disposes the DBA session and preserves the journal. Blind standalone/fallback recovery is disabled pending a reviewed private termination audit; native interruption and universal descendant stability remain open.
+
+These two evidence chains are separate. Run16 exports full private collector captures but omits the original ephemeral authorization window; a native canonical replay must preserve the full original private enrollment in a fresh prepared attempt and meet the unchanged source-clock boundary without backdating. Attached-invalid-signature construction needs a rollback-only supported-blob experiment before a committed fixture. Running/session/time qualification, persistent provisioning, continuous native-to-dashboard acceptance, CPU/AG native work and final dashboard acceptance remain open. The broader goal remains active; no live migration, live schedule opt-in, persistent SQL installation, production deployment, push or upload occurred.
+
+## Retained Agent history and observations view qualified — 2026-10-07
+
+The [activity window history contract](Sql-Agent-Activity-Window-History.md) adds migration **0372**, target-scoped completion-window summary reads and independent exact run/sample-revision detail, plus the SQL Agent observations panel alongside unchanged failure history. Failed, absent and invalid selections remain explicit without older-success fallback. Historical reads work after enrollment revocation. Source UTC brackets retain exact100ns comparisons; local job dates remain offset-free strings and do not establish elapsed duration.
+
+The history qualification record (local output: `artifacts/dashboard-agent-activity-history-2026-10-07/completion-v2.json`) passes **512 unit**, **126 HTTP**, **100 PostgreSQL integration**, **1 isolated retention**, **55 native web**, **36 mounted component** and **11 built-App** cases, all zero-skipped; these are separate groups. TypeScript, production build and asset verification pass. The restricted PostgreSQL reader returned100 summaries for100 runs ×512 jobs in **376.6ms**, within its five-second deadline on this disposable fixture. Real isolated backup/restore, attestation and leased receipt retirement preserve explicit missing payloads and canonical receipts. Independent review found no remaining substantive defect. Failed fixture-role and browser-selector attempts remain preserved, and stale receipt/tab route regressions pass.
+
+HTTP composition uses a mock port; installed PostgreSQL and browser captures are synthetic. Earlier Run15 actual-monitor reader evidence remains separate. Native running/session/time semantics, persistent provisioning, continuously deployed collector-to-dashboard acceptance and final dashboard acceptance remain open. No live migration, opt-in, persistent SQL installation, deployment, push or upload occurred. The broader goal remains active.
+
+## Retained Agent observations and default-off collection qualification — 2026-10-07
+
+The [retained observations contract](Sql-Agent-Activity-Observations.md) adds migrations **0370/0371**, a bounded collector through the guarded public reader, fenced canonical receipts, default-off order-22 catalog registration, target-scoped administrator controls and recovery-backed retention. Enrollment replacement/revocation and target-definition changes disable collection and advance its schedule revision. No live migration, opt-in, deployment or new native SQL capture occurred.
+
+The qualification record (local output: `artifacts/dashboard-agent-activity-observations-2026-10-06/completion.json`) passes **487 unit**, **100 HTTP**, **78 PostgreSQL integration** and **1 isolated retention** cases, all zero-skipped. PostgreSQL captures are synthetic against disposable PostgreSQL18.4; the earlier Run15 actual-monitor reader evidence remains separate. The failed canonical-accounting attempt is preserved: response accounting now includes every source row and covers retained output, satisfying the existing global constraint. Independent review found no remaining substantive defect in the qualified slice.
+
+At this checkpoint the next slice was scoped completion-window history, independent exact run/sample-revision detail and an observations panel; the newer history qualification above completes that local slice. Local job dates do not establish UTC start or elapsed duration. Running/session/time semantics, persistent provisioning, connected collector-to-dashboard acceptance and the broader active goal remain open.
+
+## Guarded reader and enrollment qualification — 2026-10-05
+
+The [guarded module reader and enrollment contract](Sql-Agent-Module-Enrollment.md) now provide a separate public source path and migration **0369**. Enrollment is immutable, target/revision-bound, time-bounded and explicitly revocable; compare-and-set changes and audit receipts commit atomically. Exact replay cannot undo later revocation. Target-scoped administrators can read/enroll/revoke through the new API; the collector resolves authority through its restricted PostgreSQL role. This does not install a persistent SQL package, enable a schedule, fabricate discovery permissions, or change running/elapsed-time admission.
+
+The reader/enrollment checkpoint (local output: `artifacts/dashboard-agent-module-adapter-2026-10-05/completion-v3.json`) passes **2/2 actual-monitor native cases, zero skips**, in fresh Run15. The public reader accepts the signed 12-row capture after three authorization resolutions and before/after metadata/identity checks. After committed signature removal it refuses before its second authorization check and accepts no capture. This is a reviewed control-flow fence, not native statement tracing. Direct permissions remain unchanged and direct syssessions SELECT still fails with **229**. The native harness supplies independently provisioned finite enrollment; real HTTP/PostgreSQL enrollment behavior is qualified separately against disposable PostgreSQL18.4.
+
+Run14 is retained as a failed one-case attempt: the new reader incorrectly required equality between the driver's client connection GUID and SQL Server's connection GUID. Cleanup restored the baseline; the harness also ran its fallback recovery. The corrected reader tracks both IDs independently, requires each to remain stable, and binds SQL SPID to the owned driver's `ServerProcessId`. New regression tests accept distinct stable GUIDs and reject client/server/SPID drift. Run15's separate diagnostic connection confirms that the two GUIDs differ and remain independently stable. Normal Run15 cleanup succeeds with exit **0**, no fallback recovery, and original-baseline restoration. All **2,568** packaged inputs and four runner inputs remained unchanged. The final **11:05:38.684257 UTC** snapshot finds no qualification processes/services, all five core services running and Agent stopped; it does not establish universal historical descendant absence.
+
+Final owning groups pass **340** unit/catalog/composition, **68** HTTP, **8** PostgreSQL integration and **135** SQL contract cases, all zero-skipped; these are separate groups, not a unique-test aggregate. The runner builds with zero warnings/errors. Retained failed attempts include analyzer repairs and a checksum-manifest LF correction. Independent review covers the final identity fix, storage/audit boundaries and API/composition. The next cohesive slice is canonical activity observations with an enrollment-revision fence at commit, disabled-by-default collection, retention, scoped history and UI. Public running/session/time semantics, explicit DENY/attached-invalid-signature qualification, live migration/deployment and full dashboard acceptance remain open. The active goal is not complete.
+
+The prior thread is idle. The takeover baseline is **`d83ba557bd57e3b1f5c661d4f4cecc0e1097c04a`**; all **1,281** recorded inputs from its latest CPU qualification freeze were independently rehashed unchanged at takeover. That historical checkpoint records **413 passing managed cases and zero executed native cases**. Since takeover, the qualification README was corrected to acknowledge existing persistence, HTTP and UI support, and the CPU producer's process-mapping check was repaired as recorded below. The CPU same-session identity fix, AG access/recovery repair and retained backup/AG history are complete for their recorded slices. Historical entries below describe their respective checkpoints; their older open-item lists do not supersede this current matrix. The independent CPU component source now has a passing SQL Server 2025 native run, as recorded below. This is not completion of the dashboard or broader goal.
+
+The [default-off lifecycle collection implementation](Server-Lifecycle-Collection.md) now installs the real order-21 catalog through migration **0368**, registers the existing bounded collector, grants only its fenced writer entry points, and exposes target-scoped administrator controls. Existing/new targets remain disabled; reconciliation preserves same-revision opt-in and disables collection after target-definition changes. Target and schedule revisions fence stale writes, including enable/disable/enable sequences. The UI requires authoritative readback after uncertain changes and preserves retained-history semantics. No live migration, opt-in or deployment occurred.
+
+The latest lifecycle admission evidence (local output: `artifacts/dashboard-lifecycle-admission-2026-10-05/completion.json`) records a fresh **4/4 passing native cases, zero skips**: three lifecycle cases plus one diagnostic Agent readiness probe. This SQL-only run made no process-DACL changes, consumed **2,521** verified packaged inputs plus four exact-set runner inputs, and verified temporary-service deletion. PostgreSQL test sources were excluded from the guest package because they are not required by the SQL qualification project. Its final snapshot observed no qualification processes/services and all five existing services running. This is a final snapshot, not proof about every historical descendant. The earlier Agent readiness checkpoint (local output: `artifacts/dashboard-lifecycle-agent-2026-10-05/completion.json`) retains its **73** passing managed cases and separate native evidence.
+
+The fresh lifecycle canonical replay passes **1/1** against disposable PostgreSQL 18.4 using the actual installed catalog, production administrator opt-in and existing role grants. Two original successful snapshots retain exact target/revision/run, source timestamps, engine/member evidence and accounting through production lease/start/commit. Repeated commits replay idempotently; sealed receipts preserve the initial-to-comparable predecessor chain and second-run checkpoint. Scoped history reports two complete retained receipts and zero inferred events. The initial comparison boundary remains a visibility gap, and source consistency remains false. No temporary writer grant or fabricated contract is used. Work is constructed from the exact installed schedule; the replay does not qualify a live `engine.core` prerequisite. Scheduler eligibility is tested separately with clearly synthetic canonical engine observations. An earlier attempt correctly returned `source_clock_boundary` for old native evidence; a fresh capture passed within the unchanged five-minute boundary. This is recorded-native replay, not continuous collection or a physical restart/failover test.
+
+Final owning groups pass with zero skips: **102** managed source/catalog, **1** production composition, **62** API, **97** PostgreSQL, **3** isolated-clock retention, **1** recorded-native replay, and the **4** actual-monitor native cases above. These separate groups overlap and are not a unique-test total. Web qualification passes **36** unit, **45** mounted and **11** built-App cases with no failed, skipped or flaky cases; typecheck, build and asset verification pass. Synthetic browser fixtures exercise administrator/viewer behavior, stale revisions, uncertain writes, context changes and responsive accessibility at **320/1440**, with screenshots reviewed. HTTP integration uses test authentication; Windows HTTP authentication is not qualified. All **368** migration checksums match. Independent final review found no remaining material blocker. Earlier complete failed attempts retain evidence: an existing API data-protection fixture needed isolation, PostgreSQL fixtures needed proper worker-lease recovery and one statement timestamp, and the first replay used old source evidence. Production assertions and clock bounds were preserved.
+
+The latest Agent read-path evidence (local output: `artifacts/dashboard-agent-read-path-2026-10-05/completion.json`) identifies and repairs the service filter defect. Under the actual monitor, the unfiltered DMV returned two quoted executable paths with arguments, including one Agent token; the original strict basename filter returned zero matches. New immutable **v2** assets share one checksum-pinned projection that recognizes a quoted executable token followed by opaque arguments. Malformed quotes, false suffixes and unquoted whitespace remain unavailable. V1 bytes and the three-result schema 1 parser are unchanged. The exact production projection passes **20 read-only SQL VALUES cases** on the guest, then selects one actual Agent service with status **Stopped**. A separately attributed administrative SCM snapshot also reports Stopped; it does not upgrade the monitor's visibility or service/session association.
+
+Final source/parser **74** and readiness-contract **89** managed cases pass with zero skips. Both initial diagnostic and corrected-source guest runs pass their exact **4/4** cases, zero skips; the final run verifies **2,526** packaged inputs and four exact-set runner inputs before/after, plus temporary-service deletion. The final snapshot finds no qualification processes/services and all five existing core services running. It is not universal historical descendant proof. The corrected full Agent capture remains unqualified: the native run executes its shared service projection, not the inaccessible `syssessions` portion. No SQL grant, job, service restart, process-DACL change, migration or deployment occurred.
+
+The monitor's `HAS_PERMS_BY_NAME` result for `VIEW SERVER SECURITY STATE` is false, yet actual DMV reads succeed; this must not be described as a demonstrated DMV read denial. `msdb.syssessions` SELECT actually fails with **229**, while `sysjobactivity` SELECT returns 47 bounded rows. Production discovery omits all three staged-reader permission entries. No profile was fabricated. The [signed-module candidate](../../tools/provisioning/sql-agent-activity/README.md) contains a pinned fixed procedure, offline permission preview and read-only DBA inspection query; **7** pure validation tests pass. The original offline preview remains unchanged. A separate finite trial library now implements provenance-bound transactional installation, committed-state verification, actual-monitor callback, and guarded removal/recovery. The finite trial evidence (local output: `artifacts/dashboard-agent-module-trial-2026-10-05/completion.json`) records **3/3 native cases passing, zero skips**, under the actual monitor. Signed cross-database reads parsed **12 rows** through the production three-result parser while direct syssessions SELECT remained denied with 229. NULL/512/514 bounds returned 50001; pre-cancellation covers generic source opening only. The coordinator verified installation, signature/definition and normal removal, restoring the original baseline including the absent master user. Final managed groups pass **60** pure SQL-plan, **98** journal/guard/privacy, **99** module-contract and **74** source/parser cases; these groups are not a unique-test total. The run verified **2,536** source inputs and four runner inputs before/after, temporary-service deletion and an empty final qualification-process/service snapshot. The protected SQL journal remains on the guest and was not copied locally. Independent review found no blocking discrepancy. Agent remained stopped, yielding ServiceNotRunning and Unknown candidates with no elapsed/long-running claim. That initial run did not exercise full foreign-owner visibility, signature/DENY negatives, running-session association, in-flight cancellation or process-exit recovery; production discovery and admission are unchanged. Do not infer complete activity, present liveness or elapsed duration from these diagnostics.
+
+The independent DBA visibility comparison (local output: `artifacts/dashboard-agent-module-trial-2026-10-05/visibility-completion.json`) now passes for the observed stopped-Agent fixture. All **12** monitor rows exactly matched the complete ordered DBA row sets before and after the capture; all **12** had owner SIDs differing from the monitor SID. Session details, source fields, owner classifications and SQL-clock bracketing matched. The fresh trial passes **3/3 native cases, zero skips**, verifies **2,538** source inputs plus four runner inputs unchanged, and restores the original SQL baseline with temporary-service deletion. The complete affected tooling suite passes **208** cases, including 110 new witness/receipt cases. The raw DBA snapshots were compared in memory; local evidence retains the safe result, exact parsed-TRX digest and reviewed implementation. This establishes observed row-set agreement, not universal visibility, continuous stability, exact owner continuity, running association or elapsed duration. The subsequent schema-2 signature-removal trial below provides a distinct recorded unsigned state; arbitrary callback edits still fail drift checks.
+The signature-removal checkpoint (local output: `artifacts/dashboard-agent-module-trial-2026-10-05/signature-completion.json`) passes **5/5 native cases, zero skips**: the three signed cases followed by two cases after committed, DBA-verified removal of only the recorded signature. Signed visibility again matches all 12 rows; unsigned canonical execution returns only **229**, while NULL/512/514 bounds return **50001**. Actual monitor identity and direct permission vector **0/0/1** remain unchanged, with direct syssessions reads denied before/after. Journal schema 2 stores immutable signed and unsigned postimages before commit; uncertain-commit recovery accepts only those exact recorded states, while schema 1 stays signed-only. The coordinator verified normal unsigned-state removal and original-baseline restoration; both temporary services were deleted. The run verified **2,540** packaged inputs and four runner inputs unchanged. The full tooling group passes **303**, selected enrollment **22**, and pure SQL-plan **60** cases. Independent review covers final sources and evidence. Protected guest journal and raw DBA snapshots were not copied. That run did not exercise process-exit or uncertain-commit fault injection. Explicit DENY, attached invalid signatures, in-flight cancellation, running/session/time semantics and production admission remain open.
+
+The Run11 controlled-exit recovery checkpoint (local output: `artifacts/dashboard-agent-module-trial-2026-10-05/recovery-completion.json`) passes **3/3 signed native tests, zero skips**, then deliberately exits the first runner with code **73** after acknowledged signature-removal commit and exact unsigned-state verification. The signed worker had already exited and its temporary service deletion was verified. A separate runner process with a fresh DBA connection recovers the same deployment receipt, verifies the recorded unsigned state and restores the original baseline, exiting **0**. The journal advances from `unsigned` to `removed` while preserving the immutable baseline, signed and unsigned images. Recovery executes **zero native tests** and intentionally returns `QualificationPassed=false`, `CleanupVerified=true`, `qualification_not_replayed`; the parent harness separately qualifies the controlled-exit scenario. There is no unsigned native-test phase in Run11. All **2,540** packaged source inputs and four runner inputs were unchanged. The final **09:41:10.968 UTC** snapshot found no qualification processes/services, all five core services running and Agent stopped. This snapshot does not prove absence of every historical descendant. The protected guest journal remains private. The result qualifies controlled exit after an acknowledged commit and completed worker cleanup; uncertain COMMIT, power loss, interruption during SQL work or journal writes, in-flight cancellation and orphaned-worker recovery remain open.
+
+The **finite metadata-verification trial is implemented and Run13 native qualification passes 2/2 cases**. Immutable journal schema 3 / installation policy 2 retains schema 1/2 and their exact five-grant contract, adding only module and certificate `VIEW DEFINITION` for seven explicit grants. Recovery uses the recorded policy and exact signed/unsigned postimages; no policy is inferred or upgraded. The separate pinned probe verifies the trusted DBA-installed definition, public certificate and signature before capture EXEC is constructed or sent, then checks again after production parsing and before accepting the capture. The actual-monitor connection uses the production integrated factory and the same owned session throughout, with before/after identity and direct-permission checks. The unsigned case refuses capture eligibility and separately requires SQL 229 with no source result sets from a negative execution experiment. Managed groups pass **394** tooling, **132** selected SQL metadata/contract and **60** pure SQL-plan cases; these are separate groups, not a unique-test aggregate. The next step is an explicit module adapter with trusted, versioned, revocable enrollment before retention, API and UI work; no public module adapter is admitted. Equal before/after observations cannot rule out privileged change-and-restore. Unsigned behavior does not establish attached-invalid-signature or explicit-DENY behavior.
+
+Run12 is retained as a failed metadata-policy attempt: installation validation refused the postimage before any native tests executed, and cleanup verified original-baseline restoration. The new validator had assumed `dbo` for module grants. Read-only inspection of the protected retained Run10 receipt confirmed the actual module `EXECUTE` grantor was its fixed schema owner. Policy 2 now explicitly grants module `EXECUTE` and `VIEW DEFINITION` as `SqlObserverAgentActivitySchemaOwnerV1` and certificate `VIEW DEFINITION` as `dbo`, with exact grantor validation and unchanged legacy behavior. The fresh Run13 deployment uses the corrected installer and its passing native outcome is recorded below. The final 394-case tooling group includes targeted wrong-grantor rejection; the separate 132-case metadata/enrollment and 60-case legacy SQL-plan groups also pass.
+
+The Run13 metadata checkpoint (local output: `artifacts/dashboard-agent-module-trial-2026-10-05/metadata-completion.json`) passes **2/2 native cases, zero skips**. Signed capture verifies the enrolled definition, public certificate, cryptographic signature validity and actual-monitor identity before/after on the same owned session. After signature removal, metadata remains readable but capture eligibility is false; the separate negative execution returns only **229**, with no source result sets. Direct permissions remain unchanged. The runner exits **0** and normal cleanup verifies original-baseline restoration; fallback recovery is **not invoked**. All **2,547** packaged source inputs and four runner inputs were unchanged. The final **10:13:43.7300142 UTC** snapshot found no qualification processes/services, all five core services running and Agent stopped. It does not prove absence of every historical descendant. The completion record binds the two independently checked TRXs and retained failed Run12 attempt. This is finite metadata-policy qualification; privileged change-and-restore, attached invalid signatures, explicit DENY, running/session/time semantics and public production adapter/admission remain outside its scope.
+
+The preceding native continuation evidence (local output: `artifacts/dashboard-native-continuation-2026-10-05/completion.json`) records **6/6 passing native cases, zero skips**: the three CPU cases and three lifecycle cases. It consumed **2,690** verified packaged inputs plus four exact-set runner inputs. The reviewed temporary process DACL was restored exactly, temporary service deletion was verified, and the final snapshot observed no qualification processes/services with all five existing services running.
+
+The CPU native case now emits a closed private observation envelope for hash-bound replay. Connected acceptance (local output: `artifacts/cpu-components-repository-2026-10-05/connected-completion.json`) passes **1/1** through a disposable pinned PostgreSQL 18.4 repository, production administrator opt-in, fenced canonical commit and exact replay, original raw-counter readback, production scoped list/exact HTTP and cross-target denial, then the built Resources page. Original target/revision/run, native counters, source UTC, quality and accounting remain unchanged. The browser used no API mocks, received six successful CPU responses, restored the exact selection after reload at **320/1440**, and reported **zero scoped WCAG violations**. Source values were SQL-process **0%**, host **0.68462520943321%**, with exact pair eligibility false. This is a connected **recorded-native replay**: schedule/start/completion clocks describe fresh isolated ingestion, duration zero is replay bookkeeping, and HTTP authentication uses test claims. It does not certify continuously deployed collection or Windows HTTP authentication.
+
+Lifecycle native qualification used the public production collector and actual non-sysadmin monitoring identity. Three captures each returned one row/512 bytes with complete engine evidence; two consecutive captures preserved the engine incarnation and advanced source clocks. This guest has **HADR disabled**, so the exercised AG branch was **Unsupported with zero members**. Pre-cancellation passed. **65** related managed parser/domain/collector cases pass with retained TRX. The latest stable snapshots also pass the isolated canonical replay above. No restart, physical failover, partial AG, overflow or in-flight cancellation scenario was exercised, and `source_consistency_verified` remains false. An existing qualified AG topology has not yet been identified; replica connection information was requested.
+
+Durable CPU access requires reconciliation when SQL replaces its process. The temporary process ACE is not a service ACL or a persistent grant policy. A [reviewable administrative provisioner](../../tools/provisioning/cpu-process-access/README.md) is now implemented with a fixed SYSTEM task, protected configuration/ownership records, pinned SQL image hash and service/account identities, live process-token checks, exact `0x101000` grants, drift refusal and owned-ACE removal preserving unrelated ACL entries. Windows PowerShell 5.1 compilation/parsing and **32 managed checks** pass. Independent review caught and resolved the missing live SQL TokenUser check, then reviewed the final three runtime hashes without a remaining material static blocker.
+
+The guest preview (local output: `artifacts/dashboard-lifecycle-agent-2026-10-05/provisioner-preview-20261005T054748607Z.json`) passed for MSSQLSERVER and SqlObserverCollector, with policy binding `c54c2b28154c8b22f4fc914edec988239394047bf66e937244b72ebf00477ac0`. It verified configured identities and image hash and created no installation directory/task/grant. Automatic approval review rejected the subsequent installation request because the prior scope did not explicitly authorize a persistent SYSTEM task and process-rights grant. The exact approval question is pending; do not retry or work around it without user approval. No persistent helper, live migration, production opt-in or deployment occurred. Actual SYSTEM execution, current-monitor access, replacement-process recovery, denial gaps, drift refusal and removal remain native qualification gates. A SQL restart also needs maintenance authorization.
+
+The user confirms the Hyper-V lab address as **`192.168.50.174`**; the saved SSH alias still targets `192.168.50.76`. From workstation `192.168.50.130/24`, initial probes timed out on SSH **22**, documented HTTPS **5443**, Windows RDP **3389** and WinRM **5985**. Elevated read-only Hyper-V inventory identified running VM **`Server2025Test`** (`48a614e9-3f6c-4aca-b208-2f95075097e0`) on **Primary External**, reporting the corrected IP and matching ARP neighbor `00-15-5d-a0-95-1a`. Authenticated PowerShell Direct access now confirms guest hostname **`WIN-QNGOV5GDM24`**. The user-approved SSH firewall rule is scoped to remote `192.168.50.130`, local `192.168.50.174`, port **22** and service **sshd**, but TCP still times out. Continue qualification through PowerShell Direct; the SSH alias remains unchanged and strict host-key verification remains required for SSH recovery.
+
+The exact baseline package (local output: `artifacts/dashboard-takeover-2026-10-04/source-d83ba557-qualified-bytes.zip`) has been transferred and hash-verified on the guest, with source staged at `C:\SqlObserverLab\Qualification\takeover-d83ba557-20261004\source`. It contains **2,642 files**, with all **1,279 packaged baseline source inputs** matching the recorded freeze; two ignored local evidence files are intentionally excluded. The package preserves 33 consumed CRLF file representations, verified to differ from the Git archive only in line endings. Package verification (local output: `artifacts/dashboard-takeover-2026-10-04/package-verification.json`) records provenance. Isolated locked restore and Release build both exited **0**. The existing automatic `postgresql-x64-18` service was restored to **Running**, with port **5432** listening and configuration unchanged.
+
+The guest runner passes configuration validation (including the supported `--SqlObserver:WebRootPath` argument), repository endpoint access, production persisted binding, CPU capability, monitoring SID agreement with the service/profile, and all 12 environment checks. The user's password reset resolved credential rejection; the temporary demand-start Windows service launcher then succeeded under the same monitoring account's existing service-logon rights, avoiding the refused interactive logon. The first native result (local output: `artifacts/dashboard-takeover-2026-10-04/guest-native-run-first-native-result.json`), evidence run `native-evidence-20261005T025900333Z`, records **3 executed, 1 passed, 2 failed and 0 skipped**. The pre-cancelled case passed with **0 native starter calls**; both actual captures failed **ProcessUnavailable** before CPU arithmetic assertions were reached. Native qualification currently fails.
+
+Both owned SQL identity brackets passed all eight current/original identity checks against SQL Server **17**, using encrypted NTLM as a non-sysadmin; discovery used a degraded fallback. Raw OS capture returned status **0**, but SQL-process access failed with **access denied (5)**, leaving creation/liveness evidence null. Read-only diagnostics under the actual monitoring identity confirm query `0x1000`, synchronization `0x100000` and combined `0x101000` access are each denied, while self-process controls succeed. The process-permission snapshot (local output: `artifacts/dashboard-takeover-2026-10-04/guest-process-permissions-result.json`) shows the collector in Performance Monitor Users without a SQL-process ACE; no security changes were made. The baseline temporary service was stopped and deletion verified; its final snapshot found no qualification processes/services and confirmed all five existing SQL Server, PostgreSQL, collector, server and SSH services running. Takeover evidence (local output: `artifacts/dashboard-takeover-2026-10-04/completion.json`) preserves earlier attempts and recovery.
+
+Local checkpoint **`9ef2bc5`** repairs the producer to reject mapping ambiguity only when it involves the target PID/name; unrelated duplicate process names are allowed. The actual-monitor diagnostic confirms unique SQL PDH mapping despite **10 unrelated duplicates**. Complete affected managed groups pass **435 cases** (**382 unit + 53 contract**) against **1,283 unchanged frozen inputs**. Windows PowerShell **5.1** native compilation passes; the full command length is **16,159**. All **768 UI inputs and 77 captures** remain unchanged; the **203** previously recorded UI cases were not rerun. The separate repaired-source package contains **2,644 files**, with **1,281 packaged frozen inputs** and two ignored evidence exclusions; guest staging verification (local output: `artifacts/dashboard-takeover-2026-10-04/guest-stage-mapping-result.json`) records verified transfer. Mapping repair evidence (local output: `artifacts/dashboard-cpu-target-mapping-2026-10-04/completion.json`) records affected validation and native limits.
+
+The repaired-source native result (local output: `artifacts/dashboard-takeover-2026-10-04/guest-native-run-result.json`), evidence run `native-evidence-20261005T033324469Z`, records **3 executed, 1 passed, 2 failed and 0 skipped** after test/helper Release builds exited **0**, with the test-assembly hash stable. The pre-cancelled case and owned SQL identity checks passed. Both actual captures failed **ProcessUnavailable**, with process status **5 / permission_denied**, before arithmetic assertions. That rerun no longer reported mapping ambiguity; false alone did not establish Selected because Missing or unavailable arrays also produce false. Its temporary service was stopped and deletion verified; the post-run snapshot found no qualification processes/services and all five existing services running. This failed attempt remains preserved separately from the temporary-access experiment below.
+
+The temporary process-access experiment (local output: `artifacts/dashboard-process-access-2026-10-04/completion.json`) granted only the exact monitoring identity's process rights **`0x101000`** on reviewed SQL PID **5368**, without account, debug, SQL or service grants. Apply/restore evidence (local output: `artifacts/dashboard-process-access-2026-10-04/apply-20261005T035834781Z.json`) records restoration of the complete original DACL with the same verified hash; recovery material remains private to administrators/SYSTEM. Its native run executed **3 cases: 2 passed, 1 failed, 0 skipped**. Cancellation and candidate association passed; both actual captures reported candidate association true, process status **0** and an available unique process counter. Production admission remains **Absent**.
+
+The arithmetic case obtained individual process CPU **0%** and OS CPU approximately **4.645%**, but their initial interval anchors differed by **69,587 ticks (6.9587 ms)** while their final anchors were exactly equal. The existing contract therefore correctly returned **IntervalMismatch**; subsequent assertions were not reached. The temporary service cleanup was verified and the audit found all five existing services running before ACL restoration; this audit and the later exact DACL restoration are separate evidence, not universal descendant-process proof. No persistent rights change remains, so monitoring access under the restored original ACL is still not durably provisioned. Full CPU qualification is incomplete.
+
+The bounded read-only PDH diagnostic completed under the actual monitoring identity: **3 fresh queries × 4 frames at one-second intervals**, retaining all **9 adjacent pairs**. Five pairs had exactly matching anchors; query 2 still differed after the first interval, disproving a single warmup as a general repair. Three raw OS formulas were slightly negative while native PDH returned zero with successful status. Positive manual formulas agreed with native PDH within floating-point precision. Timing evidence (local output: `artifacts/dashboard-cpu-intervals-2026-10-05/completion.json`) records all attempts and source hashes; this diagnostic executed **zero qualification tests**. Restored monitor process-access probes again returned access denied, independently confirming that the temporary access did not persist.
+
+The original design requests SQL-versus-host CPU with explicit source semantics; exact timestamp equality was a later paired-calculation constraint. The implementation preserves that strict qualifier and immutable legacy receipts, and adds a versioned `cpu.components` path for two co-observed series. Each component retains its own native interval, UTC observation bracket, provider method/status and quality. Native PDH display adjustment is explicit; raw formula eligibility remains separate. No subtraction, stacked decomposition, artificial anchor alignment or tolerance increase is permitted. Actual owned-session identity and current-run target association still gate every displayed value. Three non-overlapping implementation owners cover source/domain/collector, canonical storage/Application/HTTP, and Web; the lead owns registry/assets and integration. The independent native qualification and later recorded-native connected replay pass; continuously deployed acceptance remains open.
+
+The new production path includes source qualification, the bounded collector and order-20 registry entry, immutable PostgreSQL receipts and independent counter windows, scoped HTTP history and exact-run reads, and responsive Resources charts. SQL-process and target-host observations retain separate intervals. Unavailable intervals remain gaps, and native provider adjustments retain their raw formula evidence. Collection defaults **off**; target administrators can opt in through authoritative GET/PUT controls with target revision, expected-state and audit checks. The old paired-capture diagnostics and strict admission remain unchanged.
+
+The component native run (local output: `artifacts/dashboard-cpu-components-2026-10-05/apply-20261005T045311245Z.json`) executed **3 cases: 3 passed, 0 failed, 0 skipped** using the actual `SqlObserverCollector` Windows identity, encrypted integrated non-sysadmin SQL access and the persisted host binding. The production collector returned SQL-process **0%** and target-host **0.289090157475491%**, both measured with successful native PDH status. Initial anchors differed by **52,194 ticks (5.2194 ms)**, so `exactPairEligible` correctly remained **false** while the independent components were available. The other cases cover explicit host-binding denial and pre-cancellation; they do not establish actual process-denial or in-flight cancellation coverage.
+
+That run consumed **2,689** hash-verified packaged files and four exact-set runner inputs, all unchanged on the guest before and after execution. It used the same temporary process access lease as the prior experiment; the exact original process DACL was restored and its hash verified. Temporary service deletion was verified; the final snapshot found no qualification processes/services and all five existing services running. This snapshot is not universal historical descendant proof. No persistent process rights, live repository migration, schedule opt-in or application deployment was performed. Durable least-privilege process access, loaded/restart and supported-version qualification, and a connected native-to-repository-to-Resources acceptance run remain open. The successful component test does not change the historical strict paired-native failure.
+
+Final layered validation is recorded in CPU component evidence (local output: `artifacts/dashboard-cpu-components-2026-10-05/completion.json`): **420** focused CPU unit cases, the separately rerun **20** final history cases, **53** lab-contract cases, **1** production composition case, **33** API cases and **57** PostgreSQL cases all pass with no skips. These are separate overlapping suites, not an aggregate unique-test count. PostgreSQL includes all 16 new CPU cases plus affected legacy rollout groups. UI qualification records 41 mounted and 16 workspace cases, followed by 7 mounted/4 workspace polish cases and 14 final parser/selection checks; typecheck, production build and asset verification pass. Browser evidence is synthetic; native, repository/HTTP and browser layers are not a connected end-to-end run.
+
+Validation repaired the missing registry output-kind entry, migration capability-dependency placement and historical pre-0309 deadlock bundle fixtures. Migration 0367 and its checksum supersede the earlier native package's migration copy; native acquisition code is unchanged and all package differences are enumerated in the evidence. Every failed attempt remains preserved. Ordinary validation sweeps now exclude the explicitly selected CPU component native category. No GitHub publication occurred.
+
+Next-source inventory: SQL Agent activity has a bounded staged reader and a natively verified v2 service predicate, but production discovery does not emit its required activity/session or security-state permission evidence. The guarded public module reader and trusted revocable enrollment are qualified. Canonical collection, default-off controls, retention, scoped summary/exact reads and observations UI are qualified; running/session/time semantics remain open, and local job timestamps do not establish exact elapsed duration. The fixed signed module now has a finite trial library and guarded recovery. Read-only guest previews confirmed an exact existing Windows server login but no master user; the trial now supports an explicitly owned temporary mapping with its own deployment marker and exact restoration. The finite SQL17 trial now qualifies signed reads and normal cleanup under the actual monitor; it was installed, tested and removed. The later checkpoints qualify the observed differing-owner-SID row set, removed-signature denial and controlled recovery from the acknowledged unsigned checkpoint. The guarded public reader and revocable enrollment are qualified by Run15. Scoped history/API/UI are qualified for retained candidate observations. Universal foreign-owner visibility, explicit DENY/attached-invalid-signature cases, uncertain-commit/power-loss/in-flight recovery and running-session/time semantics remain open. Lifecycle has default-off production admission, canonical persistence, history reads and a timeline. Its sampled AG source retains `source_consistency_verified=false`; snapshots cannot establish physical failover, cause, exact occurrence time or uninterrupted coverage. A qualified AG topology and separately versioned retained transition source remain necessary for stronger claims.
+
+| Requirement | Current status | Next evidence required |
+|---|---|---|
+| Native CPU qualification and admission | Independent `cpu.components` vertical slice implemented; actual-monitor SQL 2025 native run passes 3/3. Independently timed values are available while exact pair eligibility remains false. Collection defaults off; original process DACL restored. Historical strict paired qualification remains incomplete. | Recorded-native canonical/API/Resources replay passes. Establish durable process access, broader source/load/restart qualification and continuously deployed acceptance. |
+| Running/long-running SQL Agent activity | Bounded staged capture and corrected service predicate exist; actual monitor observes Agent stopped. Session SELECT fails with error 229; discovery evidence is missing. Signed-module trial and independent DBA comparison passed: all 12 observed rows matched, including differing-owner-SID rows; baseline restored after removal. Stopped-Agent evidence retains Unknown candidates. Guarded public module reader and revocable enrollment are qualified. Fenced canonical observations, default-off controls, retention and scoped summary/exact history with observations UI are qualified against disposable PostgreSQL and synthetic browser fixtures. | Qualify running/session/time evidence and continuously deployed acceptance separately; retained local timestamps do not establish elapsed duration. |
+| Passive AG transitions and lifecycle | AG access recovery and retained snapshot history complete. Lifecycle default-off production admission is implemented; stable-engine source passes 3/3 and fresh recorded-native canonical replay passes 1/1. | Qualify continuous deployment and physical transition evidence on an identified AG topology; sampled changes alone do not prove physical failover, cause or uninterrupted coverage. |
+| Final dashboard acceptance | The bounded existing-feature milestone passes50 representative built-App Chromium cases, zero failures/skips/retries/flaky results; fresh320/390/768/1440 responsive/axe evidence and screenshots are preserved. Product code is unchanged; the single final review accepted with zero blocking findings. Current checklist (local output: `artifacts/dashboard-acceptance-2026-10-07/requirement-checklist.md`). | Dashboard milestone complete; stopped without starting another milestone. Native CPU, Agent duration, physical AG, deployed acceptance and broader certification are separate unsupported/deferred work; they do not gate this fixture milestone. |
+| Optional assistant | Deferred and nonblocking. | Revisit only after required dashboard acceptance or a new scope instruction. |
+
+Immediate execution follows the [native qualification guide](../../tools/qualification/paired-cpu/native-sql-qualification.md). Next work is durable CPU provisioning/qualification, lifecycle continuous-deployment acceptance and SQL Agent native running/session/time qualification and connected acceptance. Agent canonical observations, default-off collection, retention and scoped history/API/UI are qualified for their stated local boundaries. The guarded public reader and revocable enrollment are qualified; running/session/time semantics remain open. Recorded-native CPU connected acceptance, lifecycle default-off admission and stable lifecycle canonical replay are complete for their stated scopes; deployment to existing services, production migration execution and GitHub publication have not occurred. Preserve the untracked original planning documents and design directory. Use non-overlapping owners with one integration lead, and run complete affected validation after any implementation changes.
+
+## Latest SQL volume window-history qualification (2026-10-03)
+
+Resources now reads retained SQL volume capacity in the shared Live/Rewind window, restores an exact sample revision/key from URLs, and reads the previous equal-length window independently. The existing latest snapshot and forecast remain separate. No historical forecast, interpolated edge observation or physical incarnation continuity is inferred. [Feature contract](Sql-Volume-Window-History.md).
+
+Forward migration **0353** reads canonical partitioned collection runs, identities, outcomes and retained volume snapshots, including after sealing original mirrors. Completion UTC selects each run; actual SQL observation and ingestion times remain distinct. Failed, absent, lossy, unknown, skewed, resized and cross-revision evidence stays explicit. Exact decimal Int64 bytes survive transport and tables; chart GiB are approximate. Mount-point and unknown identities show isolated gauges. Eligible comparison requires complete independent windows, the same revision/key, at least two observations each and unchanged known total capacity.
+
+Same-target Viewer/Operator/Target Administrator reads are private/no-store. A full bounded manifest digest fences unread continuations across late commits, retention, policy/cadence and context drift, with original-issued 15-minute protected cursors. Limits are 10,000 runs, 1,000 revision/key identities and 250,000 observations, with explicit narrow-window overflow. Independent cohort scans avoid repeated partition access under stale statistics; profiling measured approximately 264 ms without ANALYZE, within the unchanged five-second repository budget. This measurement is evidence for the qualified fixture, not a fleet performance guarantee.
+
+Three non-overlapping owners implemented backend/HTTP, storage/repository and UI/theme/interactions; independent peers reviewed native semantics, ownership, chart behavior and accessibility. The lead integrated global selection URLs, built-App journeys, regression fixture seams and final evidence.
+
+| Requested requirement | Final evidence | Completion for this slice |
+|---|---|---|
+| Multiple subagents / one lead | Three independent owners, peer review and lead integration. | Complete. |
+| Dark theme | Shared dark tokens, wrapped identities/controls, visible focus and compact readable chart axes. | Passing tested states. |
+| Diagnostic-screen review | Canonical sealed reads, exact source/window identity, gaps, target grants, bounded paging and comparison reviewed. | Volume-history slice complete. |
+| Interaction tests | **45 native web**, **70 mounted**, **9 new built-App**; full legacy volume/native-insight groups **6/13**, affected Resources context/accessibility **13/20**. | Pass without skips/retries/flaky outcomes. |
+| Accessibility / responsive | Keyboard, axe, contained scrolling and overflow at **320/390/768/1440**, plus screenshot review. | Passing tested states. |
+| Final integrated validation | Strict product/harness TypeScript, production build/assets; **72 affected .NET** (**36 unit, 21 API, 15 real PostgreSQL**); **1964** unchanged frozen inputs. | Passing final code. |
+| Screenshots / completion summary | Eight fresh captures, gallery (local output: `artifacts/dashboard-volume-window-history/index.html`) and exact cases/hashes/provenance (local output: `artifacts/dashboard-volume-window-history/completion.json`). | Delivered locally, bound to local commit. |
+
+Complete failed/interrupted attempts retain consumed source, logs, reports and traces. Repairs corrected an analyzer parameter, fixture canonical-FK cutover, stale-statistics query shape, harness clocks/heading/gesture geometry, native fixture cursor/order and stale accessible labels. No behavior/authorization/overflow/deadline/axe assertion was weakened. Final counts come from complete owning runs, not passing subsets. Resources filters are recorded in the evidence; the entire unrelated dashboard regression suite was not run.
+
+Browser evidence is synthetic; native repository and production HTTP checks use disposable pinned PostgreSQL 18.4, with only HTTP authentication replaced. SQL Server collector, manual assistive-technology, cross-browser and release certification are not claimed. The optional assistant and remaining source/parity requirements stay open. No GitHub upload occurred.
+
+## Latest rule-template group deployment qualification (2026-10-03)
+
+The fleet Rule templates screen now supports a shared library of immutable versions, complete native environment/tag previews, explicit batches of ten, durable per-server outcomes, stop, guarded rollback and immutable history. Template publication never changes deployed rules automatically. A loaded Overview page never defines deployment membership. [Feature contract](Alert-Rule-Group-Templates.md).
+
+Forward migration **0352** resolves and authorizes every configured non-retired member before exposing a cohort. Preview freezes deduplicated membership, settings/version/source digests, target/grouping revisions and rule before/after configurations. Groups above 100 are refused without truncation. Target dispatch and rule revision fences protect native writes; bounded batches retain successes and disclose conflicts/failures. Source compatibility does not establish diagnostic health. Rollback restores prior settings or disables created rules, protects later manual edits and does not retract notifications or audit history.
+
+Owner/all-target-administrator publication and every-member Target Administrator grants are server-derived. Exact command replay returns immutable historical receipts before current-state fences; current status requires separate GET. Uncertain writes retain exact payload/operation identity even after successful refresh. Confirmed writes retry failed GET readback only. Context, role, denial and unmount fence late results. Exact immutable-version/deployment URLs are independent of copied diagnostic target/window parameters. Catalog identity controls owner affordances without changing the `/me` wire contract.
+
+Three independent owners covered Domain/Application/HTTP, native migration/repository/PostgreSQL and UI/theme/interactions. Read-only peers reviewed diagnostic semantics and ownership; one lead integrated App journeys, resolved findings and executed final validation.
+
+| Requested requirement | Final evidence | Completion for this pass |
+|---|---|---|
+| Multiple subagents / one lead | Three non-overlapping implementation owners, independent peer reviews and lead integration. | Complete. |
+| Dark theme | Shared dark tokens, readable settings/status/receipts, wrapped controls and visible focus. | Passing in tested states. |
+| Diagnostic-screen review | Native complete membership, source compatibility, immutable versions/replay, durable outcomes, dispatch fences, current provenance and guarded rollback reviewed. | Template deployment slice complete. |
+| Interaction tests | **46 native web**, **43 mounted** and **8 built-App** cases; complete affected administration/workflow/keyboard groups **16/14/6**. | Pass without skips, retries or flaky outcomes. |
+| Accessibility / responsive | Keyboard, axe and overflow checks at **320/390/768/1440**, plus mobile/desktop visual review. | Passing in tested states. |
+| Final integrated validation | Strict product/harness TypeScript, production build/assets; **228 affected .NET checks**, including **106 real PostgreSQL** and production HTTP-to-repository behavior; **1939** unchanged frozen inputs. | Passing against final code. |
+| Screenshots / completion summary | Eight fresh captures, gallery (local output: `artifacts/dashboard-rule-templates/index.html`) and exact cases, hashes and provenance (local output: `artifacts/dashboard-rule-templates/completion.json`). | Delivered locally, bound to final local commit. |
+
+Final .NET counts are **19 unit**, **53 API**, **50 security/worker**, **106 PostgreSQL**. Owning checks consume unchanged final inputs. Complete failed attempts and consumed source are retained in separate `before-*` evidence. Real database qualification found noncanonical deterministic child UUIDs; the repaired version/variant passes the existing native rule writer. Other repairs corrected fixture timestamp consistency, test-only mixed grants and selectors, and TypeScript narrowing without weakening behavior assertions. Passing subsets were not aggregated into final counts.
+
+Browser fixtures/captures are synthetic on final built assets. Native repository and production HTTP integration use disposable pinned PostgreSQL **18.4**, with only authentication replaced in HTTP tests. SQL Server collectors, manual assistive-technology and cross-browser certification are unchanged/unqualified. The optional assistant, telemetry/source gaps and broader repository plan remain open. No GitHub upload occurred.
+
+## Latest recurring-maintenance qualification (2026-10-03)
+
+The target maintenance screen now supports finite daily, weekly and monthly series with server preview, create, edit future and cancel future. Civil definitions retain a named IANA zone and explicit gap/fold policies; browser time-zone conversion does not authorize a schedule. Elapsed duration, skipped dates, immutable source provenance and current-state timestamps are disclosed. [Feature contract](Recurring-Maintenance.md).
+
+Forward migration **0351** independently validates the complete canonical schedule and serializes mutations with target dispatch. Started windows remain unchanged. Individual generated-window edits/cancellations become permanent exceptions; removed dates and future cancellation fences cannot be resurrected. The lifetime cap is **2,048 occurrence slots**. All schedules have an inclusive end date within five years; no rolling expander is required.
+
+Same-target Target Administrator grants govern protected reads and writes. Server-derived digests, actor identity and revision checks bind commands; exact native replay precedes current-time and revision fences. An uncertain command retains its original payload and operation ID, including when another series is selected. Confirmed writes read authoritative status independently; failed readback retries GET only. A shared synchronous lane excludes series and one-off writes. Context/role/denial/unmount changes cancel and fence old work. URL series and exact occurrence identities survive time changes and reload. Lists expose native continuation, as-of status and explicit bounded loading.
+
+Three independent owners covered Domain/Application/HTTP, migration/repository/native tests and UI/theme/interactions. Peers reviewed contracts and lifecycle seams; one lead integrated App journeys and final validation. Compiler failures and pre-repair source are retained separately from final evidence.
+
+| Requested requirement | Final evidence | Result |
+|---|---|---|
+| Independent owners / integration lead | Three independent owners with non-overlapping files; lead integrated App journeys, contracts and final evidence. | Complete for this recurring-maintenance pass. |
+| Dark theme | Existing shared dark tokens, wrapped controls, readable status and audit receipts, visible keyboard focus. | Complete for this recurring-maintenance pass. |
+| Diagnostic review | Civil recurrence and DST policies, native authorization/replay, permanent exceptions/cancellation fences, source provenance and server readback reviewed. | Complete for this recurring-maintenance pass. |
+| Interaction tests | 46 native web checks; 41 mounted and 8 built-App cases pass. | Complete for this recurring-maintenance pass. |
+| Accessibility / responsive | Keyboard, axe and overflow checks at 320/390/768/1440; eight fresh captures. | Complete for this recurring-maintenance pass. |
+| Final integrated validation | Strict product/harness TypeScript, production build/assets; 216 affected .NET checks, including real PostgreSQL and HTTP-to-repository behavior; 1915 unchanged frozen inputs. | Complete for this recurring-maintenance pass. |
+| Scope / completion | Finite recurring maintenance preview/create/edit-future/cancel-future and individual occurrence exceptions delivered. Other dashboard-dependent requirements remain open. | Complete for this recurring-maintenance pass. |
+
+Final affected .NET counts: **22 unit**, **53 API**, **50 security**, **91 PostgreSQL**. Native web **46**, mounted **41**, built-App **8**, and complete affected administration/workflow/keyboard groups **16/14/6** pass. Strict product/harness TypeScript, production build and asset verification pass. Every qualifying check consumed unchanged final inputs, including **1915 frozen inputs**.
+
+Eight final screenshots and requirement table (local output: `artifacts/dashboard-maintenance-series/index.html`) and exact cases, hashes and provenance (local output: `artifacts/dashboard-maintenance-series/completion.json`) bind this local checkpoint. Browser fixtures are synthetic; database and production HTTP integration use disposable pinned PostgreSQL 18.4. SQL Server collectors, release certification and manual assistive-technology/cross-browser certification were not changed or qualified. The broader dashboard and repository plan remain open. No GitHub upload was attempted.
+
+## Latest alert assignment qualification (2026-10-03)
+
+Fleet and server alert details now support durable **Assign, Reassign and Unassign**, with current ownership and paginated immutable change history. Assignment records responsibility while preserving retained alert evidence, acknowledgement, notification snooze and evaluator state. Resolution retains attribution; a new firing episode starts unassigned. [Feature and configuration contract](Alert-Assignment.md).
+
+Eligible responders come from an administrator-configured target roster. This is an explicit approval policy, not an Active Directory membership lookup or an authorization grant. Entries require Enabled=true and valid SID, safe display name and bounded target scope; malformed configuration fails at startup. Disabled actors are ineligible. Same-target Operator or Target Administrator authorization is required to change ownership. Readers can inspect ownership/history but cannot enumerate candidates. Duplicate display names remain distinguishable by identity hints. An empty roster names the application-administrator recovery path.
+
+Forward migration **0350** adds native assignment state and immutable receipts/history. Target and rule-state locks serialize mutations; current episode/revision and active-state preconditions protect fresh commands. Exactly one revision increment is required. Server-derived digests bind actor, target, alert, episode, revision, selected SID or explicit null and reason. Exact replay returns the original audited receipt before current roster/episode checks, including after recipient revocation or renaming. Divergent/stale commands fail rather than overwrite. Applied migrations were not edited.
+
+Current ownership is disclosed as an as-of server read, separate from the retained inbox and shared historical window. Confirmed POST completion triggers an independent GET; failed readback retries only GET. Uncertain requests retain the complete captured command. Failed or cancelled refresh cannot discard that intent. Definite eligibility refusal explains nonapplication and refreshes the roster. Inactive current state and changed episodes explain disabled controls. The shared synchronous mutation lane excludes acknowledgement, snooze and assignment writes/retries; a writer cancels/fences a pending replacement inbox read, and pending writers prevent Latest/retry reads. Context, role, denial and unmount fence late results.
+
+History uses a private immutable native sequence, with a target/alert-bound operation UUID anchor. Equal timestamps and cross-episode history do not lose changes. The browser retains at most **20 pages / 1,000 changes**, discloses the cap and offers explicit refresh. A failed/cancelled refresh keeps the old history and repeats the same first-page intent.
+
+Three independent lanes owned Domain/Application/HTTP/configuration, migration/repository/PostgreSQL tests, and UI/theme/mounted tests. Read-only peers inspected native and frontend seams. One lead integrated built-App journeys, resolved findings and owns final execution and visual evidence.
+
+| Requested requirement | Final evidence | Completion for this pass |
+|---|---|---|
+| Multiple subagents and one integration lead | Three non-overlapping owners, independent peer reviews and one lead. | Complete. |
+| Dark theme | Shared dark tokens, wrapped controls, readable current/retained evidence, audit receipts and visible keyboard focus. | Passing in tested states. |
+| Diagnostic-screen review | Episode-scoped ownership, target-approved roster, immutable replay, history, retained alert evidence and authoritative readback reviewed. | Assignment slice complete. |
+| Interaction tests | **45 native web checks**, **133 mounted cases**, **23 built-App cases**. | Complete owning groups pass without skips, retries or flaky outcomes. |
+| Accessibility and responsive checks | Keyboard, axe and document overflow at **320/390/768/1440**, with mobile/desktop visual review. | Passing in tested states. |
+| Validation after integration | Strict product/harness TypeScript, production build/assets, **254 affected .NET checks**: 46 unit, 85 API, 47 security/worker and **76 real PostgreSQL**, including HTTP-to-repository behavior. **1,888 final frozen inputs** unchanged; owned fixture ports closed. | Passing against final code. |
+| Screenshots and completion summary | **Eight fresh captures**, gallery (local output: `artifacts/dashboard-alert-assignment/index.html`), exact cases, hashes and provenance (local output: `artifacts/dashboard-alert-assignment/completion.json`). | Delivered locally, bound to the final local commit. |
+
+Preserved `before-*` attempts record analyzer-required test syntax and PostgreSQL harness corrections: acknowledgement evidence is compared before/after instead of requiring a seeded evaluator operation; the collector-only state read uses the collector test role, without broadening production grants. Initial browsers passed 128 mounted and 22 App cases. Repairs assert absent panels after unmount, reach visible focus with actual Tab navigation and use exact accessible history cells plus ordered reason-node equality. Complete owning browser groups reran after all browsers stopped. Only those two specs changed; product/backend/build inputs remained unchanged, and every backend group's consumed hashes match final code. Passing subsets were not combined into final counts.
+
+Native qualification uses disposable pinned PostgreSQL **18.4** databases; the HTTP journey exercises production services with only authentication replaced. Browser traffic/captures use synthetic fixtures on final built assets. SQL Server collectors are unchanged; collector, manual assistive-technology and cross-browser certification are not claimed. Recurring maintenance, group template deployment, assistant decisions, telemetry/source gaps and the broader repository plan remain open. No GitHub upload occurred.
+
+## Previous alert notification snooze qualification (2026-10-03)
+
+Fleet and server alert inboxes now support durable **Snooze and Unsnooze** for the current alert episode. Snooze suppresses notification delivery; the alert remains visible and firing or acknowledged, and collection/evaluation continue. New episodes do not inherit suppression. The dashboard offers 15 minutes, 1 hour, 8 hours and 24 hours, requires a reason and discloses received-row evidence separately from current server status. [Feature contract](Alert-Notification-Snooze.md).
+
+Forward migration 0349 adds episode metadata and immutable operation receipts. Same-target Operator or Target Administrator authorization, episode/revision preconditions and server-derived payload digests protect mutations. Exact retries return the original audited receipt, including after expiry, without extending the deadline. Dispatch and mutation share the native target fence; deferral preserves outbox identity, attempts and due time. Maintenance remains independent. Legacy rows without a real episode remain readable with null episode/revision and disabled controls.
+
+Uncertain requests retain their complete captured command. A confirmed POST is followed by a separate current-status GET; failed readback retries only GET. Failed refresh or return-to-latest cannot silently discard an uncertain operation. Acknowledgement, acknowledgement retry and notification changes exclude concurrent mutations. Role/context changes and unmount fence late results. Current status is explicitly an as-of server read rather than a historical-window projection or a client claim of authoritative expiry.
+
+Three independent lanes owned Domain/Application/HTTP and tests, migration/repository and PostgreSQL tests, and UI/theme/mounted tests. The lead integrated the built-App journeys, reviewed evidence and resolved shared seams. A separate read-only source review checked diagnostic semantics and accessibility/responsive behavior.
+
+| Requested requirement | Final evidence | Completion for this pass |
+|---|---|---|
+| Multiple subagents and one integration lead | Three non-overlapping implementation lanes, read-only peer reviews and one lead. | Complete. |
+| Dark theme | Shared dark tokens, readable retained/current evidence, wrapped controls, audit receipts and visible keyboard focus. | Passing in tested states. |
+| Diagnostic-screen review | Episode-scoped suppression, role scope, immutable replay, dispatch order, retained alert evidence and authoritative readback reviewed. | Snooze slice complete. |
+| Interaction tests | **29 native web checks**, **86 mounted cases**, **15 built-App cases**. | Complete owning groups pass without skips, retries or flaky outcomes. |
+| Accessibility and responsive checks | Keyboard, axe and document overflow at **320/390/768/1440**, with desktop/mobile visual review. | Passing in tested states. |
+| Validation after integration | Strict product/harness TypeScript, production build/assets, **191 affected .NET checks**: 32 unit, 49 API, 45 security/worker and **65 real PostgreSQL**, including HTTP-to-repository behavior. **1,865 final frozen inputs** unchanged; owned fixture ports closed. | Passing against final code. |
+| Screenshots and completion summary | **Eight fresh captures**, gallery (local output: `artifacts/dashboard-alert-snooze/index.html`), exact cases, hashes and provenance (local output: `artifacts/dashboard-alert-snooze/completion.json`). | Delivered locally, bound to the final local commit. |
+
+Initial compile and test-harness failures are preserved under the gallery's `before-*` directories. Repairs covered analyzer-required syntax, checksum case comparison, the native delivery-renew signature, explicit required seed counters and receipt value comparisons. Browser repairs retained exact route/time/row assertions, scoped receipt selectors, and made the alert harness unmount on Activity navigation as the App does. Visual review clarified the old delivery badge as received-row evidence. Complete affected groups reran after repairs; passing subsets were not combined into a final count. Backend inputs stayed unchanged during the final web-only repair.
+
+Repository tests use disposable pinned PostgreSQL 18.4 databases; the HTTP journey uses production services with only authentication replaced. Browser traffic and captures are synthetic fixtures on final built assets. The lab SSH probe timed out; local Docker provided the required database qualification. SQL Server collectors are unchanged, so collector certification is outside this slice. Manual assistive technology and cross-browser certification are not claimed. Assignment, recurring maintenance, group template deployment, assistant decisions and the broader repository plan remain open. No GitHub upload occurred.
+
+## Previous Reports expiry qualification (2026-10-03)
+
+Ordinary report exports now disappear at the native half-open UTC expiry boundary, including already-expired success receipts. The expiry hook compares exact microseconds, rounds timer delay up to browser milliseconds and rechecks on focus/visibility wake. Once observed, expiry stays latched for that receipt even if the wall clock moves backwards. Link activation also checks expiry before regular or auxiliary navigation, covering a suspended timer before the next render. Renewal is explicit; expiry never generates a report automatically.
+
+An uncertain request retains its exact operation ID, kind and frozen Live window. Native ordinary generation may replay a retained expired finalized receipt: this is a verified success, displayed as expired with no exports. Only the following explicit Generate new report creates a new operation and current Live window. Native cleanup eventually removes expired operation rows, so the frontend does not claim permanent exactly-once behavior. Report receipt parsing accepts a seventh trailing zero from native UTC round-trip output, preserving exact microseconds and rejecting unsupported submicrosecond fractions; request/digest rules are unchanged.
+
+Keyed report contexts plus layout cleanup cancel pending work and fence late results across target/type/time selection round trips and unmount/remount. Three independent lanes owned runtime/API, mounted interactions/dark-theme/accessibility, and read-only native/lifecycle review. The lead owns built-App cases, integration, final execution and screenshot review. No backend, collector, dependency or authentication changes were made.
+
+| Requested requirement | Final evidence | Completion for this pass |
+|---|---|---|
+| Multiple subagents and one integration lead | Separate runtime, mounted/theme and native review lanes; one lead. | Complete. |
+| Dark theme | Shared tokens, readable expiry/window messages and visible renewal focus. | Passing in tested states. |
+| Diagnostic-screen review | Native expiry/export gates, retained operation replay, exact UTC parsing and report context disposal inspected. | Recorded report-expiry finding closed. |
+| Interaction tests | **18 owning checks: 17 runtime/API/model and one explicit security lint**, **32 mounted cases**, **19 built-App cases**. | Complete owning groups pass without skips, retries or flaky outcomes. |
+| Accessibility and responsive checks | Keyboard, axe, exact window readability and document overflow at **320/390/768/1440**, including explicit expired renewal. | Passing in tested states. |
+| Validation after integration | Strict product/harness TypeScript, production build, asset generation/verification, **559 unchanged final frozen inputs**, closed owned fixture ports. | Passing against final code. |
+| Screenshots and completion summary | **Eight fresh expiry captures**, representative mobile/desktop review, gallery (local output: `artifacts/dashboard-report-expiry/index.html`), case inventories, hashes and provenance (local output: `artifacts/dashboard-report-expiry/completion.json`). | Delivered locally, bound to the final local commit. |
+
+Source review corrected old already-expired mounted defaults and custom receipt fixtures before execution; all preserve the native 24-hour lifetime and exact fractional UTC. The initial browser attempt passed 28 mounted and 15 App cases; each group's four new accessibility cases timed out because axe awaited timers while the exact-boundary test clock was paused. Complete reports/traces, legacy captures and pre-repair specs remain in `initial-browser`. All browsers stopped before repair. Only the two owning specs changed: they resume timers after exact expiry and focus assertions, before axe and capture. Product/API/build/native inputs remain unchanged. Complete final groups reran rather than combining repair subsets.
+
+All traffic and captures use synthetic native frontend fixtures. Backend materialization/export content, connected databases, backend authorization, manual assistive technology and cross-browser behavior are not certified. The five recorded existing-contract frontend findings below are now closed by their owning qualifications. This does not complete the dashboard's backend-dependent features, release gates or full repository plan. No GitHub upload occurred.
+
+## Previous access, navigation and pointer qualification (2026-10-03)
+
+Waits and Activity now share definitive caller-denial ownership across their retained sources. Native HTTP 401/403 cancels pending reads, clears current/history/trend/ranking/captured receipts and local First caches, and stops automatic retry loops. Explicit successful recovery restores only the sources actually validated; a history-only Activity response cannot reopen failed supporting sources. Ordinary transient failures retain received evidence with disclosure, and a successful collector `PermissionDenied` receipt remains coverage evidence rather than caller denial. Target, known revision, exact window and selection changes fence late results. Retained Activity refreshes disclose that previous snapshots remain displayed.
+
+Workspace catalog or identity denial clears retained server names, selected diagnostics, fleet evidence, search and pending registration/settings subtrees. Synchronous receipt guards reject late native mutation callbacks even before a subtree unmounts. Automatic ticks cannot reopen access; explicit Refresh starts a new read generation and preserves the URL. Ordinary catalog failure retains received labels with a visible last-successful-read disclosure. A direct target lookup still has its own scoped failure boundary.
+
+Health resolves route-owned default sections during render: absent section means Summary, or Databases when database context is present. Back/Forward, reload and clearing database context now agree; explicit sections remain authoritative. Observation and Overview charts admit only a primary left-button start and preserve one pointer owner through movement, finish, cancellation and lost capture. Foreign pointer events cannot overwrite or cancel that owner's drag. Native primary touch and keyboard chart evidence remain supported.
+
+Three non-overlapping owners covered Waits/Activity lifecycle and dark-theme recovery checks, Health diagnostic/navigation review and responsive checks, and chart pointer/interaction checks. Independent source peer reviews covered App callback races and recovery/context fences. One lead integrated App/native fixtures, resolved review findings, ran final qualification and reviewed captures.
+
+| Requested requirement | Final evidence | Completion for this pass |
+|---|---|---|
+| Multiple subagents and one integration lead | Three non-overlapping owners, independent source reviews and one lead. | Complete. |
+| Dark theme | Existing shared tokens, readable denial/retained-evidence messages, visible keyboard focus and bounded diagnostic scrolling. | Passing in tested states. |
+| Diagnostic-screen review | Waits/Activity caller-denial recovery, catalog/identity races, Health URL defaults and chart pointer ownership repaired. | Four recorded findings closed. |
+| Interaction tests | **102 owning checks**, **109 mounted cases**, **18 new built-App cases** and **13 affected existing App regressions**. | Complete final groups pass without skips, retries or flaky outcomes. |
+| Accessibility and responsive checks | Actual keyboard navigation, axe and document overflow checks at **320/390/768/1440**, including denial and recovery states. | Passing in tested states. |
+| Validation after integration | Strict product/harness TypeScript, production build, asset generation/verification, **559 unchanged final frozen inputs**, closed owned fixture ports. | Passing against final code. |
+| Screenshots and completion summary | **16 fresh captures**, representative mobile/desktop review, gallery (local output: `artifacts/dashboard-access-navigation/index.html`), case inventories, hashes and provenance (local output: `artifacts/dashboard-access-navigation/completion.json`). | Delivered locally, bound to the final local commit. |
+
+Complete attempts are preserved in `initial-browser` and `before-keyboard-focus`. Initial setup used an invalid captured-session state and tried to click through a registration modal; the corrected App case triggers the real scheduled workspace refresh. The Activity pending assertion exposed a missing retained-refresh disclosure, which triggered a rebuild and fresh owning/browser groups. A subsequent four-width focus check used programmatic focus after mouse input; it now reaches the retry button with Tab and retains focus-visible, outline, axe, overflow and Enter-recovery assertions. All browsers stopped before repairs. Only the owning mounted spec changed after the passing build/native/App runs; all other frozen inputs remained unchanged. The complete mounted group reran, rather than assembling passing repair subsets.
+
+Owning checks include runtime/API/model behavior and the existing captured-session category check that also compares SQL source tokens; no SQL executes. All HTTP traffic and screenshots use synthetic native frontend fixtures. No connected database, backend authorization/mutation, manual assistive-technology or cross-browser certification is claimed. Report expiry is the next existing-contract frontend finding; backend-dependent requirements and the broader repository revamp remain open. No GitHub upload occurred.
+
+## Previous retained Deadlock investigation qualification (2026-10-03)
+
+Deadlock event pages now retain the received window and collected cutoff through workspace polling, moving Live ticks, failed continuation and cancellation. First/Previous/visited Next restore locally; unread continuation keeps the native cursor and exact bounds. Return to latest replaces the investigation and resumes future polling only after a validated successful read. Retry repeats the failed/cancelled request. Browser retention is bounded to 20 pages / 500 events, independently of repository retention.
+
+List validation follows the native standard-base64 six-field cursor, target, descending occurrence/UUID order, full 25-row continuation page, collected cutoff, exact UTC window and row tail. A cursor is not a signature, and retention can remove source rows. The detail read is independent of the list cutoff: its receipt states when the browser received it, without inventing a native revision or snapshot fence. Caller-known target revision is a context fence only. Pending exact detail reads survive polling; error/cancellation retains only previously validated matching detail with explicit disclosure. A failed initial or mismatched selection never substitutes another event.
+
+Target/revision/window/selection generations fence late results and selection round trips before effects. Definitive HTTP 401/403 clears both list and detail receipts synchronously and cancels owned reads; a pending list success cannot erase a detail denial. Recovery requires an explicit successful latest read. The parser now accepts native UTC `+00:00` DateTimeOffset output, and the Activity link converts that suffix to `Z` while preserving the exact fractional occurrence and event identity.
+
+Three non-overlapping owners handled runtime/native models, mounted interactions and dark-theme/native peer review. The lead owns App revision/link integration, faithful native fixtures, existing regressions, final execution and visual review. Screenshot review exposed a full-page event list that pushed mobile detail too far down: the final list is a named keyboard-scrollable region bounded to 420px on narrow screens and 600px otherwise, with all received rows still accessible.
+
+| Requested requirement | Final evidence | Completion for this pass |
+|---|---|---|
+| Multiple subagents and one integration lead | Three independent owners, non-overlapping files and native/lifecycle peer review; one integration lead. | Complete. |
+| Dark theme | Shared tokens, wrapping controls/receipts, visible inset focus and bounded event/table/diagram scrolling. | Passing in tested states. |
+| Diagnostic-screen review | Native Deadlock paging/detail, exact Activity provenance, received evidence and denial/context ownership reviewed and repaired. | Recorded Deadlock findings closed. |
+| Interaction tests | **47 owning checks: 46 runtime/API/model and one explicit lint**, **35 mounted cases**, **eight built-App cases**. | Complete final groups pass without skips, retries or flaky outcomes. |
+| Accessibility and responsive checks | Keyboard, axe, bounded vertical event rows, local horizontal table/diagram scrolling and document overflow at **320/390/768/1440**; App checks at 320/1440. | Passing in tested states. |
+| Validation after integration | Strict product/harness TypeScript, production build, asset generation/verification, **547 unchanged frozen inputs** and closed owned fixture ports. | Passing against final code. |
+| Screenshots and completion summary | **Six fresh captures**, mobile/desktop visual review, gallery (local output: `artifacts/dashboard-deadlock-retained/index.html`), case inventories, hashes and provenance (local output: `artifacts/dashboard-deadlock-retained/completion.json`). | Delivered locally, bound to the final local commit. |
+
+These are affected frontend checks, not full repository or release certification. Complete earlier attempts remain under `initial-typecheck`, `initial-browser`, `before-layout` and `before-capture`. Strict checks required an explicitly validated six-string tuple type. Initial browser setup used an ambiguous receipt locator, read rows before continuation completed, and installed detail handlers before the selection receipt finished. The denial regression now gates both requests before releasing denial, so it exercises the intended pending-success race. All browsers stopped before corrections. Complete groups reran; visual layout repair triggered a rebuild and new native/mounted/App groups. The final capture positioning change preserves product/assertions and reruns complete browser groups; final counts are not combined repair subsets.
+
+All browser traffic and captures use synthetic native frontend fixtures. No connected PostgreSQL/SQL Server, backend authorization/mutation or manual assistive-technology certification is claimed. Other source-reviewed frontend findings below and the broader revamp remain incomplete. No GitHub upload occurred.
+
+## Previous Analytics workspace qualification (2026-10-03)
+
+Analytics category selection now restores through the shared URL, reload and browser navigation. Unknown, empty or duplicate category parameters are explicitly refused until the user chooses a valid category. Database and time changes preserve the category and exact supported UTC context. Jobs and backfill remain inventory reads independent of the workspace time range.
+
+Each category retains its own received pages through workspace polling. Already-visited First/Previous/Next pages restore locally; explicit continuation, retry and latest reads keep ownership across moving Live ticks. Return to latest replaces the investigation only after native validation succeeds. Failure or cancellation preserves the received evidence and exact retry context. Receipts distinguish the Received evidence window from the Workspace time range. Retention is bounded to 20 pages / 4,000 rows per paginated surface; legacy incidents remain a bounded 100-row list without fabricated pagination or snapshot provenance.
+
+Target, known configuration revision and explicit context changes discard old receipts before effects, abort owned requests and reject late results, including selection round trips. Actual HTTP 401/403 clears protected receipts across categories and stops automatic denial loops; an explicit successful read restores only its own category. Collector coverage gaps are separate from caller authorization. Native diagnostic metadata is parsed from its JSON string without mutating the original input, rendered as inert text, and nullable packet confidence stays unknown.
+
+Native cursor validation binds the surface, target, revision, generation, snapshot/cutoff, effective window and visible row tail/order before pages join. This is native cursor contract validation, not cryptographic verification. Unread continuation can expire as source generation advances; already-received pages remain available. Native jobs are mutable inventory, not an immutable historical snapshot. Hidden replication and PostgreSQL JSONB tie keys are not replaced with invented client identities.
+
+Three non-overlapping owners handled the retained-page lifecycle/dark theme, native contract review, and mounted interaction/accessibility checks. Independent read-only reviews covered App composition and lifecycle boundaries. The lead integrated URL behavior, native fixtures and App checks, resolved review findings, and ran all final validation.
+
+| Requested requirement | Final evidence | Completion for this pass |
+|---|---|---|
+| Multiple subagents and one integration lead | Three non-overlapping owners, independent reviews and one integration lead. | Complete. |
+| Dark theme | Shared tokens, wrapping controls/receipts, visible focus and bounded keyboard-scrollable tables. | Passing in tested states. |
+| Diagnostic-screen review | Analytics URL restoration, independent retained investigations, native metadata/confidence and cursor/lifecycle boundaries reviewed and repaired. | Recorded Analytics findings closed. |
+| Interaction tests | **68 native runtime/API/model checks**, **36 mounted cases**, **11 built-App cases**. | Complete final groups pass without skips, retries or flaky outcomes. |
+| Accessibility and responsive checks | Keyboard, axe, control bounds and document overflow at **320/390/768/1440**; App checks at 320/1440. | Passing in tested states. |
+| Validation after integration | Strict product/harness TypeScript, production build, asset generation/verification, **539 unchanged frozen inputs** and closed owned fixture ports. | Passing against final code. |
+| Screenshots and completion summary | **Six fresh captures**, mobile/desktop visual review, gallery (local output: `artifacts/dashboard-analytics-workflow/index.html`), case inventories, hashes and provenance (local output: `artifacts/dashboard-analytics-workflow/completion.json`). | Delivered locally, bound to the final local commit. |
+
+These are affected frontend checks, not full repository or release certification. Complete earlier attempts remain under `initial-browser` and `before-window-label`. The initial mounted run exposed a raw JSON assertion that incorrectly expected unescaped quotes; the corrected assertion parses the displayed JSON and still checks inert rendering. All browsers stopped before correction. A subsequent visual wording refinement and current-URL guard triggered a rebuild and fresh complete native/mounted/App groups; counts are not assembled from repair subsets.
+
+All browser traffic and captures use synthetic native frontend fixtures. No connected PostgreSQL/SQL Server, backend authorization/mutation or manual assistive-technology certification is claimed. The original repository plan and broader dashboard refactor remain incomplete; backend-dependent requirements below remain open. No GitHub upload occurred.
+
+## Previous workspace triage and diagnostic context qualification (2026-10-03)
+
+Fleet and server alert investigations now retain received pages through workspace polling and preserve explicit paging, retry and acknowledgement ownership. Return to latest replaces the investigation only after successful native validation. Cancellation and uncertain acknowledgement completion retain the original operation ID for the same locally received first-observed cycle. Authority loss and selection round trips clear busy ownership without accepting late success. Fleet access is rechecked during workspace ticks without treating the pending recheck as a denial. Actual HTTP 401/403 removes protected rows, details and actions; a readable alert response alone cannot restore write authority.
+
+Native alert cursors, page size, ordering, cutoff, row identity and progress are validated before joining pages. Investigation is bounded to 20 pages / 2,000 rows; exact URL lookup remains five pages / 500 rows. The native cutoff excludes newer fired/first-observed rows, but does not freeze mutable alert state, names or permissions between reads. Native acknowledgement accepts operation ID only; local cycle handling does not invent a server episode precondition. Alert evidence remains current-state and server-wide independently of Rewind/database context.
+
+The workspace database selector and command palette discard prior names/results on definitive later-page denial, retain safe received evidence on ordinary failures, and fence target changes and abandoned requests. Native HTTP status survives shared readers. Changing the workspace database retains the Health subsection and, in its supported Summary subsection, the selected configuration scan and exact UTC window. Overview, PLE and file-trend charts fence caller-known target revision and server round trips before effects; native DTOs do not supply source revision, so this is a known context boundary plus a new read. NUMA keyboard selection stays mounted and focused during node changes and polling; retained safe options do not make old charts current.
+
+Three non-overlapping owners handled alert triage, workspace denial/context, and diagnostic focus/revision/theme work, each with owning interactions and four-width accessibility checks. Independent reviews found acknowledgement cleanup and server round-trip defects; both were repaired. The lead owns shared status typing, native fixtures, App checks, integration and final validation.
+
+| Requested requirement | Final evidence | Completion for this pass |
+|---|---|---|
+| Multiple subagents and one integration lead | Three independent owners, non-overlapping files and read-only peer review; one integration lead. | Complete. |
+| Dark theme | Shared tokens, wrapping controls/receipts, visible keyboard focus and bounded tables. | Passing in tested states. |
+| Diagnostic-screen review | Alert retention/access, workspace denial/Health URL context and Overview/PLE/file revision/focus paths reviewed and repaired against existing native APIs. | These findings closed; Analytics work below remains. |
+| Interaction tests | **80 runtime/API/model checks**, **106 mounted cases**, **13 built-App cases**. | Complete final groups pass without skips, retries or flaky results. |
+| Accessibility and responsive checks | Keyboard, axe, control bounds and document overflow at **320/390/768/1440**; App checks at 320/1440. | Passing in tested states. |
+| Validation after integration | Strict product/harness TypeScript, production build, generated asset verification, **527 unchanged frozen inputs** and closed owned fixture ports. | Passing against final code. |
+| Screenshots and completion summary | **14 fresh captures**, representative mobile/desktop visual review, gallery (local output: `artifacts/dashboard-workspace-triage/index.html`), exact case inventories, hashes and provenance (local output: `artifacts/dashboard-workspace-triage/completion.json`). | Delivered locally, bound to the final local commit. |
+
+These are affected frontend checks, not full repository or release certification. Counts come from complete final groups, never combined repair subsets. Earlier attempts remain under `initial-typecheck` and `initial-browser`. Strict checks first required a missing harness comparison field and preserving target/fleet types during local acknowledgement mapping; product was rebuilt and all native checks reran. Initial browser failures involved old fixtures missing native access-recheck responses and an unsupported scan identity assertion in Collection. All browsers stopped before those spec-only corrections. Complete final groups reran against unchanged product/assets/native/harness code and the final 527-input manifest.
+
+All browser traffic and screenshots use synthetic native frontend fixtures. No connected PostgreSQL/SQL Server, backend authorization/mutation or manual assistive-technology certification is claimed. The broader dashboard refactor and original plan remain incomplete. No GitHub upload occurred.
+
+## Previous legacy Operations projection qualification (2026-10-03)
+
+Legacy backup, TempDB and Availability Group projection cards now retain independent investigated pages and native cursor trails through workspace polling. Already-visited First/Previous/Next pages restore locally; unread continuation can expire when the native latest run advances. Explicit Return to latest resets only after a validated successful read. Failure preserves the received page; Retry repeats the failed operation, and Cancel retains the receipt without claiming a new source read. Automatic first-page reads can be superseded by a newer refresh. Explicit investigation requests keep ownership across refresh ticks.
+
+Target, revision, shared window and database changes fence old receipts before effects and abort owned requests; unmount and late results are also fenced. Actual HTTP 401/403 discards retained protected receipts. Collector PermissionDenied remains a source-coverage gap. Receipts disclose source run/revision and observation time independently of already-loaded App metadata. A NoData receipt labels repository check time rather than inventing collection time. Rewind and database selection do not make these legacy server-wide projections historical. TempDB summary totals and file pages have independent receipts; the summary omits files and has no row pager. Legacy Agent loading was removed in favor of the existing canonical history flow.
+
+Native cursors use nested standard-base64 envelopes bound to target, snapshot time, run, revision, kind and row tail. Validation preserves native microseconds/seventh-zero timestamps, nullable backup sort keys, ordering and cursor progress. This binding is not a cryptographic signature. Retention is bounded to 400 pages/10,000 rows. AG truncated and top-level visibility are page-relative in the native projection; additional-page disclosure is separate from Partial source coverage. A source GET enforces current database revision, but its revision can differ from stale App metadata loaded before a target edit.
+
+Three non-overlapping owners handled product lifecycle/native models, mounted interactions, and dark-theme/accessibility/native diagnostic review. The lead integrated existing fixture contracts, authored runtime/App checks, repaired test setup and ran final qualification. Independent review identified page-relative AG flags and an automatic read that needed superseding; both were repaired before browser qualification. Shared dark tokens, wrapping controls/receipt identities, sticky headers and bounded keyboard-scrollable tables passed the tested widths.
+
+| Requested requirement | Final evidence | Completion for this pass |
+|---|---|---|
+| Multiple subagents and one integration lead | Three non-overlapping owners with independent source review; lead owns integration, native/App checks and final qualification. | Complete. |
+| Dark theme | Shared tokens, readable receipts, wrapping identities/controls and visible keyboard focus. | Passing in tested states. |
+| Diagnostic-screen review | Native legacy backup/TempDB/AG contracts, retained investigation, error/cancel lifecycle and source provenance reviewed and repaired. | Recorded legacy projection finding closed. |
+| Interaction tests | **24 runtime/API/model checks**, **33 mounted cases**, **seven built-App cases**. | Complete final groups pass without skips, retries or flaky outcomes. |
+| Accessibility and responsive checks | Keyboard activation/focus, local table scrolling, axe and document/control bounds at **320/390/768/1440**; App integration at 320/1440. | Passing in tested states. |
+| Validation after integration | Strict product/harness TypeScript, production build, asset generation/verification and **505 unchanged frozen inputs**; owned fixture ports closed. | Passing against final product code. |
+| Screenshots and completion summary | **Eight fresh captures**, representative mobile/desktop visual review, gallery (local output: `artifacts/dashboard-operations-projections/index.html`), case inventories, hashes and provenance (local output: `artifacts/dashboard-operations-projections/completion.json`). | Delivered locally, bound to the final local commit. |
+
+These are affected checks, not full repository or release certification. Final counts come from complete groups, never combined repair subsets. Earlier attempts remain under `before-native-contract-review`, `initial-app` and `app-target-assertion`. App setup corrections used the actual arrow-prefixed Refresh name, respected server navigation clearing a per-target database ID, and asserted the new target request/distinct source run instead of expecting a target ID in a card that displays run/revision. A mounted source-revision fixture now models source revision 2 after stale App metadata 1, consistent with native database constraints. Product, assets, native checks and harness inputs remained unchanged during those spec-only corrections; the complete final mounted/App groups reran against one unchanged 505-input manifest.
+
+All browser requests and screenshots use synthetic native frontend fixtures. No connected PostgreSQL/SQL Server, backend authorization/mutation or manual assistive-technology certification is claimed. The broader dashboard refactor and original repository plan remain incomplete; backend-dependent requirements below remain open. No GitHub upload occurred.
+
+## Previous retained-pager and current-head-blocker qualification (2026-10-03)
+
+Investigate-first now gives a direct current head-blocker answer from one native graph read shared with the dashboard blocking tree. Ranking uses distinct blocked sessions, then exact observed wait; cycle, external and depth-limited roots are unconfirmed. Keyboard Inspect focuses and highlights the same received graph, preserving the shared Rewind URL. Current server-wide evidence remains independent of the historical window. Empty retained, incomplete or never-collected evidence does not claim all clear; repository check time is labelled separately when collection time is unavailable.
+
+Resources files, Health databases, configuration history, per-replica AG streams, backup assessment and Agent failure history retain their investigated pages and native cursor context through workspace refresh. Explicit latest resets only after a validated successful read; failures preserve the investigation. Target/revision/window changes fence old receipts before effects, cancel owned reads and reject late results. Definitive 401/403 removes protected retained receipts. Independent AG streams disclose different cutoff/run/revision evidence. Configuration selected-run entry starts pinned; successful explicit latest resumes polling even while the URL keeps the scan identity. Dashboard Agent timeline markers keep their original distinct behavior: pending refresh retains them, failed refresh clears them and discloses the unavailable selection.
+
+Three owners implemented non-overlapping resource, Health/configuration and operation modules with their own mounted interactions, dark-theme, keyboard, accessibility and responsive cases. They independently cross-reviewed integration. The lead owns shared graph/API composition, App regressions, common CSS, review repairs and final qualification. Reviews caught unresolved-root labels, a false empty retained all-clear, outer Health permission retention, configuration explicit-latest repinning and an invented completion timestamp. All were repaired and checked. Long native database buttons wrap within the panel; raw evidence tables scroll locally.
+
+| Requested requirement | Final evidence | Completion for this pass |
+|---|---|---|
+| Multiple subagents and one integration lead | Three non-overlapping feature owners, independent review and lead-owned shared integration and conflict resolution. | Complete. |
+| Dark theme | Shared tokens, selected-root outline, visible keyboard focus, wrapping controls and bounded native long names. | Passing in tested states. |
+| Diagnostic-screen review | Existing current blocking and native pagers reviewed against API/collector/schema contracts; latest/current versus investigated provenance remains explicit. | These findings closed; legacy projection paging below remains. |
+| Interaction tests | **80 owning checks: 79 runtime/API/model and one explicit security lint**, **96 mounted cases**, **13 built-App cases**. | Complete final groups pass without skips, retries or flaky outcomes. |
+| Accessibility and responsive checks | Keyboard activation/focus, local table scrolling, axe and document/control bounds at **320/390/768/1440**; built-App current-blocker inspection at 320/1440. | Passing in tested states. |
+| Validation after integration | Strict product/harness TypeScript, production build, asset generation/verification, **496 frozen inputs**, closed owned fixture ports. | Passing against final product code. |
+| Screenshots and completion summary | **36 fresh captures**, representative mobile/desktop visual review, gallery (local output: `artifacts/dashboard-retained-pagers/index.html`), case inventories, hashes and provenance (local output: `artifacts/dashboard-retained-pagers/completion.json`). | Delivered locally, bound to the final local commit. |
+
+These are affected checks, not full repository/release certification. Final groups are complete executions, never a union of repair subsets. Product, build assets, native and mounted inputs stayed unchanged between final groups. Only the owning App screenshot changed after mounted qualification: full-page captures were too tall to inspect usefully, so the two built-App captures now show the Investigate-first panel. Mobile capture height is enlarged after the unchanged 1000-pixel-height behavioral/layout checks, keeping pinned navigation above the panel. The complete 13-case App group reran; `components-frozen-inputs.json` and final hashes document that exact test-only difference.
+
+Complete earlier attempts remain under `initial-typecheck`, `initial-native`, `initial-components`, `before-operation-layout`, `dependency-load-failure`, `before-agent-dashboard-repair`, `before-configuration-latest-repair`, `before-capture-refinement` and `before-mobile-capture-height`. Type narrowing/strip-only import errors, native synthetic identities and microsecond fixture arithmetic, clock/timeout/focus setup, product long-name overflow and unwrapped harness JSON layout were repaired without weakening behavior assertions. One unchanged-code mounted attempt encountered Chromium `ERR_NO_BUFFER_SPACE` loading a module before harness mount; its trace remains separate. Independent final review repairs prompted a rebuild and fresh native/mounted/App groups.
+
+All captures and browser requests use local synthetic native frontend fixtures. No connected PostgreSQL/SQL Server, backend authorization/mutation or manual assistive-technology certification is claimed. The full repository plan and dashboard refactor remain incomplete. No GitHub upload occurred.
+
+## Previous search and diagnostic context qualification
+
+Command-palette rows, status and navigation now stay bound to their loaded server, database, category and search session before effects run. Exact query verification also follows the current hash and UTC window. Target/category changes, close/reopen, paging and unmount cancel old reads and fence late results. Reopening starts with Servers without dispatching a stale database search.
+
+Dashboard waits retain only a matching target and exact microsecond window during refresh or transient failure, with the original repository read time and window disclosed. A changed context hides old evidence immediately; actual 401/403 responses remove retained evidence. The wait reader now compares native microseconds and honors the exclusive end at five-minute bucket edges. Database option-history results/errors are keyed before rendering, including unsupported windows, and Refresh retries a fixed custom window. Overview validates resource display fields and nullable observed instants, issue server/time fields and nested records before rendering or sorting, producing safe errors for malformed receipts.
+
+Configuration collection changes have synchronous request ownership, duplicate guards, cancellation and context/authority/unmount fences. Cancel explains that a dispatched change may already have applied. Native applied receipts must match the target, unchanged target revision, requested enabled state and positive schedule revision; malformed success and uncertain transport outcomes require explicit current-state readback. Recovery persists across ordinary refresh. After denied access, Reload additionally requires fresh exact-target administrator access through the existing `/me` endpoint; a readable settings GET alone cannot unlock changes. Current settings retain their explicit latest-source semantics during Rewind. These frontend checks do not establish backend authorization enforcement.
+
+Three independent owners handled search, diagnostic state and configuration interactions with non-overlapping files. They reviewed each other's integrated areas; the lead owns shared readers, CSS, App composition and final validation. Independent review identified the permission recovery gap and long-name overflow. Runtime geometry then exposed the settings grid item's automatic minimum width; `min-width: 0` now keeps table scrolling local. Screenshot review improved chart-value timestamp readability with a bounded minimum table width and single-line time cells. Native long database names wrap inside option history and search.
+
+| Requested requirement | Final evidence | Completion for this pass |
+|---|---|---|
+| Multiple subagents and one integration lead | Three non-overlapping owners, independent read-only reviews and lead integration. | Complete. |
+| Dark theme | Shared tokens, keyboard focus, bounded controls, long-name wrapping and readable time cells. | Passing in tested states. |
+| Diagnostic-screen review | Search, dashboard waits, database options, Overview reader and current configuration reviewed and repaired against native contracts. Remaining frontend findings below. | Review delivered; dashboard work remains. |
+| Interaction tests | **35 owning checks: 34 runtime/API/model and one explicit security lint**, **65 mounted cases**, **13 built-App cases**. | Complete final groups pass with no skips, flaky outcomes or retries. |
+| Accessibility and responsive checks | Keyboard activation/focus/local scrolling, axe, text bounds and document overflow at **320/390/768/1440**; App search and shared chart captures at 320/1440. | Passing in tested states. |
+| Validation after integration | Strict product/harness TypeScript, production build, asset generation/verification, **475 frozen inputs** and closed owned fixture ports. | Passing against final code. |
+| Screenshots and completion summary | **16 fresh reviewed captures**, gallery (local output: `artifacts/dashboard-context-search/index.html`), case inventories, hashes and run evidence (local output: `artifacts/dashboard-context-search/completion.json`). | Delivered locally and bound to the final local commit. |
+
+These are affected checks, not a rerun of the full dashboard suite. Complete earlier attempts remain in `initial-native`, `initial-components`, `before-grid-fix`, `dependency-load-failure` and `before-value-readability`. Initial native failures exposed strip-only TypeScript incompatibility and stale non-GUID route fixtures; both were corrected. Initial mounted setup failures involved implicit select-label locators, mouse versus keyboard focus, unconditional scrolling and physical SVG coordinate rounding. The next run exposed the real grid-width defect and the harness's missing App heading hierarchy, which were repaired while keeping axe enabled. One unchanged-code attempt passed 48 cases but Chromium failed to load a React dependency with `ERR_NO_BUFFER_SPACE` before one harness mounted; its trace is retained. The complete 49-case rerun passed before the screenshot readability improvement justified the additional 16 shared chart cases. Final counts come from complete final groups, never a union of repair cases. Product code remains unchanged between final native, mounted and App qualification; final input hashes are verified.
+
+All current captures and API interactions use synthetic native frontend fixtures. No connected SQL/backend mutation or authorization test was necessary for these frontend-only changes. The full dashboard refactor and repository plan remain incomplete. No GitHub upload was attempted.
+
+## Previous fleet grouping and timeline qualification
+
+The event timeline now selects the shared workspace window through a bounded drag rail or UTC keyboard form. Selections retain native microseconds, preserve database/comparison context and restore through reload and navigation. Captured gestures cancel on window changes and unmount. Overview and Observation charts also bind a drag to its original window and series; pointer mapping uses the actual SVG screen transform so centered drawings at wide widths select the correct time. Overview drawing and selection bounds now agree. The dashboard refuses callbacks from an obsolete hash context.
+
+Fleet grouping edits resolve against the current overview target, revision and permission before rendering. Same-revision refresh preserves drafts; changed revisions or lost authority remove stale drafts. A delayed Alpha save cannot close Beta's newer editor. Requests have synchronous duplicate guards, tracked cancellation and late-result fences. Cancel stays available while pending. Unknown outcomes, conflicts and rejected access persist per target after closing the editor; explicit Reload discards the draft and waits for a fresh validated overview before editing resumes. Cancellation does not claim server rollback. Successful receipts must match the exact target, expected revision plus one and normalized submitted labels.
+
+Three independent owners reviewed diagnostic workflows, implemented grouping and timeline changes, authored interactions, and checked dark/responsive styles with non-overlapping ownership. The lead integrated API/UTC/chart behavior and App composition, resolved the independently identified SVG coordinate defect, and owns final validation. Fresh final read-only reviews found no remaining actionable issues in these integrated changes.
+
+| Requested requirement | Evidence | Completion for this pass |
+|---|---|---|
+| Multiple independent owners and one integration lead | Separate grouping product, mounted interaction, timeline/dark-layout lanes; lead owns shared contracts, charts, integration and final qualification. | Complete. |
+| Dark theme | Shared tokens and focus styles; bounded grouping fields, long native names, wrapping actions and timeline controls. | Passing in tested states. |
+| Diagnostic-screen review | Reviewed dashboard/timeline, fleet/search, Resources and Health workflows against current native contracts; fixed timeline selection, gesture/precision and grouping lifecycle findings. Remaining findings below. | Review delivered; dashboard work remains. |
+| Interaction tests | **54 owning checks: 53 runtime/API/model and one explicit security lint**, **41 mounted cases**, **16 built-App cases**. | All final groups pass, without skips, flaky outcomes or retries. |
+| Accessibility and responsive checks | Keyboard activation/focus, axe, field/control bounds, local grid scrolling and document overflow at **320/390/768/1440**; actual plot-bound drags at 320/1440. | Passing in tested states. |
+| Validation after integration | Strict product/harness TypeScript, production build, asset generation/verification, **463 frozen inputs** and closed owned fixture ports. | Passing against final product code. |
+| Screenshots and requirement summary | **12 fresh reviewed captures**, gallery (local output: `artifacts/dashboard-fleet-timeline/index.html`), case inventories/input hashes/run provenance (local output: `artifacts/dashboard-fleet-timeline/completion.json`). | Delivered locally, bound to final local commit. |
+
+The mounted suite defines 236 cases; only the 41 affected cases ran. All 16 App cases ran as a complete final group. Initial component setup failures came from a nested select locator and fresh-drag coordinates affected by scrolling; corrected setup retained the product assertions. An independent source review then found the real SVG coordinate defect, prompting product repair, production rebuild and fresh native/mounted runs. Existing App crosshair checks required selecting the relevant status after the new preview introduced another status element. Visual review refined two built-App captures to the range controls so the pinned fleet strip does not obscure long stitched event-list screenshots. The only later frozen-input change is that owning App spec; product, native and mounted inputs remain unchanged. Complete attempts remain in `initial-run`, `before-coordinate-fix`, `initial-app` and `before-capture-refinement`. Counts come from complete final groups, not a union of repair cases.
+
+This qualification uses synthetic native frontend fixtures. It does not establish backend mutation execution/authorization, connected SQL behavior, full repository validation or GitHub upload. The original review plan and dashboard refactor remain incomplete.
+
+### Remaining source-reviewed dashboard work
+
+The legacy Operations projection pagination, direct current head-blocker, canonical native pager, workspace triage/context, Analytics and recorded Deadlock findings are closed by the qualifications above. Analytics incidents use the native bounded legacy list rather than an invented paginated surface contract. Health logical-file data remains an explicitly bounded first page; Resources owns file pagination. Resource cursor binding follows the native encoded cursor contract; it is not a cryptographic signature. Browser retention/search bounds are visible and do not imply complete fleet evidence.
+
+The Health default-section, workspace target-catalog denial, Waits retained-read denial, chart pointer ownership and ordinary report-expiry findings are closed by the owning qualifications above. These evidence-backed repairs do not establish completion of every dashboard behavior or of the repository plan. Recheck current sources before identifying further defects; preserve native model/rendered behavior coverage and distinguish source lint from execution evidence.
+
+The prior command-palette context, Overview display validation, wait refresh, configuration mutation cancellation and keyed option-history findings are closed by the latest qualified pass above.
+
+Current code already exposes database compatibility/read-only/log reuse options, configuration drift, per-replica AG data and backup RPO assessment. Do not repeat the original static review's stale missing-feature claims for those paths. Actual target OS-vs-SQL CPU, full wait attribution, current/long-running Agent jobs, complete restart/failover/resolved-alert history and the assistant remain source/backend decisions listed later. No backend scope expansion was made.
+
+## Previous query/history and rule-form qualification
+
+This dashboard pass closes the six source-reviewed frontend findings recorded in the preceding volume/admin checkpoint. Exact query and plan URL inspection survives ranking-page changes and ranking failures; refresh, target, window, database, metric and source changes cancel old continuations. Query ranking/status/history/plan receipts are keyed during render, so old evidence cannot appear under a changed context before effects clear it. Invalid duplicate, orphan or contradictory exact query fields visibly require repair; the ranking source filter remains independent.
+
+Wait and blocking history retain their loaded page, original target/window and cursor context through workspace polling. First/Newer re-read mutable history within that original window. Explicit Return to latest fetches a fresh first page, aborts held navigation and resets the cursor trail only on success. Failed recovery preserves the displayed page. Request generations prevent a delayed supporting aggregate from replacing a later explicit latest receipt; subsequent workspace refresh can resume updates. Target/window changes immediately fence supporting snapshots and errors. This is retained investigation context, not an immutable repository snapshot.
+
+Activity Live/History controls now update the shared Live/Rewind URL, preserve database context and restore through reload/back/forward. Explicit captured-session and linked-deadlock selections are separate valid evidence links; returning to Live clears either link. Expired or unsupported session-history windows retain their existing reason-specific latest-source disclosure. Query/activity transport guards and the Activity window model compare microseconds, preserve the native seventh-zero convention and exact caps, and require history response bounds to match the requested window.
+
+Rule create/edit requests now have synchronous ownership, duplicate guards, unmount/context cancellation and late-result fencing. Uncertain retries keep their original operation identities and native revisions. Closing or losing authority cancels consumption; role regrant cannot restore an old editor or draft. Cancellation does not claim server rollback. Screenshot review also corrected narrow Rules headers so action buttons wrap below a readable rule identity.
+
+Three independent owners handled contracts, query interactions/theme/accessibility, and rule forms/history tests. Fresh independent read-only reviews found and verified the aggregate-order and immediate-render gaps; the lead integrated shared history/time behavior, resolved the visual layout finding and owns final validation.
+
+| Requested requirement | Final evidence | Completion for this pass |
+|---|---|---|
+| Independent work and one integration lead | Non-overlapping file ownership and independent source reviews; lead resolves integration and validation. | Complete. |
+| Dark theme | Current tokens, readable controls, keyboard focus and retained-evidence disclosure; Rules header actions wrap without squeezing its identity. | Passing in tested states. |
+| Diagnostic-screen review | Recorded query, Activity/Waits, exact URL/time and rule-form findings addressed; protected run and native source contracts preserved. | Recorded frontend findings closed. |
+| Interaction tests | **73 owning checks: 72 runtime/API/model and one explicit security lint**, **75 mounted cases**, **28 built-App cases** across seven complete final groups. | All pass; no skips or retries in final runs. |
+| Accessibility/responsive checks | Axe, keyboard focus/activation, local table scrolling, control/header geometry and overflow at **320/390/768/1024/1440**; **24 fresh selected screenshots**. | Passing in tested states. |
+| Final integrated validation | Strict product/harness TypeScript, production build, asset generation/verification and frozen input checks; owned fixture servers stop after runs. | Passing against final integrated assets. |
+| Screenshots and requirement summary | Gallery (local output: `artifacts/dashboard-query-history/index.html`), case/input/asset hashes and run provenance (local output: `artifacts/dashboard-query-history/completion.json`), isolated reports and preserved attempts. | Delivered locally, bound to final local commit. |
+
+Only affected checks ran: the mounted suite defines **203 cases**, and this pass executes 75. Native owning source/test inputs are unchanged from their green run. The first shared-time App attempt exposed test setup errors: an omitted native database GET and an invalid combined capture/event URL. A later assertion used the wrong existing pin wording. Corrections preserved product assertions and prior reports. All browser groups passed before screenshot review; the narrow Rules header repair then triggered a production rebuild and fresh complete runs of all seven groups. Final reports do not combine failed attempts into passing counts. Complete earlier attempts remain under `initial-run`, `repair2` and `before-layout`; a partial intermediate archive hit the Windows path limit and is retained separately. Final screenshot review includes both mounted and built-App desktop/mobile states. No connected database/backend authorization test, whole-suite rerun, release certification or GitHub upload is claimed.
+
+The full original repository revamp and backend-dependent interface features remain incomplete. Snooze/assignment, recurring maintenance, group template deployment, wider saved-incident capture, the optional assistant and telemetry/collector gaps still need contracts or scope decisions. Earlier qualifications below retain their historical provenance.
+
+## Latest volume-browsing and admin-interaction qualification
+
+Independent review identified existing-contract frontend defects beyond the historical qualification. Browsed SQL-volume pages now survive polling and pending continuation; already-read First/Previous/Next pages restore locally after cursor expiry. Retention is bounded to 40 pages/1,000 native rows. Explicit Return to latest re-enables refresh, while invalid or superseded unread continuation clears all old pages and requires authoritative reload. Target/revision/Rewind/unmount lifecycle cancels and clears this latest-only evidence; Rewind still does not claim historical capacity.
+
+Rules, Maintenance and Destinations now expose named keyboard-scroll regions with visible inset focus. Enter submits destination edits with the same native revision and stable uncertain-retry operation. Tracked controllers, duplicate guards and selection/permission generations cancel and fence old rule-disable/destination requests and status; role regrant does not reopen an editor. Registration consumers unmount and cancel on drawer Close, Escape or loss of verified access. Late receipts cannot merge into the loaded catalog, and regrant does not reopen the drawer. Cancellation does not claim rollback of a server-accepted mutation. No backend, collector, dependency or authentication scheme changed.
+
+Three independent owners handled Rules/source review, dark-theme/admin keyboard work, and volume interaction/accessibility tests. The lead owned volume runtime, registration composition, shared focus CSS, integration repairs and final validation. Fresh independent source reviews found no residual actionable issues in the changed paths.
+
+| Requested requirement | Final evidence | Status |
+|---|---|---|
+| Independent work with one integration lead | Non-overlapping product/harness/spec ownership; lead integrated and resolved source/capture findings. | Complete for this pass. |
+| Dark theme | Shared tokens, readable controls and retained-snapshot disclosure, inset keyboard focus for clipped admin tables. | Passing in tested states. |
+| Diagnostic-screen review | Native volume identity/size/refusal contract, retained browsing and explicit latest semantics reviewed; remaining Query/Activity findings listed below. | Concrete defects fixed; dashboard review remains ongoing. |
+| Interaction tests | **41 affected native checks**, **24 mounted cases**, **39 built-App/browser cases** across seven isolated groups. | All pass without failures, skips or retries. |
+| Accessibility/responsive checks | Axe, focus, keyboard table panning, control geometry and overflow at **320/390/768/1440**; **14 fresh captures** of volume/admin/Rules states. | Passing in tested states; manual assistive-technology certification remains separate. |
+| Final integrated validation | Strict product/harness TypeScript, production build and asset generation/verification. Assets: `entry-index-c798898a.js`, `index-f5156742.css`. | Passing; runtime inputs unchanged through final qualification. |
+| Screenshots and completion accounting | Current gallery (local output: `artifacts/dashboard-interaction-review/index.html`), case inventories, hashes and run provenance (local output: `artifacts/dashboard-interaction-review/completion.json`), isolated reports and preserved earlier attempts. | Complete locally and bound to the local commit. |
+
+The first run passed volume/admin App workflows and exposed two test setup defects: missing Resources h2 in the isolated harness and two unregistered supporting GETs in registration fixtures. Those repairs preserved product behavior and assertions. Its reports remain under `initial-run`; all seven groups then passed. Screenshot review corrected scrolling/focus setup in three owning specs, preserved the passing pre-capture reports, and reran their complete 24/6/6 groups. The other four groups and 41 native checks exercise unchanged code/specs. The record preserves both 452-input manifests, their three capture-only differences and unchanged product/build hashes. No composed repair case count, connected database test, release certification or GitHub upload is claimed. Historical whole-dashboard counts were not rerun.
+
+The full original revamp remains incomplete. The source-reviewed frontend findings open at this historical checkpoint are closed by the latest qualification above. Backend-dependent interface requirements remain open.
+
+The six source-reviewed frontend findings below were open at this historical checkpoint and are now addressed by the query/history qualification above. Backend-dependent requirements remain listed later in this handoff.
+
+## Previous saved-incident dashboard qualification
+
+Saved investigations now summarize the existing copied analytics packets with recorded source references, coverage, confidence context, producer truncation, tombstones and complete source provenance. Unknown packet schemas retain a keyboard-accessible raw JSON disclosure. References remain opaque identities; the interface does not invent links to unrelated diagnostic selections or claim causation. Source digests are described as source metadata, not as verification of the entire JSON payload. Unsupported or unavailable evidence explains that reloading cannot replace the frozen capture.
+
+Expired report exports disappear at the UTC expiry boundary. Explicit renewal creates a new operation after a verified successful run expires; uncertain retries retain the same operation and payload. Exact-target read authority gates saved content and reporting, aborts pending requests on revocation, and fences late completions across permission and target changes. Closing an inaccessible investigation remains available. No backend, collector, dependency or authentication scheme changed.
+
+Three independent owners handled the evidence model/native tests, view/dark styling, and interaction/accessibility fixtures. The lead owned workspace/report authority, App integration and final validation. Fresh independent source reviews found no actionable integration issues.
+
+| Requested requirement | Final evidence | Status |
+|---|---|---|
+| Independent ownership and one integration lead | Separate model/native, view/theme and fixture/spec files; lead-owned authority, App integration and final validation. | Complete for this frontend slice. |
+| Dark theme | Existing shared tokens, readable coverage and provenance, visible keyboard focus, wrapping identities and scrollable raw evidence. | Passing in tested states. |
+| Diagnostic-screen review | Checked packet metadata against native producer/repository contracts, retained capture semantics, unknown-schema fallback, report expiry/retry identity and target/read fencing. | Existing evidence inspection improved; broader diagnostic capture remains open. |
+| Interaction tests | **30 affected native checks**, **16 mounted cases**, **11 built-App/browser cases** (seven new and four existing incident regressions). | All pass without failures, skips or retries. |
+| Accessibility and responsive checks | Axe, keyboard focus/scrolling, readable control geometry and overflow at **320/390/768/1440** pixels; **12 fresh screenshots**. | Passing in tested states; manual assistive-technology certification remains separate. |
+| Final integrated validation | Strict product/harness TypeScript, production build and asset generation/verification. Assets: `entry-index-699e7da3.js`, `index-fe8f90c3.css`. | Passing against **436 unchanged frozen inputs**. |
+| Screenshots and completion accounting | Current gallery (local output: `artifacts/dashboard-saved-incidents/index.html`), case inventories and hashes (local output: `artifacts/dashboard-saved-incidents/completion.json`), isolated browser reports and logs. | Complete locally, bound to the local commit. |
+
+All browser groups terminated normally before final documentation and commit. These are fresh affected-suite runs against one unchanged build, not a rerun of the earlier 578 native, 28 mounted and 31 browser server-administration checks or the older whole-dashboard matrix. Browser traffic used strict local synthetic fixtures; connected PostgreSQL/SQL Server tests and release certification were unnecessary for this frontend-only change. GitHub upload did not occur.
+
+The full original revamp remains incomplete. This view makes existing durable analytics packets usable; it does not newly capture Activity, Waits, Query Store, configuration or deadlock details. Broader incident capture, snooze/assignment, recurring maintenance, group template deployment, the optional assistant and telemetry/collector gaps remain open. Earlier qualifications below retain their original provenance.
+
+## Previous server-administration dashboard qualification
+
+The Servers screen now opens shareable current settings from each loaded row and supports revision-checked connection edits, capability rediscovery and typed retirement through the existing native APIs. Settings also load independently for an authorized target outside the bounded inventory page. Verified receipts replace only their loaded row; retirement removes it. Readback after an uncertain receipt never implies a successful mutation or injects an off-page registration. Current configuration remains independent of the retained investigation window, and drafts survive database-context edits, time-display changes and refresh with the same administrative grant.
+
+Three independent owners handled API/receipt models, the settings panel and interaction/accessibility fixtures. The lead owned App/URL/list integration, shared dark styling, review resolution and final validation. Read-only integration review caught both a form cascade defect and settings selection loss on database changes; both were corrected. A malformed off-page synthetic GUID was repaired without weakening assertions. Native AlreadyRetired receipts are terminal even for edit/rediscovery, without claiming either action applied. Conflicting or uncertain outcomes require explicit authoritative reload; 401/403 additionally rejects the old access snapshot until fresh validated permissions arrive. Role loss aborts requests and prevents late callbacks. No backend, collector, dependency or authentication scheme changed.
+
+| Requested requirement | Final evidence | Status |
+|---|---|---|
+| Independent ownership and one integration lead | Separate API/model, panel and test files; lead-owned App/URL/list/CSS and final source review. | Complete for this frontend slice. |
+| Dark theme | Existing shared tokens, readable settings and terminal/recovery states, underlined links and visible keyboard focus. | Passing in tested states. |
+| Diagnostic-screen/workflow review | Shareable settings retain target and exact historical window; readback, terminal retirement, bounded inventory and native revision semantics reviewed. Database/time/refresh changes retain drafts. | Existing-contract server administration implemented. Source-dependent diagnostics remain open. |
+| Interaction tests | **28 mounted cases** (19 settings and nine onboarding/list regressions), **31 built-App/browser cases** (11 settings, three target/registration cases and 17 existing regressions). | All final runs pass with no failures, skips or retries. |
+| Accessibility and responsive checks | Axe WCAG 2 A/AA, 2.1 AA and best-practice checks, focus, readable control geometry and overflow at **320/390/768/1440** pixels; **16 fresh screenshots**. | Passing in tested states; manual assistive-technology certification remains separate. |
+| Final integrated validation | Strict product/harness TypeScript, production build, asset generation/verification, **578 frontend/native checks with no skips**, including offline PowerShell permission parity. Assets: `entry-index-0205488f.js`, `index-968e1460.css`. | Passing against 429 unchanged frozen inputs. Five M12 release-generator contracts excluded. |
+| Screenshots and completion accounting | Current gallery (local output: `artifacts/dashboard-server-management/index.html`), hashes/case inventories/provenance (local output: `artifacts/dashboard-server-management/completion.json`), isolated reports and preserved initial attempts. | Complete locally and bound to the local commit. |
+
+These are fresh affected-suite runs, not a rerun of the previous 95 mounted/302 browser matrix. The first attempt exposed a real form-layout defect and the invalid off-page fixture GUID; its reports remain under `initial-run`. A passing intermediate run remains under `before-context-review`. After the database-context repair and screenshot scroll setup, the final four suites passed against one unchanged build; no composed repair count is needed. Browser traffic used local synthetic fixtures. Connected database tests and release certification were unnecessary for this frontend-only change; GitHub upload did not occur.
+
+The full original revamp remains incomplete. Target edit/rediscovery/retirement UI is now closed; snooze/assignment, recurring maintenance, group template deployment, broader saved incident evidence, the optional assistant and telemetry/collector gaps remain open. The previous checkpoint and its evidence below retain their historical provenance.
+
+## Previous integrated dashboard qualification
+
+This follow-up closes the source review's frontend gaps: valid target GUID casing now agrees across URLs, native catalog/direct lookup, dropdown values and registration deduplication; live Waits keeps its browsed collector snapshot and cursor trail across workspace polling, restores its original first page locally, and provides an explicit Return to latest action. Health sources explain reason-specific recovery and link to collection health, with permission generation gated by the selected server's Target Administrator grant. Partial core metrics receive source guidance without an invented metric-specific diagnosis. Server alert Open activity links use the native fired time or first-observed fallback.
+
+Independent owners handled identity/Waits, health/recovery, and diagnostic interaction coverage. The lead integrated them, reviewed dark-theme evidence and corrected inline recovery links with visible underlines after axe exposed reliance on color. Fresh read-only integration reviews found no remaining actionable issues in these changes.
+
+| Requested requirement | Final evidence | Status |
+|---|---|---|
+| Non-overlapping parallel ownership and lead integration | Separate product/model/harness/spec ownership, with lead-owned shared styling, integration and final validation. | Complete for this frontend pass. |
+| Dark theme | Shared dark tokens, state colors, visible focus and underlined recovery links; final automated contrast/state checks and screenshot review. | Passing in tested states. |
+| Diagnostic-screen review | Fixed uppercase links, retained Waits paging, missing recovery guidance and alert-moment navigation. Native capture-choice and registration behavior now have real App tests. | Available-source workflow validated; source-dependent parity remains open. |
+| Interaction tests | **95 mounted cases** and **302 built-App/browser cases**, including exact request identity/window, retries, cancellation, navigation and role-gated UI. | Passing. Main 202 is explicitly composed from 200 whole-run passes plus two focused fixture repairs. |
+| Accessibility and responsive layout | Axe WCAG 2 A/AA, 2.1 AA and best-practice checks; keyboard/focus, geometry and document overflow at **320, 390, 768, 1440** pixels. New recovery/permission and retained Waits states have fresh four-width captures. | Passing in tested states; manual assistive-technology certification remains separate. |
+| Required integrated validation | Strict product/harness TypeScript, Vite build, asset generation/verification and **563 frontend/native checks with no skips**, including offline canonical PowerShell permission parity. Production assets: `entry-index-463135ef.js`, `index-1490a5b6.css`. | Passing. Five M12 release-generator contracts remain explicitly excluded. |
+| Screenshots and requirement accounting | Fresh gallery and requirement-by-requirement table (local output: `artifacts/dashboard-final/index.html`), case inventories, hashes and provenance (local output: `artifacts/dashboard-final/completion.json`), nine browser reports and focused repair report. | Complete locally; the completion record binds these inputs/assets to the local commit. |
+
+The first integrated attempt exposed inline-link accessibility defects; its failed/interrupted artifacts are preserved separately under `artifacts/dashboard-final/initial-run`. After the scoped underline repair, the product was rebuilt and the complete matrix rerun with 423 frozen inputs. All 95 mounted cases and seven smaller browser groups (100 cases) passed. The main run passed 200 cases and failed only two newly authored test assumptions: catalog loading legitimately starts a direct lookup, and a single-star route did not intercept the history child endpoint. The repaired tests preserve all identity/scope/display assertions, supply capture records within the actual event-centered native history bounds, and pass in a focused two-case run. Only that test file changed after the whole run; every product, asset and other runtime input stayed unchanged. The final 424-input record includes the separate repair config and documents this composition; it does not claim a single 202-pass execution.
+
+At that previous checkpoint the full original revamp remained incomplete, including target edit/retire/rediscovery UI, which the latest section now closes. Snooze/assignment, recurring maintenance, group rule-template deployment, broader saved incident evidence and the optional assistant remain open, alongside the telemetry/source gaps listed below. No backend/collector change, connected database qualification, release certification or GitHub upload occurred in that pass. Earlier validation sections below retain their historical provenance.
+
+Product checkpoint: `4482d348a5679240f2b3a8bd2aaf047bbd4cbc04` on `SQL-Diagnostic-Manager-Revamp`. The original full product validation below belongs to that immutable checkpoint. The component checkpoint at `8e7d05c7` changes six product files from it. The later response-contract follow-up and its current commit have separate evidence below.
+
+The original [review and plan](SqlObserver-Review-and-Plan-2026-09-23.md) and [execution record](SqlObserver-Revamp-Execution.md) remain the full objective and historical record. They are local, untracked documents at this checkpoint. This file records current dashboard evidence without changing their historical claims.
+
+## Delivery and evidence
+
+Independent lanes owned theme/diagnostic work, interaction tests and accessibility/responsive checks. Later independent reviews owned current-inbox alert markers, retained-capture URLs and native-evidence fixtures. The lead integrated changes and resolved conflicts and review findings. Final runs used unchanged production assets and synthetic loopback fixtures.
+
+| Requested deliverable | Evidence at the product checkpoint |
+|---|---|
+| Dark theme | Final browser coverage exercises controls, semantic states, keyboard focus and contrast. |
+| Diagnostic-screen review | Source review reports identify the existing capabilities and missing dependencies. The final repair adds actual alert-fired markers, retained Waits capture URLs, strict shared UTC parsing and aggregate PLE recovery guidance. |
+| Interaction tests | 123 passing browser cases, plus 17 existing browser regressions. |
+| Accessibility/responsive checks | 146 passing browser cases across 320, 390, 768 and 1440 pixels. Tested states pass axe WCAG 2 A/AA, 2.1 AA and best-practice checks, keyboard controls and document-overflow checks. This is automated coverage, not manual assistive-technology certification. |
+| Integration validation | TypeScript, Vite production build, authoritative permission templates and asset manifest pass. 540 frontend tests and 286 browser checks pass, with no skips or flaky cases in the final selected suites. Four offline permission scripts match canonical PowerShell output byte for byte. |
+| Screenshots and requirement summary | Gallery and detailed requirement table (local output: `artifacts/dashboard-refactor/screenshots/index.html`): 212 fresh screenshots in 53 groups at four widths. Machine-readable completion evidence (local output: `artifacts/dashboard-refactor/completion.json`) binds the product commit, final assets and screenshot hashes. |
+
+The evidence is local and ignored by Git. It must be retained or transferred through an authorized artifact channel for another machine to inspect it. No connected database tests were needed for the frontend changes. This checkpoint does not establish SQL Server fleet behavior, collector performance or packaged release certification.
+
+### Mounted-component checkpoint at `8e7d05c7`
+
+The current follow-up mounts chart, health, alert, Activity, deadlock, analytics, onboarding/loaded-servers, operations and reports through the [component harnesses](../../web/component-tests/README.md). **72/72 mounted cases** and the strict product-source/harness TypeScript check pass. This turn's targeted native suite passes **25/25 checks: 22 runtime and three explicit lint**. The final product edits also pass the owning onboarding/reports 7/7 subset. Existing dependencies remain unchanged.
+
+Onboarding covers exclusive TCP/named bodies, integrated-identity disclosure, stable failed-attempt identity, native HTML validation, pending/unmount guards and typed loaded-server lifecycle/discovery/filter/navigation props. Operations exercises the actual grouped legacy/v2 surfaces, truthful missing/partial states, cancellation, paging failures, safe retry, target fencing and cross-stream AG consistency. Reports covers four actual report kinds, UTC window limits, fixed section-export hrefs and cancellation/context reset. Analytics covers accessible Retry/Restart, safe errors, inventory scope and target/surface/window cursor ownership. Existing chart/health/alert/Activity/deadlock behavior remains protected.
+
+Failing mounted regressions identified four product corrections in this turn: analytics now resets paging for target/surface changes; reports abort and clear pending/completed state when the target changes and suppress foreign-target export links; the stable-key pattern escapes its hyphen for modern native HTML validation; and evidence-table scrolling is named and keyboard-focusable. The earlier Activity key/grid fixes remain. Production build, permission templates and generated asset manifest pass; current assets are `entry-index-943ea885.js` and `index-dafc5816.css`.
+
+Eight component screenshot groups at 320/1440 pixels produce 16 fresh component captures (local output: `artifacts/dashboard-components/screenshots/index.html`). Responsive checks use axe, focus and overflow assertions; onboarding axe is scoped to registration, and alert cases cover interaction only. The typed ServersPage fixtures do not establish fleet loading or server authorization. Automatic deadlock capture selection retains its original explicit copy lint. Report retry idempotency, backend export content, and success-response schema validation in the target/report API clients are not established by this UI follow-up.
+
+The follow-up record (local output: `artifacts/dashboard-components/completion.json`), component report (local output: `artifacts/dashboard-components/report/index.html`) and rebuilt-product report (local output: `artifacts/dashboard-components/product-report/index.html`) separate current results from historical 540/286/212 counts. Only registered local synthetic native DTOs reach production transports/parsers; unexpected API/external traffic is aborted before any proxy/backend. The initial new-component run was 21/30 and reproduced product defects; later failures also identified an invalid backfill fixture, inherited native disclosure state and a long harness dropdown. Fixture/selector/harness repairs preserved assertions. Both final browser subprocesses exited normally. The full rebuilt-product suite passes **197/197 cases: 110 accessibility/responsive and 87 workflow checks**, with no failures, skips or flaky cases. It refreshed 176 product screenshots at 320, 390, 768 and 1440 pixels; the other gallery images retain historical provenance. An independent read-only integration review found no actionable issues in the four current product corrections and their suites.
+
+| Replaced source-check bundle | Behavioral replacement |
+|---|---|
+| Health bounded evidence/UI fields | Native aggregation retains collector DTOs and exact Int64 strings; mounted collector states/loss, completeness guards, native row counters and bounded database/file context are exercised. |
+| Health route/error/abort expressions | Native same-origin route/limit/headers, safe HTTP/malformed-response errors and pre-cancellation tests; mounted retry, failed page preservation and old-server abort/late-response cases. |
+| Alert target/state/UUID/time/page expressions | Production parser executes malformed target, 101-row, state, UUID, UTC, cursor and numeric-value cases. |
+| Alert acknowledgement expression | Real panel gates the action by supplied permission flag and selected firing state; retry/204 and changed-selection cancellation exercise actual callbacks/transport. This does not establish server authorization. |
+| Alert nullable value/terminal cursor expressions | Production parser demonstrates null versus numeric zero and normalized terminal cursor. Existing streamed-size and paging runtime cases remain. |
+| Alert loading/error/load-more expressions | Held native response demonstrates pending-control disabling, snapshot-change refusal and accessible Retry recovery. |
+| Activity edge/evidence/reset/loss bundle | Native parser requires edge plus evidence; real history tables and chart preserve totals, reset/missing-baseline and partial/loss disclosure. Inert rendering, time mode, paging/retry and cancellation execute in mounted tests. |
+| Deadlock detail/link/bounded-reader bundle | Real panel requests exact detail, renders victim/relationships, constructs exact Activity provenance and rejects oversized valid native JSON. App wiring and automatic-capture copy remain lint. |
+| Onboarding identity/state declarations | Mounted identity disclosure, native address bodies, stable/new UUID behavior and all four loaded-server lifecycles/discovery states. Composition and declaration bans remain explicit lint. |
+| Onboarding 429/body-read expressions | Native poisoned rejection bodies and mounted retry execute the real client; provider text is not reflected. |
+| Operations route/label/reader expressions | Exact native requests and real grouped sources/labels/errors execute. Original meaningful parser, streamed-byte, reducer and render-model tests remain. |
+| Reports kind/export-label expressions | Rendered options, generated native request bodies and exact HTML/CSV section hrefs execute. Raw HTML prohibition remains security lint. |
+| Analytics Retry/Restart/role expressions | Real error/status roles, safe retry, invalid-cursor restart and context reset execute. |
+
+The retained health/Activity plaintext/rendering and deadlock App-wiring/capture-copy source constraints are explicitly named architecture/security lint. They do not count as behavioral proof. The reviewed UI bundles are migrated; retained lint and genuine native/model/rendered React tests remain separate. This is not a repository-wide coverage verdict.
+
+### Target/report response-contract follow-up
+
+This dashboard-only follow-up closes the success-response validation gap recorded above. Independent target and report lanes owned separate client/parser/spec files; a read-only reviewer compared their behavior with the current server DTOs, domain bounds, serializer and report SQL invariants. The lead integrated the work, corrected the incomplete Overview target fixture and added built-App refusal/recovery checks. No backend, collector, package, authentication or export endpoint was changed.
+
+Target list/get/registration/grouping now validate native DTO fields and exact requested identities where available, preserve nullable address/discovery fields, enforce the requested page limit and refuse duplicate identities. UTF-8, JSON and content type failures produce a fixed safe message. A 1 MiB transport bound retains valid 100-server pages: review caught an initial 256 KiB cap rejecting a 359,029-byte page whose maximum-length names use ASP.NET JSON escaping. The regression first failed, then passed with the corrected cap; the default 50-row limit still rejects that page. Registration refuses malformed, foreign or oversized success without invoking its callback and retains the failed attempt's identity for retry.
+
+Reports now validate native numeric kinds, target/run identity, definition version, revision, finalized state and precise UTC snapshot/expiry. Receipt size is bounded to 16 KiB, and SHA-256 equality binds the receipt to the exact requested kind/window using the server's ordered canonical JSON and seven-digit DateTimeOffset round-trip form. A wrong-window receipt cannot supply export links. Report fixtures now use the actual native DTO and finalized state. This validates receipt semantics; it does not establish backend export content, retry idempotency or connected authorization.
+
+Owning native suites pass **18/18 checks: 15 runtime and three explicit lint**, and the affected onboarding/report mounted suite passes **18/18**. Strict product/harness TypeScript, production build, permission templates and generated asset manifest pass; final assets are `entry-index-6d0fd620.js` and `index-dafc5816.css`. Independent final source review found no remaining actionable issues after the page-bound repair. The full dashboard run passed 198 cases and failed one new direct-lookup case because its synthetic route was missing. After adding that exact GET fixture route, the same test ID passed a focused rerun, including axe, overflow, safe refusal and recovery. All **199 product case identities have passing evidence: 110 accessibility/responsive and 89 workflow cases**. This is composed evidence rather than a single 199/199 green run. Production sources, assets, harnesses and specs were unchanged between runs; only the fixture route changed. The original failure and repair remain in separate full-run (local output: `artifacts/dashboard-response-contracts/product-report/index.html`) and focused-repair (local output: `artifacts/dashboard-response-contracts/repair-report/index.html`) reports and in the response follow-up record (local output: `artifacts/dashboard-response-contracts/completion.json`).
+
+The current gallery (local output: `artifacts/dashboard-response-contracts/index.html`) contains 182 captures with hashes: 176 product scenes, four affected component scenes and two new response failure states. Product widths are 320, 390, 768 and 1440 pixels; affected component widths are 320 and 1440. Error-state screenshots use full-page axe/overflow checks at 320/1440, while component onboarding axe remains registration-only. The previous `8e7d05c7` captures and completion record were preserved under historical evidence (local output: `artifacts/dashboard-response-contracts/historical-8e7d05c7/completion.json`). Current results are not a fresh run of the older 540/286 checks or all 74 defined component cases. The full original review plan and the backend dependencies below remain incomplete.
+
+### Reports workflow follow-up
+
+The current follow-up improves the existing Reports screen within the dashboard frontend. Independent lanes owned the Reports form/client, Reports-only theme rules, and mounted interaction/accessibility tests; the lead owned built-App fixtures, integration and final validation. A separate read-only integration review found no actionable issues. No backend, collector, dependency or applied migration changed.
+
+The form now has readable dark controls, labels above each control, a named UTC fieldset, keyboard submission, responsive window fields and wrapping exports. Unchanged retries retain the same operation ID and immutable payload after HTTP/network failures or unverified receipts. Verified success, report-kind/window edits, target changes and unmount clear that attempt. Existing cancellation and duplicate-pending guards remain. The synthetic built-App fixture commits a native receipt before truncating the response, then returns the same run when the client retries the identical operation; a later explicit generation creates a new run.
+
+| Requested requirement | Current Reports evidence | Status and limits |
+|---|---|---|
+| Parallel work with one integration lead | Three non-overlapping implementation/theme/test lanes, plus read-only review; root integrated fixture/configuration changes. | Complete for this follow-up. |
+| Dark theme | Scoped Reports styles, readable controls, bordered window/result groups and inherited visible focus. | Four tested widths pass automated contrast checks. |
+| Diagnostic-screen review | Reviewed report kinds, native numeric receipt kind/finalized state, canonical request digest, target fencing, cancellation and retry behavior. | No actionable integration findings. Export content and backend authorization are not qualified here. |
+| Interaction tests | **10/10 native checks** (nine runtime, one explicit lint), **14/14 mounted cases**, **6/6 built-App cases**. | Exact retry identity/payload, existing-run recovery, new identity after success/context edits, Enter and duplicate-pending submission are exercised. |
+| Accessibility and responsive checks | Mounted control geometry, export hit size, focus/Tab, overflow and axe; built-App full-page axe/overflow/focus at **320, 390, 768 and 1440** pixels. | Tested states pass WCAG 2 A/AA, 2.1 AA and best-practice rules. Manual assistive-technology qualification remains separate. |
+| Final integration validation | Strict product and harness TypeScript, production build, generated asset manifest and final browser subprocesses pass. Assets: `entry-index-af8c0d86.js`, `index-92d0bdfe.css`. | Final 14/14 and 6/6 runs have no failures, skips or flaky cases. Historical full-dashboard counts were not rerun. |
+| Screenshots and requirement summary | Eight-capture gallery (local output: `artifacts/dashboard-reports/index.html`), completion record (local output: `artifacts/dashboard-reports/completion.json`), component/product HTML reports. | Four real-App and four mounted captures have fresh timestamps and hashes bound to the local commit. |
+
+The product runner first stopped before executing cases because port 4330 was occupied; the final runner uses verified free port 4331. Initial passing product screenshots were taken after keyboard focus had scrolled the page. The final six-case run resets focus/scroll before capture, consistent with the existing product gallery helper; product code/assets did not change. Validation input manifests preserve both harness adjustments. Screenshots are synthetic local evidence, not lab or database certification.
+
+**Interface gap at `62a246b`, resolved by the follow-up below:** Reports window fields were independent of the global Live/Rewind context, and report kind/window selection was not restored from the workspace URL. Instance Health remained explicitly a current snapshot. Live PostgreSQL retry semantics, report export content, the other backend dependencies and the original full review plan remain open.
+
+### Reports shared-time and URL follow-up
+
+Reports now uses the shared Live/Rewind bar, with no independent date controls. The URL restores `reportKind` alongside the existing target/range/exact UTC boundaries. The [workspace model](../../web/src/features/reports/reportsWorkspaceModel.ts) refuses unknown or duplicate report kinds and invalid, future or unsupported windows; choosing a supported kind repairs the URL explicitly. Performance/Incident windows are limited to seven days and Capacity/Readiness to 31. Existing seven-digit timestamps with a final zero normalize to PostgreSQL precision without rounding. Instance Health is explicitly current under Rewind and sends no historical bounds. Retained database context is disclosed as navigation context; report evidence remains server-wide.
+
+The [panel](../../web/src/features/reports/ReportsPanel.tsx) resolves Live bounds once for each first generation. An uncertain retry replays that exact window and operation even if the clock advances, the parent refreshes or local/UTC display changes. A verified success allows a new operation and current Live window. Target/type/range/bound edits abort/reset the attempt and immediately fence previous results, errors and pending state. Generated reports keep their own window visible rather than acquiring the moving bar's new bounds. [App](../../web/src/App.tsx) preserves type selection across target/database/time edits and the global range when leaving Reports; browser history restores the prior URL without generating implicitly.
+
+| Requested requirement | Evidence against the final code | Status and limits |
+|---|---|---|
+| Independent agents and lead integration | Non-overlapping App/theme, panel/model and mounted-test ownership; root integrated full-App cases and final evidence. Independent read-only review found no actionable issues. | Complete for this follow-up. |
+| One global time context | Reports uses the real shared bar; exact microseconds survive untouched editor Apply, native POST, reload and history. Instance Health clearly states current snapshot. | Reports' independent-window gap is closed. Other latest-only evidence limitations remain explicit. |
+| Shareable URLs | Type plus target/range/from/to restore; invalid duplicate type parameters remain invalid until repaired by the picker. | Selection is restored; generated export content is not persisted in the workspace URL. |
+| Correct interactions and request ownership | **6/6 new model tests**, **18/18 mounted cases**, **11/11 built-App cases**; exact Live retries, new post-success window, context cancellation, late-result/error refusal and duplicate-pending submission. | Local native fixtures model backend retry semantics; live PostgreSQL implementation is not qualified here. |
+| Dark theme and accessibility/responsive checks | Shared controls and readable readonly window summaries; focus/Tab, control geometry, export hit sizes, overflow and axe at **320, 390, 768 and 1440** pixels. Invalid-type 320 and unsupported-window 1440 states also pass full-page axe/overflow checks. | Automated tested-state WCAG 2 A/AA, 2.1 AA and best-practice coverage; manual assistive-technology certification remains separate. |
+| Required final validation | Strict product/harness TypeScript, Vite build, asset generation/verification and normal final browser exits. Assets: `entry-index-1bfc40ee.js`, `index-fb578dc4.css`. | Selected final runs have no failures, skips or flaky cases. All 83 defined mounted cases and historical whole-dashboard suites were not rerun. |
+| Screenshots and completion summary | Ten-capture gallery (local output: `artifacts/dashboard-report-time/index.html`), hashed completion record (local output: `artifacts/dashboard-report-time/completion.json`), component/product HTML reports and logs. | Four App, four mounted and two refusal-state captures are bound to this local commit. |
+
+Initial validation found harness issues: the mounted shared editor's desktop popup was positioned outside the viewport, and a full-App Refresh selector omitted its accessible icon. The harness now uses the App's full-width time-control container; the selector matches the actual button name. Real pointer clicks, geometry and behavior assertions remain. Initial results (9/18 mounted, 10/11 App) are retained separately from final passing runs. Product sources/assets did not change during these repairs, and strict harness TypeScript was rerun. Screenshot review then corrected one unsupported-window note that claimed nonexistent displayed bounds; after rebuilding, strict TypeScript and all 18/11 owning browser cases passed again and refreshed the captures. No backend/collector/dependency change, connected database test, release certification or GitHub upload occurred. The full original plan remains incomplete.
+
+## Interface-plan accounting
+
+These statuses describe the original interface requirements rather than treating current source limitations as completion of the full plan. Source references point to the inspected product checkpoint; line numbers can move.
+
+| Plan requirement | Current delivery | Remaining scope or evidence |
+|---|---|---|
+| Global time, Live/Rewind, local/UTC and window selection | Shared frame, exact UTC bounds, fixed investigation URLs, timeline/keyboard selection and Reports type/window restoration. See [App](../../web/src/App.tsx), [window model](../../web/src/features/overview/overviewModel.ts) and [chart](../../web/src/components/ObservationChart.tsx). | Historical panels must keep declaring latest-only sources, including Instance Health reports, rather than claiming they follow Rewind historically. |
+| Answer before evidence | Baseline KPIs, investigate-first findings, blocking evidence and scoped links. See [server dashboard](../../web/src/features/health/ServerDashboard.tsx). | Correlations are observations, not established causation. Additional sources are required for more complete diagnoses. |
+| Timeline events | Deadlocks, retained alert lifecycle events with exact cycle identity, Agent failure history, configuration/option observations and plan comparisons. | Restart/failover event coverage and collector completeness remain incomplete; see source handoff below. |
+| Quiet evidence and recovery guidance | Named source dots, compact footer and expandable reference details; visible partial/missing/failed states. | Do not collapse errors or turn lack of evidence into a healthy verdict. |
+| Role-aware UI | `/me` target grants gate actions and protected query text/plans; late content is fenced after context or role changes. See [access model](../../web/src/features/targets/meApi.ts). | New mutations and assistant tools need matching target authorization and audit semantics. |
+| Fleet grid and pinned strip | Environment/tag grouping, observed-exception ordering, scoped signal links and authorized compact navigation. See [fleet grid](../../web/src/features/overview/FleetServerGrid.tsx). | Grid evidence is bounded to the loaded Overview response; it is not a transactional fleet snapshot. |
+| Fleet alert inbox | Grouped current inbox, acknowledgement with retry identity, durable episode-scoped Snooze/Unsnooze and Assign/Reassign/Unassign, immutable ownership history, exact selection and investigation links. | Eligible responders require administrator-configured target approval; assignment does not grant access. Retained lifecycle events are now separately available; notification-delivery confirmation remains independent. |
+| Server dashboard | Shared charts, baseline/reference context, event selection, investigate-first and live blocking tree. | Full event/source parity remains incomplete. |
+| Queries | Ranking/trends, regression comparisons, protected text/plan inspection, history and selected-plan hourly waits. | Source/collection qualification is separate from frontend fixture validation. |
+| Waits | Category trends, native deltas, retained captured-session links and exact capture restoration. | Captured sessions do not prove who caused a historical aggregate wait bucket. |
+| Sessions/blocking/deadlocks | Exact request and chain identities, retained snapshots and deadlock restoration, inert role-gated protected content. | Collection completeness and retention limit available historical evidence. |
+| Resources | SQL scheduler CPU, SQL memory, aggregate/NUMA PLE, file latency, selected-file allocation/autogrowth and SQL-reported volume capacity. | Selected-window SQL volume history and guarded previous-window comparison are delivered. Target-host CPU comparison and physical volume-incarnation certification need additional source contracts. |
+| Health checks | Existing backup/RPO, Agent, HA, TempDB and configuration/database-option surfaces with scoped navigation. | Source completeness, long-running-job parity and live platform qualification must be assessed in collector work; frontend checks cannot prove them. |
+| Administration | Target rules, destinations, server grouping, revision-checked connection edits/rediscovery/retirement, one-off/finite recurring maintenance, immutable shared templates and complete-group deployment/stop/guarded rollback, plus offline permission generator. | Group previews are capped at 100 complete authorized members, batches at ten; version publication never propagates automatically. |
+| Ctrl+K | Authorized server, database, query-hash and current-alert destinations. See [palette](../../web/src/components/CommandPalette.tsx). | Lookup/list caps and missing selections remain explicit. |
+| Live updates with pause | One workspace clock with source cadences, pause, hidden-window suppression and wake refresh; no refresh-key remount of diagnostic surfaces. See [clock](../../web/src/liveRefreshSchedule.ts). | SignalR is not required by the plan when shared polling is used. |
+| Shareable URLs | Target/window and supported alert, query, resource, request, chain, deadlock, admin, server settings, timeline and retained Waits selections survive reload/history. | Invalid or unavailable exact identities remain visible; no substituted newest selection. |
+| Chart replacement | Date/time axes, multiple series, reference band/threshold and pointer/keyboard inspection with shared window selection. | A chart does not infer comparable evidence where a source has no matching data. |
+| Incidents | Shared workspace saves fixed window, existing evidence and notes with retry identity and thread-linked inspection/reporting. See [incident workspace](../../web/src/features/incidents/IncidentWorkspace.tsx). | Incident evidence is bounded to the existing saved source contracts. |
+| Optional assistant | No assistant panel is delivered. | Product/transport/model/authentication decisions and read-only tool integration remain open. |
+| Frontend infrastructure/testing | Shared bounded fetch, request coalescing/cancellation, server-approved public caching, mounted Playwright interactions, axe/model tests and isolated diagnostic/admin/report components. Thirteen reviewed legacy bundles are replaced with behavior. See [fetch client](../../web/src/apiClient.ts). | Retained wiring/security checks remain lint. The scoped migration covers the reviewed UI bundles; repository-wide behavioral coverage is not claimed. Private/no-store telemetry and identity responses deliberately bypass completed-response caching. |
+
+## Remaining dashboard dependencies
+
+The following work is a handoff, not an implementation authorization. Keep each feature cohesive across contract, repository, service, collection where needed, and UI. Apply database changes only through new forward migrations. Write a targeted regression when behavior changes; run live PostgreSQL/SQL Server checks when the affected contract requires them, rather than rerunning unrelated suites.
+
+### Alert inbox actions
+
+Snooze and Unsnooze are delivered across the [HTTP routes](../../src/SqlObserver.Server/AlertEndpoints.cs), native repository, audit and fleet/server controls. Versioned inbox projections supply current episode/revision where native identity exists; legacy rows without an episode expose both as null. Current-status GET and audited mutation receipts are separate from retained inbox evidence. See the [contract and delivery fences](Alert-Notification-Snooze.md) and previous snooze qualification above. Applied migrations were not edited.
+
+**Assignment is delivered:** [routes and eligibility configuration](Alert-Assignment.md), native current ownership/immutable history, target-role and approved-responder checks, episode/revision fences and exact replay are implemented. Resolution retains attribution; new episodes start unassigned. Current status and history remain separate from retained inbox evidence. Full assign/reassign/unassign behavior is qualified against the native repository and fleet/server UI in the latest section above.
+
+### Recurring maintenance
+
+Delivered: [finite series contract](Recurring-Maintenance.md), new forward migration 0351, native canonical expansion and lifecycle validation, target-authorized HTTP reads/mutations, server previews and dashboard integration. Daily/weekly/monthly definitions have explicit end dates, named zones and DST policies. Future edit/cancel preserves started rows, individual exceptions and immutable provenance. Cancellation fences and date tombstones cannot be undone. Half-open overlap suppression and dispatch races are qualified while collection/evaluation continue. Exact series/occurrence URLs and legacy one-off edit/cancel coexist.
+
+The new qualification section above records owning final checks. Lists remain bounded target views; they do not imply a fleet-wide calendar or an unbounded recurring scheduler. A new series is required beyond the finite end date or cumulative occurrence cap.
+
+### Rule templates by group
+
+Delivered: [shared immutable library and complete group deployment contract](Alert-Rule-Group-Templates.md), forward migration 0352, native full-membership authorization/overflow checks, frozen previews, bounded durable batch outcomes, stop, guarded rollback and current rule provenance. The fleet screen and exact version/deployment URLs expose source compatibility, per-target results and immutable history without treating a loaded Overview page as a cohort.
+
+Owner or all-target administrator publication creates a new immutable version. Updating a template or group never propagates automatically; a fresh preview is required. Exact retries return original receipts and do not advance batches. Current readback and guarded rollback protect later manual changes. The latest qualification section records the complete final evidence and bounded limits.
+
+### Target-host and SQL CPU
+
+[Resources](../../web/src/features/resources/TargetResourcesPanel.tsx) (line 219) and [Dashboard](../../web/src/features/health/ServerDashboard.tsx) (line 162) show SQL scheduler utilization, explicitly distinct from total process CPU or collector-host CPU. [The pinned engine query](../../collectors/sql/engine.core.sqlserver16-windows.v1.sql) supplies visible-scheduler counters; the existing rate derivation is epoch-sensitive. [The volume contract](SqlObserver-Sql-Volume-Capacity-Contract.md) identifies legacy `host.*` measurements as collector-host evidence.
+
+Next decision: specify the intended comparison before collecting it. A paired chart needs verified physical-host identity, target revision, source time, denominator and restart/failover epoch rules for both measurements. Prove a separate collector and SQL host cannot be conflated, and preserve gaps and source labels in selected/comparison windows. Never relabel scheduler utilization as total SQL process CPU.
+
+### Historical volume capacity
+
+Delivered: [selected-window contract](Sql-Volume-Window-History.md), forward migration 0353, native canonical history and private target-authorized API, exact revision/key URL restoration, truthful gaps, bounded protected continuation and independent previous-window comparison. The latest snapshot/forecast stays separate. The latest qualification section records complete final owning checks and screenshots.
+
+Physical incarnation/key-epoch continuity is not persisted by the existing collector. The UI explicitly declines to infer it; mount-point and unknown identities are not comparable, and revisions/keys/capacity changes fence comparison. A future collector contract must verify physical-host identity and volume replacement/failover before claiming that continuity. The existing latest-forecast repository path is outside this slice and has not been certified against sealed original run mirrors.
+
+### Historical wait attribution
+
+[Waits](../../web/src/features/activity/TargetWaitsPanel.tsx) shows aggregate server deltas and independent Query Store evidence. [Captured sessions](../../web/src/features/activity/WaitCapturedSessionsPanel.tsx) (line 102) show native waits at one retained capture and explicitly disclaim historical attribution. The capture source is bounded by 24-hour retention, at most 100 offered capture records and 11 pages/512 session rows; an exact pin can be restored independently of the offered list.
+
+Next decision: distinguish correlated capture evidence from measured attribution. The latter requires bucket/category/target/source epoch, durable request identity, attributed duration and accounting/coverage. Disclose unattributed waits and sampling/truncation. Prove session-ID reuse cannot substitute another request and expired/out-of-window selections cannot become current sessions. Temporal coincidence alone is insufficient to claim responsibility for an aggregate bucket.
+
+### Durable timeline events
+
+[Retained alert history](../../web/src/features/health/AlertLifecycleHistoryPanel.tsx) now replaces active-inbox-only marker contribution. Forward migration 0354 captures fired/acknowledged/resolved/snoozed/unsnoozed/assigned/reassigned/unassigned receipts; bounded legacy sources preserve missing provenance. Stable event plus alert/episode/time identities restore independently of list pages and the latest-120 summary. Evaluation observation time, administrative apply time and recording time remain distinct. Current alert actions retain their own current episode/revision reads. Browsing fixes the shared window; polling does not replace investigated history pages. See [the qualified contract](Alert-Lifecycle-Timeline.md) and latest evidence below.
+
+Restart and failover events remain absent. Their next contract needs stable source/event identity, target/revision, affected host/replica, explicit occurrence/detection/observation basis, bounded window paging, truthful retention/coverage and exact restoration. Collection completeness must be certified separately; empty/failed history cannot imply all clear. Plan comparison observation time remains distinct from a measured plan-switch instant.
+
+### Optional assistant
+
+The inspected [dashboard destination registry](../../web/src/dashboardModel.ts) and [server dashboard](../../web/src/features/health/ServerDashboard.tsx) do not provide an assistant panel. This is a statement about those UI surfaces, not repository-wide absence of infrastructure.
+
+Next decision: approve the service/transport, model, authentication, target authorization, read-only tools and diagnostic-data sharing boundary. Define a context/response contract with frozen target/revision/database/window/evidence cutoff, evidence citations, unavailable/truncated status and cancellation/error behavior. Clear late responses after context change; keep protected query content subject to its existing role and audit policy. Implement the fixture-backed panel only after these choices, then validate its authorized service separately.
+
+### Component-test migration
+
+The browser suites exercise mounted components and interaction behavior, but the plan explicitly asks for component tests and replacement of regex-over-source assertions. The nine isolated harness entries and native contract cases replace thirteen reviewed legacy UI bundles. Existing model tests remain useful; there was no corresponding chart source assertion to remove. Remaining source assertions are lint, not behavioral proof. Any further migration must identify an actual missing behavior check and preserve genuine native/model/rendered React tests. Do not treat source reads used to compile/render a real React component as regex-over-source tests. Retain architectural/security lint with honest labeling; do not remove it solely to improve counts.
+
+## Gates outside the current frontend slice
+
+- Full Step 0/1/2 completion remains unproven. This dashboard checkpoint does not supersede the original test setup, security/correctness, MCP, storage, scheduler, API, migration or platform requirements.
+- Packaged release certification is incomplete: three SBOM input hashes require reviewed manifest and chained certification-pin maintenance. Frontend checks exclude M12 release-generator contracts; no pin or assertion was weakened.
+- GitHub publication and any remote package upload must satisfy the existing approval boundary. Automatic approval review previously rejected code upload for missing explicit authorization. No push/upload was retried for this checkpoint.
+- Connected lab qualification is separate. SSH access alone does not establish that the correct native multi-version tests ran or passed.
+
+## Resume instructions
+
+1. Inspect the current branch and this checkpoint before relying on earlier counts or file-line references. Preserve existing untracked design, plan and execution files.
+2. Resolve whether the next authorized scope remains frontend-only or includes one of the backend/collector dependencies below. Do not silently expand the latest dashboard scope or replace the full revamp objective with a smaller definition of completion.
+3. For an approved feature, implement one complete vertical slice with exact target/source/time identity and truthful unavailable states. Reuse existing authorization, idempotency, audit and URL patterns.
+4. Validate the changed behavior against final code; keep screenshots/results bound to that commit and clearly distinguish fixture, connected database and release evidence.
+
+## Durable alert lifecycle qualification
+
+This checkpoint closes the active-inbox-only timeline gap. Resolved and refired cycles remain retrievable, all eight native lifecycle verbs have distinct receipts, and exact selection restores the event/cycle/time independently of source-window list caps. Automatic evaluations are not attributed to the prior acknowledging actor. Historical names/revisions are captured at their native operation, and legacy missing metadata is never supplied by current state. The server dashboard keeps answers before historical evidence and preserves history when core analytics fails.
+
+| Requested requirement | Final evidence | Status and limits |
+|---|---|---|
+| Multiple independent agents and integration lead | Non-overlapping native, contract/HTTP and UI/test ownership; fresh theme/accessibility review; lead URL/App integration, repair coordination, frozen qualification and local checkpoint. | Complete for this vertical slice. |
+| Dark theme | Shared colors, inset panel, visible focus, readable facts, bounded scrolling and quiet expandable source details. | Existing dashboard theme retained; no collector source invented. |
+| Diagnostic-screen review | Exact native cycle/time, actor attribution, observed/applied/recorded clocks, immutable provenance, source-window counts, caps, same-target grants and stale/denied ownership reviewed and exercised. | Legacy metadata and retention duration stay explicitly unknown where unproven. |
+| Interaction tests | 57/57 native web models, 45/45 mounted cases, 28/28 built-App cases; exact reload/history, resolved/refired cycles, capped-list-independent lookup, paging, cache, refresh/cancel/retry, context ABA, denial and Live investigation pin. | Complete owning runs against final inputs, not combined passing subsets. |
+| Accessibility and responsive checks | Actual keyboard/focus, axe and page overflow at 320/390/768/1440; small-screen local horizontal scrolling and tablet/desktop fit. | Tested-state automated evidence; manual assistive-technology/cross-browser certification is separate. |
+| Required final validation | 54/54 unit/catalog, 77/77 HTTP contracts and 114/114 real PostgreSQL cases; strict TypeScript, production build and verified assets. 1,982 frozen inputs unchanged. | Disposable PostgreSQL 18.4 validates affected native writers and real HTTP reads. No SQL Server collector change/test needed for this slice. |
+| Screenshots and completion summary | Eight framed captures plus four full-page App originals, case inventories, logs, report hashes and completion record (local output: `artifacts/dashboard-alert-lifecycle/completion.json`). | Gallery (local output: `artifacts/dashboard-alert-lifecycle/index.html`) is bound to the final local commit. Browser fixtures are synthetic. |
+
+Failed/intermediate attempts are preserved before repairs. Repairs addressed one checksum CRLF append, one test analyzer, an unclosed harness provider, a fitting tablet table expectation, a two-clock expiry fixture, and screenshot framing/navigation overlap. The final native expiry assertion, five-second repository deadline, caps and axe rules remain intact. Full-page originals preserve navigation; panel screenshots suppress overlapping chrome only during capture after runtime checks. No GitHub upload occurred. Remaining dashboard source dependencies and the full review plan above remain incomplete.
+
+## Dashboard review qualification — 2026-10-03
+
+This frontend-only pass used three independent agents with separate diagnostic, interaction and theme/accessibility ownership. The lead integrated fixes, coordinated preserved failed attempts, reviewed boundaries and qualified the final product. No server, database, collector or API contract changed; connected PostgreSQL/SQL Server checks were not needed for this pass.
+
+| Requested requirement | Delivered evidence | Status |
+|---|---|---|
+| Independent agents and integration lead | Three owners, separate files, fresh peer/visual reviews and one lead for final integration/checks. | Complete. |
+| Dark theme | Clear action labels, template/volume panel insets, inset table focus, and Resources plots that keep readable axes in named keyboard-scrollable viewports. Legends and exact-value tables stay available. | Complete for the reviewed screens. |
+| Diagnostic-screen review | Shared query/live-session target denial clears protected retained evidence and cancels sibling reads; protected-content-only 403 remains local, while 401 revokes the shared read. Missing exact deadlock association cannot silently substitute another same-minute capture. Equivalent UTC spelling preserves volume pages; a real microsecond change retires them. | Complete for this pass. |
+| Interaction tests | 267/267 native models/contracts and real React-rendering checks; 307/307 mounted cases; 208/208 broad App plus 8/8 administration cases. Maintenance selection/time changes preserve loaded pages, pending server reads and keyboard focus. | Complete owning groups, no retries/flaky/skipped final cases. |
+| Accessibility and responsive checks | Keyboard/focus, axe WCAG 2 A/AA and 2.1 A/AA, page overflow, rendered axis size, local keyboard scrolling and post-scroll pointer selection at 320/390/768/1440. | Automated Chromium tested-state evidence; manual assistive technology and other browsers are not certified. |
+| Required final validation | Strict product/harness TypeScript, production build, generated and verified assets; 1,137 frozen inputs unchanged at final verification. Native/mounted owning groups rerun after the test-loader repair. | Pass. |
+| Screenshots and completion summary | 228 fresh captures, including 36 primary nine-screen/four-width images, case inventories, logs, source/report hashes and preserved attempts in the completion record (local output: `artifacts/dashboard-final-review-2026-10-03/completion.json`). | Gallery (local output: `artifacts/dashboard-final-review-2026-10-03/index.html`) binds evidence to the final local commit. Fixtures are synthetic. |
+
+The logger observes a wider workspace inventory than each test group consumes. After the passing App run, the Node-only chart renderer test gained an exact empty-module mapping for its CSS import. Product code, built assets, App fixtures and App assertions stayed identical. The completion record explicitly records that sole unconsumed-file hash change; the full native and mounted owning groups passed after it. The renderer still renders the real React chart and retains every markup/inertness assertion. Failed attempts—including stale assertions, invalid native deadlock continuation data and Chromium buffer exhaustion—were preserved before repair or complete-group rerun. No passing subsets were combined.
+
+No GitHub upload occurred. This review pass is complete; the original repository review and the dashboard source dependencies listed above remain open.
+
+## 2026-10-03 — Chart access and exact UTC alignment
+
+This frontend dashboard pass extends readable plot access across all three chart families and adds arbitrary keyboard alignment on Dashboard and Fleet. Three subagents independently owned chart runtime, interaction cases, and evidence/theme/accessibility review; the lead owned UTC alignment, integration, conflict resolution, qualification and the local checkpoint. No collector, database or API contract changed.
+
+| Requirement | Final evidence | Completion |
+|---|---|---|
+| Independent work and integration lead | Non-overlapping chart, test and recovery ownership; fresh read-only reviews found and resolved long tick-label overlap, native UTC clock handling and heading hierarchy before final qualification. | Complete for this pass. |
+| Dark theme | Shared dark styling, visible focus, wrapped controls and readable axes across the nine diagnostic screens. | Complete for tested states. |
+| Diagnostic-screen review | Dashboard, Fleet, Waits, query, resource and volume charts share a named focusable viewport. Exact tick/table values remain intact; wider label gutters prevent overlap. Missing/disabled/unsupported evidence explains recovery; notices name the actual Edit grouping action. | Complete for this pass. |
+| Interaction tests | Keyboard alignment preserves exact microseconds, native zero-offset clocks, the half-open window, database/comparison/event context, reload and history. Old callbacks are fenced. Overflow-only 44px Earlier/Later controls reach both ends without reads or window changes; native drag-to-Rewind and cancellation remain functional. | Complete. |
+| Accessibility and responsive checks | Keyboard/focus, axe WCAG 2 A/AA and 2.1 A/AA plus best-practice checks, actual axis geometry and page overflow at 320/390/768/1440. | Automated Chromium tested-state evidence; manual assistive technology and other browsers are not certified. |
+| Required final validation | 272/272 native cases, 234/234 affected mounted cases and 220/220 built-App cases; strict product/harness TypeScript, production build and generated/verified assets. All 1,149 frozen inputs unchanged, with no retry/flaky/skipped final cases. | Pass against final integrated code. |
+| Screenshots and completion summary | 238 fresh screenshots, including 36 primary nine-screen/four-width images and eight native viewport views. Exact cases, source/report/image hashes, capture scenes and preserved attempts are in the completion record (local output: `artifacts/dashboard-chart-access-2026-10-03/completion.json`). | Gallery (local output: `artifacts/dashboard-chart-access-2026-10-03/index.html`) binds evidence to the final local commit. |
+| Scope | Frontend dashboard work only; browser fixtures are synthetic. No connected PostgreSQL or SQL Server test was needed or performed. Broader revamp, missing collector sources and optional assistant work remain open. | Current pass complete; broader plan incomplete. |
+
+The complete failed native attempt and both complete failed component attempts were preserved with consumed source, reports, traces and captures before repairs. Fixture omissions, stale scroll-edge checks, glyph ink overhang and pointer geometry were repaired without removing cases. The final keyboard fixture waits for the accepted alignment before entering its next invalid value. Final qualification reruns whole owning groups rather than combining passing subsets. Browser groups ran serially to avoid the earlier Chromium resource exhaustion. The native React-rendering checks render the real shared viewport, not a mock.
+
+No GitHub push or upload occurred. Existing design and review-plan files were preserved.
+
+## 2026-10-03 — Answers before raw event history
+
+This frontend dashboard pass uses three independent owners for layout/Agent evidence, lifecycle/theme/accessibility, and interaction tests. The lead owns the Timeline disclosure, integration, pointer ownership, serial final qualification and local checkpoint. Collector, database and API contracts are unchanged.
+
+The Dashboard keeps KPIs, investigation findings, exact UTC controls and the compact time rail before its main charts and current blocking. Raw Timeline events and SQL Agent observations are closed native disclosures; retained alert history remains one click deeper. Opened Timeline rows are bounded in a named keyboard-focusable region (420px on phones, 600px on larger screens). Counts, coverage, selected evidence, invalid/missing states and source failures are independently visible. The exact selected event has its own evidence link and an explicit action that opens and focuses its raw row. URL restoration and background reads never open the full list or move focus automatically.
+
+Disclosure identity follows target/revision/database/comparison and canonical effective UTC bounds. Same-context receipts and Live-to-Rewind alignment preserve the disclosure and focused row; a true context/window change resets it. Range gestures keep their pointer owner when another input device sends pointerdown, cancel or lost-capture events. Alert source loading/error and Refresh/Retry/Cancel controls are outside its closed browser. Agent state, receipt counts, snapshot time, truncation and reason-specific recovery remain visible, including missing core dashboard coverage; its dedicated history route remains independently accessible.
+
+| Requested requirement | Final evidence | Completion |
+|---|---|---|
+| Independent ownership and integration | Three agents owned layout/Agent evidence, lifecycle/theme/accessibility, and interaction tests. Lead owned Timeline disclosure, pointer ownership, integration, final qualification and local checkpoint. | Complete |
+| Dark theme | Existing dark tokens, visible inset focus, 44px native history summaries and source controls, wrapped compact evidence and locally bounded history. | Complete for tested states |
+| Diagnostic-screen review | Current charts and blocking precede raw lifecycle/Agent history. Timeline rail, exact pin and invalid/missing state remain visible while up to 120 raw events stay one click deeper. Source failures/recovery remain visible. | Complete for this dashboard workflow pass |
+| Interaction tests | Exact selection/URL/reload/history, same-context receipt and Live-to-Rewind focus, canonical UTC/context reset, closed-source recovery/cancellation, no new disclosure reads or URL changes, and owned range-pointer cancellation. | Complete |
+| Accessibility and responsive checks | Native disclosure Enter/Tab/focus, named bounded event/table regions, dark tokens, axe WCAG 2 A/AA and 2.1 A/AA, page overflow and nine-screen captures at 320/390/768/1440. | Complete for tested Chromium states |
+| Final integrated validation | 71 native, 108 mounted, 224 built-App and 28 retained-history App cases. Strict TypeScript, production build and asset generation/verification. All 1153 frozen inputs unchanged; zero retries/skipped/flaky cases. | Complete |
+| Screenshots and requirement summary | 266 fresh screenshots including 36 nine-screen/four-width images and 24 native viewport workflow views. Case inventories, hashes, capture scenes and failed attempts are preserved. | Complete |
+| Scope | Frontend dashboard work only. Broader repository plan, missing collector sources and optional assistant remain open. | This pass complete; broader revamp open |
+
+Screenshot gallery (local output: `artifacts/dashboard-evidence-workflow-2026-10-03/index.html`) and completion record (local output: `artifacts/dashboard-evidence-workflow-2026-10-03/completion.json`) bind the final local commit to source/report/image hashes, exact case inventories, native viewport scenes and preserved attempts. Browser fixtures are synthetic; no connected PostgreSQL or SQL Server checks were required for this frontend-only slice. Automated Chromium checks do not certify manual assistive technology or other browsers.
+
+The preserved attempts cover the strict tuple typing in the new harness, a relocated overflow-error assertion, restoration of its exact UTF-8 expectations, and the screenshot-driven Agent panel inset correction. Final qualification reran complete owning groups after repairs, with browser groups run serially. The viewport capture also verifies the opened timeline height and keyboard End/Home traversal at all four widths. The broader review plan and collector-source dependencies above remain open. Failed complete attempts are preserved before repair. Existing design and review-plan files are preserved. No GitHub push or upload is part of this pass.
+
+
+## 2026-10-03 — Compact context and direct server sections
+
+This frontend-only dashboard pass uses three non-overlapping owners for App/database context, health navigation, and interaction/accessibility tests. The lead integrates the incident disclosure and review repairs, keeps source frozen during qualification, and owns the final evidence and checkpoint. Separate read-only reviews cover state ownership and dark-theme/responsive behavior.
+
+The shared context row combines Target, Workspace database and Refresh below one page heading. Active database scope, inventory count/loading/error, missing selections and explicit denial recovery remain visible. Routine snapshot/provenance guidance moves into native Context details and Inventory details disclosures. A denied inventory never silently clears its selection; Clear database filter is explicit navigation through the existing callback. Repository timestamps no longer reannounce the full provenance paragraph on every poll.
+
+Server sections precede the full dashboard. Dashboard remains the default when a database filter exists; explicit Databases and Collection health URLs, reload and Back/Forward remain authoritative. Those sections open directly. Dashboard stays mounted under a native hidden wrapper so retained evidence and disclosure state survive section changes. Active-presentation fences cancel owned Timeline/chart gestures and prevent late pointer releases from rewriting an inactive section. Latest health read status, errors and retained-snapshot source times remain visible alongside navigation.
+
+Investigation workspace is an optional native disclosure. Closing it retains a frozen draft, an in-flight save, and an independently expanded saved-list request. Save failures and collapsed list errors stay outside with discoverable recovery guidance. Exact saved URL selections, invalid links and denied/missing reads remain outside the disclosure. Draft/list presentation changes retire the list status after its request is cancelled; uncertain save retries retain the exact original command. Native summaries, health tabs and compact recovery buttons have 44px targets and visible inset focus.
+
+| Requested requirement | Final evidence | Completion |
+|---|---|---|
+| Independent ownership and integration | Three agents owned App/context, health navigation, and interaction/accessibility tests. Separate read-only state and theme reviews; lead integrated incident disclosure, review repairs, qualification and checkpoint. | Complete |
+| Dark theme | Existing dark palette; 44px native disclosure and compact recovery controls; inset tab/disclosure focus; narrow wrapping and forced-color outlines. | Complete for tested states |
+| Diagnostic-screen review | One page heading and compact context; Dashboard defaults independently of database filter; Databases/Collection health open directly; Dashboard stays mounted hidden for retained evidence. Routine incident/context guidance is optional; exact selections, read/save failures and recovery remain discoverable. | Complete for this context/navigation pass |
+| Interaction tests | Section routes/reload/history and database scope, denied explicit filter clearing, retained Dashboard DOM, cancellation of held chart/rail gestures, native disclosures without new reads, frozen drafts, pending list/save ownership and identical uncertain retries. | Complete |
+| Accessibility and responsive checks | Native keyboard disclosure/focus, first/last tab focus and 44px recovery geometry; dark palette, axe WCAG 2 A/AA and 2.1 A/AA; nine screens and focused states at 320/390/768/1440px. | Complete for tested Chromium states |
+| Final integrated validation | 23 native plus 350 browser cases across mounted, built App, saved investigations and native insight suites. Strict TypeScript, production build and asset checks. 1159 frozen inputs unchanged; zero retries/skips/flaky cases. | Complete |
+| Screenshots and summary | 266 fresh screenshots, including 36 primary nine-screen/four-width images and focused context/navigation/investigation viewport captures. Cases, hashes, provenance and failed attempts preserved. | Complete |
+| Scope | Frontend dashboard refactor only; broader repository plan, unavailable collector inputs and optional assistant remain open. | This pass complete; broader revamp open |
+
+Screenshot gallery (local output: `artifacts/dashboard-context-frame-2026-10-03/index.html`) and completion record (local output: `artifacts/dashboard-context-frame-2026-10-03/completion.json`) bind the final local checkpoint to exact case inventories, observed source/report/image hashes, 266 fresh screenshots and36 focused viewport scenes. Primary nine-screen captures cover 320/390/768/1440px. Strict product/harness TypeScript, production build and asset verification passed. Final qualification contains 23 native, 83 mounted, 247 built-App, 7 saved-investigation and 13 native-insight cases (373 total), without automatic retries, skipped or flaky qualifying cases. All 1,159 final frozen inputs remained unchanged through the checkpoint.
+
+Complete failed attempts, source, reports, traces and captures were preserved before repair. Initial repairs correct the static render loader for the new CSS import, outdated navigation/error expectations, and a fake-clock race: the exact route-owned saved read must finish before advancing the 30-second transport timeout clock. The first complete App run passed 246 cases and exposed one stale permission-hint assertion. Only that test's explicit disclosure-opening adapter changed afterward; the complete 98-case owning workflow file passed on rerun. Every case from its original file is excluded and replaced by that complete rerun; unaffected passing files retain their original reports against the identical final production source. The completion record documents this policy and verifies the sole test-adapter delta. Browser groups ran serially to avoid prior Chromium resource exhaustion.
+
+Visual review confirmed the compact frame, direct sections, frozen draft, collapsed list failure and independent retained-health error at phone and desktop widths. Synthetic browser fixtures do not certify connected database behavior, other browsers or manual assistive technology. No connected PostgreSQL or SQL Server tests were necessary for this frontend pass. The broader repository review plan, missing collector inputs and optional assistant remain open. Original design and review-plan files were preserved. No GitHub push or upload occurred.
+
+## 2026-10-03 — Remaining dashboard source audit
+
+Three independent, read-only owners inspected restart/failover evidence, CPU comparison and running Agent jobs. The lead reconciled those findings with the interface requirements and existing incident integration. This section records source findings at product commit `bbfac88404fc78debc499044f67b560d1eb11882`; it changes no runtime contract. The 373 qualifying cases and 266 screenshots above remain evidence for that product commit. No tests were rerun for this documentation-only audit.
+
+| Required capability | Source finding | Completion |
+|---|---|---|
+| Restart/failover timeline markers | The engine startup key has no UTC offset or physical responding-node identity. AG projections are latest snapshots; production registers AG v1, not the existing v2 collector. There is no retained transition stream or exact event reader. | Incomplete. A browser comparison of snapshots cannot establish a physical restart or failover. |
+| SQL-versus-host CPU | Visible-scheduler cumulative counters support the existing epoch-sensitive utilization rate. They do not supply a paired SQL-process/total-OS CPU observation. The local host collector checks its configured machine binding, but that binding does not independently prove the SQL endpoint's physical host. | Incomplete. Preserve the scheduler label; do not relabel collector-host CPU or subtract it to infer other-process CPU. |
+| Long-running Agent jobs | The general Agent collector reads failure history and historical duration, not current activity. The replication collector's activity read is specific to replication. No general running-job contract or long-running threshold is persisted. | Incomplete. Historical failures do not establish that a job is running now. |
+| Saved incidents feeding MCP/report evidence | Forward migration 0288 links saved investigations to incident threads and supplies immutable saved evidence to the report/MCP incident reader. | Existing integration confirmed in source; this audit adds no new runtime qualification. |
+
+### Next design target: restart/failover events
+
+The selected design target is durable restart/failover evidence. Implementation must first establish physical engine/replica identity and a qualified transition source. A weaker startup-key-change or AG-role-change label may be useful evidence, but cannot be counted as completion of the physical restart/failover requirement.
+
+Inspected sources: [engine collector SQL](../../collectors/sql/engine.core.sqlserver16-windows.v1.sql), [epoch-sensitive analytics derivation](../../database/migrations/0292_sql_metric_analytics_source.sql), [production collector registration](../../src/SqlObserver.Collector/CollectorServiceRegistration.cs), [AG v2 latest projection](../../database/migrations/0268_availability_groups_v2_paged_read.sql), [SQL identity contract](../../src/SqlObserver.Domain/Capabilities/CapabilityProfile.cs), and [dashboard timeline model](../../web/src/components/dashboardTimelineModel.ts).
+
+The minimum retained event contract must include:
+
+- A versioned deterministic event identity, target/revision, collector/schema, previous/current completed receipt identities and affected physical engine/group/replica identities. Never combine AG v1 name hashes with AG v2 GUID-derived identities.
+- Separate source observation, collection, repository publication and detection clocks. Physical occurrence time remains unavailable until the source proves it; repository detection time must not masquerade as occurrence time.
+- Chronological receipt coverage that includes failed, missing and lost observations. Initial observation produces no transition. Revision, schema, observer, identity, unknown-role and visibility changes fence continuity; two successful observations cannot bridge an unreported gap.
+- A fixed selected window and evidence cutoff with its predecessor receipt, bounded protected continuation, retention/truncation/gap status and a target-authorized exact-event read. No latest-event substitution for an unavailable URL selection.
+- Independent timeline source status, explicit recovery, exact URL restoration, and accessible markers that retain the shared time context. Empty results cannot imply complete collection or an all-clear verdict.
+
+Production activation of AG v2 and collection of physical responding-node identity require explicit contract work; the presence of a v2 class alone does not provide either. Qualify the resulting collector on the available SQL Server lab and the forward migration/repository against PostgreSQL, then run only the affected service and UI groups against final integrated code. Cover restart versus listener-node change, primary/secondary transition, observer change, failed/missing receipts, retention, revision changes, paging and exact restoration. Preserve complete failed attempts before repair, as in the completed dashboard passes.
+
+### CPU comparison contract requirements
+
+Inspected sources: [host reader](../../src/SqlObserver.Infrastructure.Windows/WindowsIntegratedHostDataReader.cs), [host collection](../../src/SqlObserver.Infrastructure.Windows/HostMetrics.cs), [engine SQL](../../collectors/sql/engine.core.sqlserver16-windows.v1.sql), and migration 0292 above. Current local host observations are binding-fenced; the remaining defect is the absence of qualified target-sourced paired CPU evidence, not an assertion that all host observations ignore identity.
+
+A truthful comparison needs SQL-process and total-OS CPU from the same native interval, independently qualified physical identity, target revision, collector receipt/schema, process and host epochs, observed processor denominator, interval bounds and independent value/availability reasons. SQL scheduler utilization remains a separate series. Historical reads must preserve identity/epoch boundaries, gaps and exact selected/comparison windows. Do not backfill unsupported historical pairs. Live SQL qualification must establish the source and its permissions; PostgreSQL checks must cover retained identity, reset/skew/retention, and UI checks must cover source denial and gaps.
+
+### Running Agent job contract requirements
+
+Inspected sources: [Agent failure SQL](../../collectors/sql/sql-agent.failures.sqlserver16-windows.v1.sql), [Agent collector](../../src/SqlObserver.Infrastructure.SqlServer/SqlServerM9AgentCollector.cs), and [operational projection](../../src/SqlObserver.Infrastructure.PostgreSql/PostgreSqlOperationalHealthProjectionPort.cs). Running activity needs a separate bounded passive snapshot source and forward migration, retaining the existing failure history semantics.
+
+An observation needs target/revision/run, job UUID, Agent session identity, local start and source/repository clocks, explicit source completeness and service liveness. Agent session identity is a service epoch, not a SQL session ID. Local start time without an offset cannot prove elapsed duration across clock or DST changes. A latest-session unfinished row alone cannot prove the service is still running after an abrupt stop. Observation identity can use collector run plus job; session/job/local start is only correlation evidence. Continuous replication jobs must not become unhealthy solely because they run continuously.
+
+Microsoft documents that Agent creates a new session on startup while preserving prior job state after unexpected stops, and that `syssessions` access requires sysadmin: [Agent sessions](https://learn.microsoft.com/en-us/sql/relational-databases/system-tables/dbo-syssessions-transact-sql?view=sql-server-ver17). The [activity schema](https://learn.microsoft.com/en-us/sql/relational-databases/system-tables/dbo-sysjobactivity-transact-sql?view=sql-server-ver17) exposes requested, queued, started and stopped timestamps; its last-executed-step field is not proof of the currently executing step. Qualify a least-privilege session/liveness source on the lab rather than widening the monitoring account to sysadmin.
+
+Keep live activity separate from retained snapshots. Between-poll executions remain unobserved; a retained snapshot does not reconstruct a whole execution interval. Define the long-running policy and its duration basis before presenting a health verdict. Connected checks must cover queued/running/completed/failed/cancelled work, Agent restart and abrupt stop, caps, clocks and least privilege; repository/UI checks must cover snapshot identity, gaps, authorization, paging and exact restoration. No job-control mutation belongs in this dashboard feature.
+
+The broader repository plan remains incomplete. This source audit does not certify collector behavior, authorize unrelated scheduler/retention work, or replace the final product validation already recorded above. No GitHub push or upload occurred.
+
+## 2026-10-03 — Lifecycle source foundation in progress
+
+This checkpoint implements the first part of the restart/failover dashboard dependency. Three independent lanes owned immutable domain/proof types, real collector/parser regressions, and a fresh read-only source review. The lead owned the pinned SQL, collector/parser, narrow shared-validator changes, integration repairs and qualification. It does not complete the restart/failover timeline feature.
+
+Delivered source:
+
+- [Lifecycle SQL](../../collectors/sql/server.lifecycle.sqlserver15-17-windows.v1.sql) captures source UTC, the actual SQL-reported physical node/logical instance, process ID, offset-free local startup and monotonic startup/current ticks. A bounded AG membership stream uses native group/replica GUIDs, observer identity and known roles. Missing identities/HADR/observer/roles remain unavailable or partial; private names become domain-separated keyed fingerprints. The source is checksum-pinned, passive, five-second bounded and uses at most 1,024 emitted rows plus one disclosed lookahead.
+- [Immutable domain receipts and classifier](../../src/SqlObserver.Domain/Collection/ServerLifecycleObservations.cs) distinguish initial/failed/nonadjacent/revision/schema/clock boundaries, same-node restart detection and responding-node changes. Startup clock changes alone cannot create a restart. Detection time and the before/after observation interval remain separate; no physical occurrence UTC, transition count or cause is invented. Deterministic event UUIDs use the application-defined version-8 SHA-256 layout.
+- [Collector](../../src/SqlObserver.Infrastructure.SqlServer/SqlServerLifecycleCollector.cs) and [parser](../../src/SqlObserver.Infrastructure.SqlServer/SqlServerLifecycleParser.cs) preserve explicit unknown coverage, exact repeated source fields, sequential provider reads, row/byte loss and cancellation. The [shared output validator](../../src/SqlObserver.Collectors/CollectorOutputValidator.cs) accepts only the exact lifecycle contract, run/target/revision and accounting, including its bounded lookahead; foreign sidecars and forged coverage are rejected.
+- Failover classification requires complete unchanged GUID membership, a unique observed primary and trusted sealed-ingestion consistency proof on both receipts. That proof defaults false. The current single-pass DMV source cannot supply it and therefore cannot establish physical failover events. The future native source must add qualified consistency probes or authoritative transition evidence; a public payload or UI assertion cannot unlock this proof.
+
+Qualification: 123/123 owning cases passed, zero failures/skips, comprising 63 new lifecycle domain/parser/collector cases and 60 existing AG v2, backup v2, SQL volume and manifest cases affected by the shared validator. Strict .NET analyzers and the referenced build passed. Every consumed source/configuration input stayed unchanged during the final complete selection; reports, exact cases, hashes and full source copies are in the execution record (local output: `artifacts/dashboard-server-lifecycle-source-2026-10-03/final/execution.json`). Complete failed build/test attempts were copied before repairs. Repairs address default-property analyzer rules, missing imports, ordinal checksum comparison, and the stale version-5 assertion after the UUID format was corrected to version 8. Assertions were not removed or replaced by source-text checks.
+
+Native SQL remains unqualified: the read-only SSH probe (local output: `artifacts/dashboard-server-lifecycle-source-2026-10-03/native-source.json`) timed out connecting to `sqldm-lab` (`192.168.50.76:22`) before SQL execution. It used the existing VM SQLCMD command, Windows integrated authentication and certificate validation, with no package upload, remote file write or service change. This is a connection failure, not an approval rejection or SQL result. The raw probe log (local output: `artifacts/dashboard-server-lifecycle-source-2026-10-03/native-source.log`) is preserved. No retry or weaker certificate/authentication path was used.
+
+The collector is deliberately outside the active registry: there is no producer admission, native writer/migration, retained-history service/API or dashboard source yet. Next work must keep this feature cohesive: qualify source permissions/identity and AG consistency; implement sealed atomic ingestion, replay and a predecessor chain containing every failed/lost/retired attempt; persist immutable detections plus explicit comparison-boundary coverage in a new forward migration; add target-authorized cutoff paging and independent exact lookup; then integrate the retained timeline source with final owning interaction, accessibility/responsive and screenshot checks. This source checkpoint changes no UI, so it does not claim new screenshot or browser validation. The prior dashboard screenshots remain bound to their recorded product commit.
+
+The original dashboard and repository requirements remain open. No GitHub push or upload occurred.
+
+
+## 2026-10-03 — Lifecycle storage and read-contract checkpoint
+
+This checkpoint advances the restart/failover dashboard dependency without completing its timeline feature. Three independent lanes owned the forward migration and typed persistence adapter; retained-history contracts/service and unit regressions; and the native PostgreSQL producer tests. The lead owned component qualification, shared event identity, integration repairs, migration checksum, final validation and local checkpoint. The contracts lane also performed a fresh read-only native review after implementation froze.
+
+Delivered:
+
+- [Migration 0355](../../database/migrations/0355_server_lifecycle_history.sql) stores immutable source receipts for every completion outcome and immutable sampled restart/responding-node detections, with copied before/after engine proof, completion digests, bracket and detection timestamps. Physical occurrence UTC remains absent. Failed source reads never borrow a scheduled timestamp as source observation time. Atomic commits retain the existing lease, run, target/revision, schedule, circuit, digest and replay fences.
+- The immediate predecessor comes from every canonical lifecycle attempt, not the most recent successful read. Open/abandoned, failed/lost, missing retained receipt, schema/revision, retirement, source clock, logical identity, ambiguous startup and counter epoch boundaries prevent unsupported attribution. Complete engine evidence can remain qualified despite exclusively AG visibility loss; source/byte loss, truncation and malformed evidence cannot unlock it.
+- Startup fingerprints preserve the offset-free source's seventh fractional digit and exact Int64 ticks. Native event UUIDv8 identity matches the shared [domain computation](../../src/SqlObserver.Domain/Collection/ServerLifecycleObservations.cs). Private native mirrors are closed and bounded; no caller-supplied consistency flag can authorize an AG failover. The single-pass schema 1 remains unqualified for physical AG failovers.
+- Receipts/events use protected registered partitions, append-only triggers, forced target RLS and no direct runtime table privileges. Three new canonical references are indexed and registered with the private dependency reader. New retention policies remain disabled with no duration; supported receipt expiry qualification is still pending. The production collector registry and native collector EXECUTE grant remain inactive. Native tests use explicitly isolated fixture admission.
+- [History contracts](../../src/SqlObserver.Domain/Collection/ServerLifecycleHistoryContracts.cs), [ports](../../src/SqlObserver.Application/Ports/ServerLifecycleHistoryPorts.cs) and [service](../../src/SqlObserver.Application/Services/ServerLifecycleHistoryService.cs) define target-authorized 31-day UTC completion windows, bounded pages, unchanged cutoff/epoch/window/revision/page-size and original 15-minute continuation lifetime. Exact lookup is independent of list overflow and validates its own immutable source proofs and event identity. Coverage distinguishes source gaps from no detected events and always discloses unqualified AG evidence. Event counts cannot exceed canonical after-run counts; copied proofs may honestly outlive a source receipt.
+
+Final qualification: **217/217 owning cases passed**, zero failures/skips: 153 unit cases (90 lifecycle source/proof/history cases plus the affected existing collector/migration groups) and 64 PostgreSQL cases (24 lifecycle producer/native boundary cases plus 40 canonical reference/retirement cases). Strict build/analyzers passed. Both complete owning groups used the identical 1,544-file source/config/test inventory, unchanged through local commit. Evidence is in `artifacts/dashboard-server-lifecycle-storage-2026-10-03/qualified-unit/`, `qualified-postgres/` and `completion.json`.
+
+All prior attempts were preserved before repairs. The first native compile attempt found three test-helper analyzer errors. An intermediate native run passed 62/63 with one existing migration setup clock-order failure; the next passed 63/64 with a fixture target timestamp-order violation. The fixture now uses one sampled target timestamp and stable same-row schedule timestamps, preserving constraints and assertions. The fresh review's zero-response/nonzero-output accounting gap was tightened and has a native refusal regression. The final complete native group passed; no earlier passing subset was assembled into that result.
+
+Requirement accounting for this checkpoint:
+
+| Requirement | Result |
+|---|---|
+| Independent ownership and one integration lead | Complete for this storage/contracts pass; fresh native review integrated. |
+| Dashboard scope | Only the lifecycle dashboard dependency changed; full restart/failover feature remains incomplete. |
+| Dark theme and diagnostic screens | Frontend unchanged. All 657 recorded frontend inputs match the prior `bbfac884` product qualification. |
+| Interaction tests | Existing browser evidence remains historical; new lifecycle boundary/service/native producer checks passed against the final code. |
+| Accessibility/responsive checks | Prior tested Chromium states remain bound to their original product commit; no new UI or browser qualification claimed. |
+| Screenshots | Existing 266-image gallery at `artifacts/dashboard-context-frame-2026-10-03/index.html` describes the unchanged frontend. No lifecycle timeline screenshots exist yet. |
+| Final validation | Complete for this checkpoint: 153 unit + 64 native PostgreSQL cases and unchanged input inventory. |
+
+The native SQL Server/least-privilege qualification remains open: the prior read-only SSH probe timed out before SQL execution, and this checkpoint did not retry or change host/certificate/authentication settings. Next work is the native retained-history reader/repository and HTTP API, supported expiry/cutoff qualification, timeline source/UI integration and its owning interaction/accessibility/responsive/screenshots. Trusted AG transition/consistency evidence, paired CPU and running Agent job sources remain separate open dashboard dependencies. The original repository plan and dashboard requirements are not complete. No GitHub push or upload occurred.
+
+
+## 2026-10-03 — Lifecycle reader and dashboard integration checkpoint
+
+Three independent lanes owned the native PostgreSQL reader, typed browser model/client/hook and shared fixtures; the HTTP boundary and dark-theme evidence panel; and real PostgreSQL plus browser interaction/accessibility tests. The lead integrated shared timeline selection, composition and fixtures, resolved category-selection behavior, reviewed screenshots, and ran the required final validation serially against frozen code. The panel owner performed a final read-only review of the integrated panel/CSS and found no actionable issue. This pass stays within the lifecycle dashboard dependency.
+
+Delivered:
+
+- Forward migration 0356 exposes bounded target-scoped server-role history and independent exact-event reads. It validates immutable canonical receipt seals, actual capture/cadence coverage and original cutoff/continuation lifetime. No latest-state replacement or direct runtime table grant is introduced. Exact copied evidence remains available independently of list overflow.
+- The authorized lifecycle HTTP routes use same-target read roles, canonical UTC microsecond windows and identities, dedicated protected continuations, private/no-store responses and bounded safe error bodies. The backend service rejects unknown capture boundaries represented as complete coverage.
+- The dashboard adds sampled restart/responding-node events to its shared timeline and URL context. Exact event/run/revision/time selection survives reload and history. Category filtering preserves the saved selection and offers explicit marker recovery; clearing remains deliberate. Live history browsing fixes the effective shared window.
+- The scoped dark-theme panel keeps selected evidence and recovery controls outside folded raw rows. Immutable before/after proofs preserve local startup precision and Int64 counters. It discloses source gaps, unknown occurrence/cause and unqualified AG failover. Windows without retained snapshots show actionable collection/settings/permissions guidance and explain that refresh cannot recreate missing history.
+- Received pages remain evidence during transient failures, cancellation and expired continuations. Target/revision/window ownership and selection ABA are fenced. Access denial removes protected proofs/pages and requires explicit verified recovery. Crosshair pointer changes stay outside live status to avoid repeated announcements.
+
+Final validation: **361 backend checks** (154 unit, 115 real HTTP pipeline, 92 native PostgreSQL) passed against the same unchanged 1,549 backend inputs. Native PostgreSQL 18 used actual canonical producers and runtime server-role reads, including the 10,001-attempt list bound and independent exact lookup. Strict .NET analyzers passed. Frontend: **473 checks** (81 parser/timeline, 112 mounted, 257 built App, 16 retained-evidence, 7 saved-investigation), plus strict TypeScript, production build and verified asset manifest. All final frontend groups consumed the same 2212 source/config/test/build-output inputs, with zero failed/skipped/retried cases.
+
+Initial complete attempts are preserved. The initial App group failed 14/257 assertions: stale live-region selectors, old category-clear expectations, ambiguous repeated restart titles and a focus assertion entered through pointer mode. The final owning group was rerun in full after adapters were corrected to assert visible non-live crosshair, preserved exact selection, selected identity and keyboard focus. A subsequent complete App attempt passed 256/257 but one browser navigation failed before rendering with ERR_NO_BUFFER_SPACE; that entire attempt is also preserved and excluded. The complete App group was rerun unchanged. No passing subset from a failed attempt contributes to qualification. Earlier frontend passes preceding the final recovery-guidance change are historical and excluded.
+
+Requirement accounting:
+
+| Requirement | Result |
+|---|---|
+| Independent work / one integration lead | Complete for this pass; non-overlapping lanes integrated and frozen before checks. |
+| Dark theme | Scoped panel, 44px controls, inset keyboard focus, wrapping fields, contained scrolling and stacked narrow proof layout. |
+| Diagnostic-screen review | Nine existing screens checked; lifecycle source is independent of core analytics and never invents normal health or physical failover. |
+| Interaction tests | Complete owning groups verify exact URLs, window/paging, selection recovery, cancellation, races and access loss against final code. |
+| Accessibility / responsive | Automated Chromium/axe WCAG2/2.1 A/AA checks at 320/390/768/1440px and keyboard/overflow checks passed. Manual assistive technology and other browsers remain unqualified. |
+| Screenshots | Fresh source-bound nine-screen/four-width and lifecycle evidence captures, with full gallery and provenance at `artifacts/dashboard-server-lifecycle-ui-2026-10-03/index.html`. Browser images are explicit synthetic local DTO fixtures. |
+| Final validation | Complete final backend/frontend groups, exact case/input inventories and preserved attempts in the history/UI artifact folders. |
+| Scope / remaining work | Reader and dashboard integration complete for this pass; native SQL Server source/least-privilege qualification, production collector admission, trusted AG consistency/transition proof and supported receipt-expiry qualification remain pending. |
+
+Four additional native viewport captures verify unobstructed keyboard proof focus at all four widths without style or DOM substitutions. Long narrow element captures include sticky-header stitching; the normal viewport images show the actual visible context. The complete image gallery preserves both with provenance.
+
+The prior read-only SSH probe timed out before SQL execution. This pass did not retry or weaken authentication/certificates. Lifecycle collection remains staged outside production admission, so this UI does not claim connected SQL Server collector qualification. Paired CPU, running Agent job sources and the broader repository plan remain open. No GitHub push or upload occurred. Completion JSON binds this source to its local checkpoint commit; screenshots and cases must not be rebound to later product changes.
+
+
+## Lifecycle retention and native HTTP checkpoint — 2026-10-03
+
+Three non-overlapping owners implemented the forward retention policy/manifest migration, isolated-clock PostgreSQL fixture/image, and native expiry journeys. The lead integrated checksum/configuration and application boundaries, authored real HTTP-to-PostgreSQL journeys, resolved source/test harness issues, and owns final serial validation. Two owners independently reviewed the integrated HTTP and clock/retention paths. This checkpoint stays within the lifecycle dashboard dependency; it does not activate the staged SQL Server collector.
+
+The new forward migration `0357_server_lifecycle_retention.sql` admits lifecycle receipts/events to the existing global SecurityAdministrator policy API. Both defaults remain disabled with NULL duration and a three-partition floor. Configured durations require 90–3650 elapsed days and floors of 3–10000. HTTP invalid bounds return 400; native stale lifecycle policy revisions map to 409 without provider details. Native role, optimistic revision and attributed policy-history guards remain in place.
+
+A verified detached/dropped event partition now contributes a visibility gap and a private read epoch, including an empty overlapping partition or destruction after the continuation's cutoff. The manifest checks the registry plus matching immutable execution range, digest and timestamps. Canonical run retirement is not fabricated. Independent exact lookup continues to bind only the copied event proof; receipt expiry cannot replace it with newer evidence.
+
+The new four history HTTP journeys plus two policy cases use genuine canonical Begin/Commit, production service/composition, real PostgreSQL reader/server role and normal middleware/logging; only authentication is replaced. They cover protected paging/cutoffs, precision, independent exact proof, same-target and mixed-grant denial, unavailable failed attempts, cadence epoch rejection, global policy bounds/revision/history.
+
+Three expiry journeys use a disposable PostgreSQL 18.4 container with pinned Debian libfaketime 0.9.10-2.1. Only its wall clock advances in whole days; existing-backend clock reload, direct kernel clocks, container monotonic time and host Stopwatch/wall time are checked. No external repository is accepted. The final image starts as postgres to avoid the proven root-to-postgres private semaphore permission failure; the owned clock directory is writable by that identity. The production database/time functions are unchanged.
+
+Expiry qualification uses supported leased catalog partition creation, genuine canonical commits at each clock phase, attributed policy updates, actual pg_dump/restoration and the supported recovery-attestation API. Native retention uses its real lease, minimum floor and 24-hour detached grace. Tests demonstrate missing-recovery and dependency holds, a genuine RepeatableRead reader's physical lock, actual receipt/event detach/drop, cursor rejection within its original 15-minute lifetime, copied proof surviving receipt loss, and no comparison across an expired predecessor. A separate event-only journey keeps all receipts/canonical runs and changes previously complete coverage into an explicit retirement gap. Explicit reader-lease ledger acquisition remains unavailable; no protection rows are fabricated.
+
+| User requirement | Evidence/status for this checkpoint |
+|---|---|
+| Independent subagents | Separate migration/policy, clock infrastructure and expiry-test ownership; lead integrates and runs checks. Complete for this pass. |
+| Dark theme | Frontend unchanged; 669 frontend/build inputs match the qualified `faac864` checkpoint. Existing scoped dark controls/focus/wrapping remain applicable. |
+| Diagnostic-screen review | Retention removes the false complete empty-event case. Existing lifecycle screen discloses incomplete continuity, copied sampled engine proof and unqualified physical failover. |
+| Interaction tests | New production HTTP composition plus native expiry/cursor/exact-proof journeys; existing qualified browser interactions remain unchanged. |
+| Accessibility/responsive checks | Prior axe/keyboard/focus/overflow checks at 320/390/768/1440px remain bound to unchanged frontend inputs; no unnecessary browser rerun. Manual screen-reader/device coverage is not claimed. |
+| Final validation | 387/387 final cases: 118 PostgreSQL,154 unit,115 HTTP; strict builds/analyzers and identical1559 frozen inputs. No failed/skipped/automatic-retry qualifying cases or subset aggregation. |
+| Screenshots | Existing 246-image gallery at `artifacts/dashboard-server-lifecycle-ui-2026-10-03/index.html`; unchanged frontend verification at `artifacts/dashboard-server-lifecycle-retention-2026-10-03/unchanged-frontend.json`. Images use explicit synthetic browser DTO fixtures, not live SQL Server data. |
+| Dashboard scope | Only the lifecycle dashboard dependency and its qualification/CI changed. Native SQL Server admission/least-privilege/physical identity, AG consistency/failover, paired CPU and running Agent sources remain open. |
+
+All full failed attempts are preserved under `artifacts/dashboard-server-lifecycle-retention-2026-10-03/`: missing test imports, exact-LF checksum catalog format, isolated image startup, and missing leased partition preparation/canonical query mismatch. `checksum-repair-postgres` passed 114/118 and also exposed an unchanged bulk Begin boundary failure (`23514`, collector schedule time constraint). Source tracing suggests a backward native wall-clock sample; the redacted error lacks the exact failed-row predicate, so that cause remains an inference. No retries, stored-time adjustment or constraint bypass were added. The separate successful three-case clock diagnostic is not counted again. The final complete118-case native pass includes it and the unchanged10,001-attempt boundary case; the earlier wall-clock failure remains in the evidence and its causal inference is not claimed as a production fix.
+
+The pinned image/build IDs and source inventories are preserved alongside full TRX/logs. Final qualification records live under `final-postgres`, `final-unit` and `final-api`; local checkpoint/completion metadata binds the new commit and unchanged frontend/image provenance. The original repository plan and dashboard source requirements remain unfinished. No GitHub push/upload occurred.
+
+
+## Paired CPU source checkpoint — 2026-10-03
+
+Independent owners implemented the raw CPU contracts/qualifier and the Windows native reader with non-overlapping files. A third owner reviewed SQL provenance and ownership without edits. The lead integrated a checksum-pinned SQL witness source, same-connection bracketing, native operation ownership, strict-build repairs and serial final validation. This is a dashboard source dependency; no collector registry, canonical payload, database migration, HTTP/MCP contract or frontend activation changed.
+
+The SQL witness preserves canonical target/revision/run, an owner-generated session token, separately observed SqlClient connection identity, actual physical transport, SQL-reported node/instance/PID/startup and exact cumulative user/kernel milliseconds. Source startup stays offset-free. Before/after receipts share one configured integrated TLS connection and the original deadline; reconnect, engine identity, clock, counter and topology boundaries invalidate continuity. SQL processor count never replaces the native PDH denominator.
+
+The local Windows helper keeps each counter's raw type/status/timebase/numerator/denominator/time stamp and actual array count. It samples independent machine UUID/boot, owned process creation/exit before and after the counter read, executable fingerprint and all-group processor count. PID mapping uses ID Process. Legitimate duplicate legacy Process names produce an explicit process_mapping_ambiguous gap while OS counters remain independent. The current conservative legacy source rejects process association when its wildcard arrays are ambiguous; it does not guess numbered instances or ordinals. Remote SQL process association remains unsupported.
+
+Native sampling is an owned operation. Completion represents stopped helper work, including cleanup. Cancellation, bounded termination grace, no-overlap guards and target quarantine prevent late results or a new request from covering an unfinished provider. Idempotent cleanup can be retried after actual late completion; persistent cleanup failure keeps the target quarantined. Tests include ignored cancellation and initially unproven disposal.
+
+Raw numeric comparison is explicitly separate from native admission: NativeQualification remains absent, TargetComparisonAdmitted and HardwareIdentityVerified remain false. The existing keyed local host binding does not prove that its Windows PID belongs to the SQL endpoint. Even a Shared memory transport receipt is evidence only. No target rerouting, weaker certificate policy, sysadmin grant or arbitrary counter/computer/script input was added.
+
+Final validation: **191/191** owning unit cases, zero failed/skipped/retried cases, strict .NET builds/analyzers and **1569 unchanged frozen inputs**. Groups: raw arithmetic48, Windows reader30, SQL witness38, lifecycle observation29/parser14/collector22, existing host binding10. The final fixed helper smoke test completed on local Windows10.0.26200 with PID0, native raw OS counter status/type/timebase,24 observed logical processors and504 enumerated process entries; process mapping remained ambiguous/unavailable. This is an ABI/raw/missing-process smoke check, not SQL target, least-privilege, retained comparison or native association qualification.
+
+Full failed attempts are preserved under artifacts/dashboard-cpu-source-2026-10-03/: three strict analyzer/build failures, a complete188/189 unit run that exposed missing transport being mislabeled as a connection change, and native loader/duplicate-name failures. Instrumented error diagnostics are identified separately and excluded from final helper qualification. The native clock now binds the documented api-ms-win-core-realtime-l1-1-1.dll API set: the local Kernel32 export was absent; no different clock or cadence fallback is substituted. The whole owning group was rerun after the final source repair. No passing subsets were aggregated.
+
+| User requirement | Status/evidence |
+|---|---|
+| Multiple independent subagents and one lead | Complete for this checkpoint: domain/unit, Windows reader/unit and read-only provenance/ownership review; lead integrates and validates. |
+| Dark theme | Existing qualified UI retained;669 frontend/build inputs unchanged from faac864. |
+| Diagnostic-screen review | Existing screen evidence remains applicable; staged raw CPU cannot appear as an admitted target comparison. |
+| Interaction tests | New CPU source/ownership/binding/continuity boundaries qualified191/191; prior qualified browser interactions unchanged. |
+| Accessibility/responsive | Prior Chromium axe/keyboard/focus/overflow at320/390/768/1440px remains applicable to unchanged UI. No new assistive-technology/device qualification claimed. |
+| Required final validation | Complete affected owning group against final frozen source plus uninstrumented native helper smoke; failed attempts preserved. |
+| Screenshots | Existing246-image qualified gallery and normal desktop/mobile viewports, bound to unchanged frontend. They use synthetic DTO fixtures and do not show live CPU source data. |
+| Dashboard-refactor scope | Source foundation progressed. Native Windows/SQL association/permissions and remote deployment, CPU canonical persistence/history/API/UI admission, AG transition qualification and running Agent sources remain open. Overall plan is unfinished. |
+
+The final artifact index, source hashes, TRX/logs, native redacted evidence, unchanged frontend verification and checkpoint metadata live at artifacts/dashboard-cpu-source-2026-10-03/. Native qualification scenarios are listed in tools/qualification/paired-cpu/README.md. The unavailable SSH lab was not retried and no GitHub push/upload occurred.
+
+## Paired CPU TCP ownership checkpoint — 2026-10-04 UTC
+
+Independent owners supplied the numeric socket/process association contracts, native Windows TCP reader, source parser tests and sequential native sampling coordinator in non-overlapping files. A separate read-only lane reviewed the SQL/native provenance; another reviewed final coordinator cleanup. The lead integrated the version-2 SQL source, repaired raw process-liveness semantics, resolved strict analyzer issues and performed serial validation. Changes remain a staged dashboard source dependency, with no collector registration, canonical payload, migration, API/MCP exposure or UI activation.
+
+The new eighteen-field SQL source reads every connection row for the owned current session. It retains TCP/TSQL socket fields only for a parentless row; extra rows fail cardinality rather than being hidden by TOP 1. SQL connection ID, SQL session ID and SqlClient connection ID are distinct continuity evidence. The source owner captures its actual process ID. Configured integrated authentication, mandatory validated TLS, explicit TCP and disabled MARS remain in use. The new source is checksum-pinned at `04ae4d76f6b750ed3112483a483636fbe29e2a42cd788478bbe7454b6a68b87c`; approved version-1 bytes remain unchanged.
+
+The fixed Windows helper captures complete bounded IPv4/IPv6 owner tables and every state for the exact tuple and reverse. A candidate requires exactly one established server tuple owned by SQL's reported PID and its reverse owned by the actual collector PID. Same-handle creation epochs and explicit WAIT_TIMEOUT prove local process continuity; undefined running-process exit FILETIME is retained without being interpreted as liveness. The raw CPU helper now uses schema 2 with this explicit wait witness. Numeric addresses, scope, host/boot identity, run/revision, connection/session identity, monotonic order and UTC bounds are checked without DNS/name/proxy fallback.
+
+The coordinator captures TCP-before, raw CPU pair, TCP-after under one 26-second deadline, itself bounded by the original SQL execution deadline (maximum30 seconds). Each child must stop and dispose before the next begins. An unproven child keeps parent completion pending and its target quarantined; a late payload cannot become a successful sample. Candidate association is independent of PDH arithmetic availability, and still leaves native qualification absent, target admission false and hardware identity unverified.
+
+Final qualification at `artifacts/dashboard-cpu-tcp-2026-10-04/final-qualified-unit/` passed **268/268**, zero skips, against **1577 frozen inputs** unchanged through qualification. Owning groups: TCP domain60, schema-2 SQL37, TCP Windows30, native composition10, raw Windows35, raw CPU domain48, same-connection SQL38, host binding10. Strict .NET build/analyzers passed. Complete prior attempts remain preserved: initial CA1822, subsequent CA1859/CA1068, and a lead test-helper argument edit that caused syntax errors. The corrected final run includes the entire owning group; no subset aggregation or muted checks were used.
+
+Uninstrumented native probes succeeded for both IPv4 and IPv6 loopback sockets, checking exact forward/reverse owners and held-handle liveness, plus raw CPU schema-2 liveness on the owned Python parent. They preserve exact source bytes, output hashes and redacted native fields. These are local native ABI probes with non-SQL processes and synthetic SQL provenance, not SQL Server/TLS/least-privilege/target-admission qualification. Existing raw PDH process-name ambiguity still removes process-counter evidence; it does not erase independent OS counters.
+
+| User requirement | This checkpoint's result |
+|---|---|
+| Multiple subagents and one integration lead | Independent source/test owners plus read-only reviews; lead alone executed checks, integration repairs and checkpoint. |
+| Dark theme | Unchanged qualified frontend; all669 inputs still match the prior final UI run. |
+| Diagnostic screens | Source ownership gaps improved; CPU remains staged and cannot be rendered as an admitted SQL/OS comparison. |
+| Interaction tests | Final268 source/lifecycle cases pass; prior mounted/browser interactions remain bound to the unchanged UI. |
+| Accessibility and responsive checks | Prior axe, keyboard, focus and overflow results at320/390/768/1440px remain applicable. No broader device/assistive-technology claim. |
+| Validation after integration | Complete owning group plus exact fixed-helper native probes against final sources, with preserved failures and frozen hashes. |
+| Screenshots | Existing246-image gallery and normal desktop/mobile screenshots are linked from this checkpoint's artifact index. They show synthetic DTO fixtures and unchanged frontend, not newly collected CPU data. |
+| Dashboard-only scope | No platform/runtime/storage/API redesign or production admission; staged CPU source dependency only. |
+
+The original plan and dashboard end state remain unfinished. Native SQL Server monitoring-identity qualification, canonical CPU history/API/UI integration, AG transition qualification and running Agent sources remain open. The prior unavailable SSH lab was not retried; no GitHub push/upload occurred. Completion/checkpoint records bind this evidence to the local commit without rebinding prior screenshot qualification.
+
+## Database-file shared-window history checkpoint — 2026-10-04 UTC
+
+Three independent owners implemented the read contracts/HTTP boundaries, PostgreSQL projection, and Resources UI/mounted interactions in non-overlapping files. Diagnostic and dark-theme/accessibility reviews ran independently. The lead integrated the routes, application registration, global refresh/access context, synthetic fixtures and built-App journeys, then resolved the actual paging/focus and compact-action seams. Execution stayed serial against frozen inputs.
+
+Resources allocation and autogrowth now follow completed `database.files` attempts in the shared Live/Rewind window. Receipt browsing includes failed, lost, empty and missing-payload attempts; it never skips to an older successful snapshot. Exact run/sample-revision URL pins are independent of the loaded receipt page. Current authorization/revision fences remain distinct from immutable older sample revisions. Numeric database/file IDs identify only the exact received receipt, not physical incarnation or continuous growth.
+
+The new forward migration 0358 reads the authoritative `telemetry.database_file_snapshot` source with canonical run-v2 outcomes; it does not depend on the unused file mirror or sealed original run mirror. Reads remain bounded, scoped, repeatable and private/no-store. Signed continuations preserve window, original cutoff, read epoch and issuance lifetime. Allocation, limits, increments and cumulative counters remain exact Int64 strings; directional stalls and percent growth are separate. Missing observations are never zero-filled or labelled healthy. Source observation, ingestion and completion clocks stay distinct.
+
+The authoritative file source currently has no supported scheduled expiry. Retention duration is unknown, and unrelated metric policies do not imply file retention. Native tests qualify canonical commits, seal/reclamation, source revisions, permission boundaries, immutable manifests and the 10,001-receipt cap. The 250,000-file window/10,000-file run guards are enforced but oversized native producer payloads are not a qualification claim: the existing producer is bounded at 1,000 files.
+
+Final qualification passed **228/228**, zero failed/skipped/automatic-retry selected cases, with strict TypeScript, .NET builds/analyzers, production build and asset integrity. Groups: unit/preamble17, HTTP26, real PostgreSQL/production HTTP21, Node41, mounted52, built-App18, native-insights14, volume-browsing6, Resources-context13 and Resources-accessibility20. Mounted coverage comprises33 current history cases plus19 regressions for the explicitly legacy retained-files API harness; that harness does not substitute for the real dashboard journeys.
+
+All **2270 frozen inputs** remained unchanged through final checks. Earlier backend/model passes were compared against their actual unchanged consumed source scopes after frontend repairs. No passing subsets were aggregated. Nine complete failed attempts and consumed source bytes remain preserved, including the actual default-to-explicit continuation reset, disappearing recovery focus and tall file-action button. The existing compact-button height assertion remains intact. Legacy tests now assert exact receipt pinning and the truthful missing-file state; Live tests distinguish startup fallback reads from requests after pinning and await explicit refresh completion.
+
+| User requirement | This checkpoint's result |
+|---|---|
+| Multiple independent subagents and integration lead | Three non-overlapping owners plus independent reviews; lead integrated and executed qualification. |
+| Dark theme | Shared theme, contained tables, wrapped identifiers and visible keyboard/forced-colors focus. |
+| Diagnostic-screen review | Receipt outcomes, source clocks, revision/loss and exact configuration remain separate from health, free capacity, physical continuity and forecasts. |
+| Interaction tests | Exact URL/history restoration, Live pinning, continuation/smaller pages, explicit refresh, retry/cancel, denial purge, context/ABA and stale-response ownership pass. |
+| Accessibility/responsive checks | Final Chromium axe, keyboard focus/scroll and overflow checks at320/390/768/1440px, including partial evidence and long inert names. Manual screen-reader/device coverage is not claimed. |
+| Validation after integration | Complete affected owning groups pass against final frozen code/assets; source scopes and asset hashes verified. |
+| Screenshots | Fresh62-image gallery, including built-App full/viewport/focus/partial captures and affected Resources surfaces. Prior qualified screenshot bytes were restored and preserved separately. |
+| Dashboard-only scope | Historical file evidence and its read/API/Resources dependency only; existing SQL Server collector unchanged. |
+
+Evidence lives at `artifacts/dashboard-file-window-history-2026-10-04/`: `index.html`, `validation.md`, `completion.json`, `frozen-inputs.json`, whole attempt logs/TRX/Playwright reports and screenshot hashes. Final JS SHA-256 is `bf877afabc1552e3bada245d3211800223075e3a3d58f776f48a43fe1cde0245`; CSS is `ec7f67bd2b1ff5fd53d7ccf42b211e1d9c477e557b6ae49069bde2e9c378ba73`; migration0358 is `e45e80ecdc398cc9606f9ce1c48f6273ed6bfe8f5aaed2d81acbe61ce75bb697`.
+
+Browser fixtures and screenshots are synthetic. PostgreSQL18.4 and production HTTP are real, with only authentication replaced. SQL Server collector, Windows Negotiate and lab least-privilege behavior are not certified here. Paired CPU admission/history/API/UI, AG transitions and running Agent sources remain open; optional assistant work is not a prerequisite. The broader dashboard/plan remains unfinished. The prior unavailable SSH VM was not retried, and no GitHub push/upload occurred. The local checkpoint record binds final evidence to this commit.
+
+## Native paired CPU harness checkpoint — 2026-10-04 UTC
+
+Three independent lanes authored the opt-in native harness/configuration, documented its prerequisites and reviewed identity/ownership requirements. The lead integrated the dedicated validation exclusion, restored the dependency graph and executed checks serially against frozen inputs. Production CPU sources, collectors, persistence, API and dashboard remain unchanged.
+
+`PairedCpuNativeQualificationTests` provides three explicitly selected scenarios: real co-located SQL/TCP/process association; independent raw process/OS arithmetic after an actual candidate proof; and pre-cancelled request refusal without starting sampling. The last scenario explicitly does not qualify in-flight native cancellation or provider cleanup. Numerical testing uses a labelled test-only provenance view after the candidate proof, preserving the original counter objects and staged source evidence. All native qualification/admission/hardware flags remain absent or false.
+
+The dedicated environment contract requires independently provisioned target and host revisions, expected host fingerprint/key, exact Windows monitoring SID, expected SQL major, explicit TCP endpoint and certificate identity. It cannot fall back to the Local/Release SQL connection strings. Missing opt-in fails if a native test is selected. Pure dictionary-injected configuration tests do not read live settings, mutate environment, contact SQL or start helpers.
+
+Actual native preparation checks the Windows token and fresh production capability discovery for the exact target/revision, supported/degraded disposition, supported Windows SQL version, encrypted integrated authentication, non-sysadmin context and the version-specific CPU permission. A separate production-factory connection checks current/original SQL SID matches and encrypted integrated TCP, plus absence of effective CONTROL SERVER and ALTER ANY LOGIN. These eight checks narrow the monitoring context; they are not a full grants/least-privilege audit or SID attestation on the subsequently owned bracket session. No credentials, permission changes, certificate bypass, routing substitution, service changes or workloads are introduced.
+
+The complete new configuration group passed **53/53**, zero failures/skips, compiling the native harness and dependencies with strict .NET analyzers. Locked dependency restoration and the edited PowerShell validation script's parser check passed. Two complete failed attempts remain preserved: force-evaluated NuGet restoration rewrote six unchanged production lock files' line endings and tripped the source-byte audit; the initial compile lacked the Application.Ports namespace import. The lead restored the unchanged production lock bytes, retained only the test project's new Windows reference, verified locked restoration without input changes and reran the entire configuration group after the import repair. No passing subsets were aggregated.
+
+The native scenario was **not executed**: all twelve independent qualification environment variables are absent in this process. Reading only the configured SSH route confirmed `sqldm-lab` still targets the same192.168.50.76:22 route that previously timed out; no SSH retry or credentials/key read occurred. Missing native evidence is not converted into a successful/skip result. Wrong-host/remote/other-instance, restart/PID/boot, denied-permission, controlled-load, processor-group and in-flight failure/termination matrix cases remain open, as do source admission and canonical CPU history/API/UI.
+
+| User requirement | This checkpoint's result |
+|---|---|
+| Multiple independent subagents and integration lead | Harness/configuration owner, documentation owner and fresh read-only review; lead integration and serial execution. |
+| Dark theme | Frontend unchanged; prior frozen frontend inputs and exact built JS/CSS hashes verified. |
+| Diagnostic-screen review | CPU native qualification prerequisite implemented; current Agent and qualified AG transition sources remain open. |
+| Interaction tests | All53 new configuration/refusal cases pass. Prior mounted/browser journeys remain tied to unchanged frontend. |
+| Accessibility/responsive checks | Prior Resources axe/keyboard/overflow results at320/390/768/1440px remain applicable; no new device or assistive-technology claim. |
+| Final validation | Complete owning group, locked restore and PowerShell parse pass against frozen final inputs; no actual SQL/native certification claim. |
+| Screenshots | Prior62-image gallery retained under checkpoint27efa7c; synthetic DTO screenshots with unchanged frontend, no new CPU visual claimed. |
+| Dashboard-only scope | Staged CPU diagnostic-source qualification harness only; no production source admission or runtime/storage/API redesign. |
+
+Evidence: `artifacts/dashboard-cpu-native-harness-2026-10-04/` contains the requirement summary/gallery index, frozen completion record, complete attempts and source bytes, restore-byte repair and SSH route metadata. The guide at `tools/qualification/paired-cpu/native-sql-qualification.md` defines exact configuration/commands and the remaining matrix. The overall dashboard and original plan remain unfinished. No GitHub push/upload occurred; the local checkpoint record binds final evidence to this commit.
+
+
+## Staged paired CPU capture and canonical persistence checkpoint â€” 2026-10-04 UTC
+
+Three independent lanes owned source/domain/unit fixtures, PostgreSQL migration/writer/native fixtures and documentation/review. The lead integrated the adapter, shared output contract, canonical dispatch, byte accounting and exact run-reference inventories. Fresh read-only reviews covered deadline/cleanup, security prechecks, staging, persistence and the repaired native fixtures. Only the lead executed checks, serially against frozen source.
+
+One source-owned SQL-before/TCP-before/raw-CPU-pair/TCP-after/SQL-after sequence now produces a bounded, sanitized private receipt. It retains exact raw Int64 counters, seven-digit source clocks, fixed refusal reasons and numerical eligibility without admitting a CPU comparison. Qualification stays absent, hardware/admission flags false and all public percentages null. Original native source objects are preserved. Addresses, routing tuples and process names are omitted; persisted directional diagnostics cannot reconstruct the discarded tuple proof.
+
+The staged ICollector adapter remains outside the production catalog/DI/scheduler. Its 60-second default cadence, 30-second minimum and 30-second timeout obey the repository contract and bound the original request, including host resolution. Known parsed helper UTF-8 lengths and the declared SQL logical upper bound remain distinct from generated receipt bytes and measured TDS traffic. Unknown helper lengths are null, never evidence that no I/O occurred. Missing-host refusal receipts can have zero source response bytes and nonempty generated output. Actual failures cannot carry usable capture or invented partial coverage.
+
+Forward migration 0359 adds append-only, forced-RLS daily receipts, closed native JSON validation, exact target/revision/run fences, canonical outcomes, immutable replay/digest and reviewed run-retention dependencies. It uses the canonical v2 run shape. The explicit partition helper requires the catalog-reconciliation lease; retention is disabled by default with no inferred lifetime and a three-partition floor. Approved day-based policy bounds remain90 through3650. Collector/Server/Auditor have no direct table privileges. The existing internal dependency role intentionally bypasses RLS for retention protection; an ordinary temporary non-bypass probe qualifies exact target isolation without changing production grants.
+
+Final whole owning groups passed **643/643**, zero failures/skips: unit 525 and actual PostgreSQL 18.4 118. Both groups used the same 2285 unchanged frozen inputs, strict compilation/analyzers, full migrations and the pinned isolated-clock18.4-v2 image. Docker CLI and .NET use their standard endpoints; a forced DOCKER_HOST had broken existing backup helpers and is removed from the test child environment. Existing clock-sensitive expiry/backup cases pass in the final whole group.
+
+Complete failed attempts and consumed source bytes remain preserved: analyzer-repair-unit, case-syntax-repair-postgres, catalog-column-diagnostic, final-inventory-postgres, fixture-repair-cpu-diagnostic, harness-repair-postgres, initial-postgres, initial-unit, pipe-uri-repair-postgres. Fixes cover strict analyzer and valid profile fixtures, migration CASE syntax, manifest interval bounds, reviewed exact catalog expectations, automatic schedule insertion, canonical target-revision cancellation, exactly one new disabled-policy audit row and a non-bypass RLS probe. Exact assertions remain; the cancellation test compares the entire canonical completion before and after rejection. No passing subsets were aggregated.
+
+| User requirement | This checkpoint's result |
+|---|---|
+| Independent subagents and integration lead | Three non-overlapping implementation/review lanes; lead resolved integration and ran qualification serially. |
+| Dark theme | Prior qualified frontend unchanged; all 682 frontend inputs and exact JS/CSS verified. |
+| Diagnostic-screen review | Private CPU capture/storage progressed without inventing CPU health; native admission/history/API/UI, current Agent and qualified AG transition sources remain open. |
+| Interaction tests | Final source/deadline/refusal/adapter/accounting and native commit/replay/fencing groups pass; prior browser interactions remain bound to unchanged UI. |
+| Accessibility/responsive | Prior axe/keyboard/focus/overflow evidence at 320/390/768/1440px preserved with exact unchanged UI; no new manual device/screen-reader claim. |
+| Validation after integration | Complete final unit/PostgreSQL groups pass on identical frozen source; actual SQL/Windows qualification is not claimed. |
+| Screenshots | All 62 prior synthetic gallery images hash-verified at original checkpoint 27efa7c; no new CPU UI or live lab capture claimed. |
+| Dashboard-only scope | Staged CPU diagnostic source/canonical receipt dependency; no production activation or unrelated redesign. |
+
+Migration 0359 SHA-256 is `ce67c0c98abcee286fb89be17dd366cd104cabbb18fe7d82db2ed99859f5d11f`. Evidence lives at `artifacts/dashboard-cpu-paired-capture-2026-10-04/`: requirement summary/gallery index, frozen completion record, final review, complete attempts/source bytes/TRX, native inventory review and checkpoint metadata. The source boundary guide is `docs/technical/Cpu-Paired-Capture.md`.
+
+The fresh configured SSH attempt timed out at 192.168.50.76:22; the current route/VPN clarification remains pending. Native supported-version/failure qualification and monitoring-identity behavior, CPU retained reads/API/MCP/dashboard series/admission, running/long-running Agent sources and qualified AG transitions remain open. The broader dashboard and original plan remain incomplete. No GitHub push/upload occurred.
+
+## Retained CPU diagnostic history dashboard checkpoint — 2026-10-04 UTC
+
+Three independent lanes owned the domain/service/routes and HTTP contracts, PostgreSQL read projection/native fixtures, and dark Resources UI/interactions/accessibility fixtures. The lead integrated production registration, exact URL pins, shared context, synthetic fixture routes and real PostgreSQL HTTP journeys, then executed all checks serially. Fresh source reviews covered authorization, native scope/epoch/privacy, frontend ownership and theme/focus boundaries.
+
+Resources now browses canonical completed CPU capture attempts and independently reads an exact run/sample revision within the shared completion window. Failures, payload expiry, older revisions, invalid URL pins and list-bound refusals remain explicit. No older successful capture substitutes for a failed or missing selected run. Protected continuations retain their original cutoff, manifest epoch and fifteen-minute expiry. Literal seven-digit source clocks and exact decimal Int64 counters survive the native API and browser projection; private routing tuples, fingerprints and process names remain withheld.
+
+Forward migration 0360 grants only the scoped read entry point to Server. Stored wrappers, canonical bindings, digest and qualification are checked before detail projection. The staged producer remains unregistered; retention remains disabled by default. Qualification is absent, hardware/comparison flags false and CPU percentages null throughout the API and UI. This completes retained diagnostic history, not native CPU health admission, CPU series or MCP coverage.
+
+Final affected groups passed **334/334**, with no failures or skips in the successful whole groups: unit/preamble21, HTTP26, actual PostgreSQL18.4/canonical writer/inventory58, parser/transport/URL78, mounted CPU/file67, built App CPU/file31, Resources context13, Resources accessibility20, native insights14 and volume browsing6. TypeScript, production build and generated asset verification passed. Every owning check preserved unchanged source during execution; its consumed inputs and final browser asset hashes match the final 2304-input freeze. Unrelated frontend test-only repairs do not require repeating unchanged native checks.
+
+Four full failed attempts remain preserved with original source, assertions, screenshots and traces. `components-01` caught hash-navigation timing and an incorrect shared-validator wording assertion. `app-01` caught tests expecting the discarded bootstrap window instead of the loaded authoritative window. `app-02` encountered Chromium `ERR_NO_BUFFER_SPACE` before an existing file test could navigate; a fresh full31-case run passed. `volume-browsing-01` caught a strict local fixture allowlist missing the new CPU GET; the narrow route registration preserved origin/method/target/query guards. No product behavior was relaxed and no passing subsets were combined.
+
+The final Git whitespace check found one extra blank line at the end of the new endpoint file. Only that trailing newline was removed, and the whole unit/HTTP/PostgreSQL groups were repeated against the final bytes. Frontend consumed source and generated assets remained unchanged. The original bytes and formatting repair note remain in the evidence folder.
+
+| User requirement | This checkpoint's result |
+|---|---|
+| Independent subagents and integration lead | Non-overlapping backend/storage/UI lanes; fresh source review; lead resolved integration and ran final checks. |
+| Dark theme | Shared theme tokens, readable raw values and clear qualification states; four-width axe/keyboard checks pass. |
+| Diagnostic-screen review | Exact retained CPU evidence and failures remain truthful; current Agent and qualified AG transition sources remain open. |
+| Interaction tests | Exact links, reload/history, Live-to-Rewind, continuation/local paging, refresh/cancel/retry, denial and stale/ABA fences pass. |
+| Accessibility/responsive | 320/390/768/1440px, keyboard focus, 44px controls, local overflow and forced colors verified; no manual screen-reader/device certification claim. |
+| Validation after integration | Whole affected groups pass against final consumed source and built assets, including real PostgreSQL and production HTTP. |
+| Screenshots | 18 fresh CPU captures plus affected-screen captures in the 71-image synthetic gallery; all62 prior gallery images preserved and hash-verified. |
+| Dashboard-only scope | Resources diagnostics and its canonical read dependency; no production collector activation or unrelated redesign. |
+
+Migration0360 SHA-256 is `8b38736c45e6687f8f5d5ba53a7736b3810f4dd4235e1f94e52e021e56bed286`. Evidence lives at `artifacts/dashboard-cpu-capture-history-2026-10-04/`: requirement summary/gallery, successful and failed whole attempts, source snapshots/TRX/traces, consumed-input verification and local checkpoint metadata. The boundary guide is `docs/technical/Cpu-Paired-Capture.md`.
+
+Native Windows/SQL supported-version/failure qualification, monitoring identity, CPU health admission/series/MCP, running/long-running Agent sources and qualified AG transitions remain open. The prior fresh SSH route failure remains unresolved; no repeated retry or invented lab success is recorded. The broader dashboard and original plan remain incomplete. No GitHub push/upload occurred.
+
+### SQL Agent source foundation and Health checks focus — 2026-10-04 UTC
+
+Three non-overlapping lanes implemented the staged Agent capture/evaluator, bounded SQL reader/assets/parser, and Health checks tab-focus regression. The lead integrated embedded assets and an Operations-only focused-tab reveal, resolved compile/fixture/focus failures, and ran owning checks serially. An independent source review checked the scoped reveal.
+
+The staged source captures up to 512 jobs plus one validated lookahead on one owned SQL connection, bracketing source UTC clocks, Agent service evidence and the latest `syssessions` row. It preserves local job clocks and raw stopped-service PID zero, validates exact result shapes, all lookahead fields, canonical UUID ordering, session/run binding, cancellation, connection continuity and the original monotonic deadline, and disposes owned resources. Three LF/no-BOM embedded SQL assets share SHA-256 `a2a6ffed75e28aeb8b0ba1b1328a53007558fc55d0f45c16096f0b5de4b8962d`.
+
+Stable service and session evidence remains a candidate: startup can precede the new session row, and offset-free job clocks do not establish elapsed execution. `ServiceSessionAssociationQualified` and production admission stay false, native qualification absent, and UTC job start/elapsed/long-running verdict null. No scheduler, persistence, API, MCP or current-job UI activation occurred. Least-privilege source discovery/native visibility, association and duration policy, canonical receipts/read boundaries and the activity panel remain required. Existing failure history keeps its semantics. See `docs/technical/Sql-Agent-Activity-Capture.md`.
+
+Health checks now paints its 3px theme focus ring inside the tab scroller and explicitly reveals the complete focused control horizontally after keyboard focus. The opt-in applies only to Operations; native vertical reveal, selection, URLs and fetch callbacks retain their behavior. Strict geometry requires zero clipping on all four edges, including intermediate tabs, across 320/390/768/1440px in dark theme and forced colors. Controls are at least 44px.
+
+Final whole affected groups passed **194/194** without failures, skips or flaky retries: unit/contract 89, existing managed M9 regressions 47, mounted Operations 50, built-App Operations 4 and built-App Health checks accessibility 4. TypeScript, final production build and asset-manifest generation/verification passed. Consumed inputs match the final 2310-input freeze. No PostgreSQL checks were necessary because persistence/routes did not change; native SQL was not exercised because the lab route remains unresolved. No unchanged SSH retry was made.
+
+Four failed whole attempts retain original source, assertions, logs and browser traces. Compile classifier signatures and invalid security-profile fixtures were corrected without relaxing denial assertions. Strict focus tests caught a 0.203px intermediate edge and then a 6.797px TempDB edge; local horizontal reveal resolved the behavior without clipping tolerance. A Windows long-path copy failure after the first browser run was recovered transparently before product/test repair, verifying preserved source hashes and all 50 browser results.
+
+Evidence: `artifacts/dashboard-agent-activity-source-2026-10-04/completion.md`, `validation.json` and `index.html`. Its 24-image synthetic gallery contains 16 new focused-tab captures and affected-screen captures; all 220 preserved prior screenshots were restored and hash-verified. The requirement matrix distinguishes completed focus/theme/interaction work from open native Agent capabilities. The broader dashboard and original goal remain active; no GitHub push/upload occurred.
+
+## Dashboard UI integration checkpoint — 2026-10-04 UTC
+
+Three independent owners handled dark palette focus, diagnostic-screen changes, and interaction/accessibility coverage. The lead integrated their non-overlapping files, repaired the palette's missing 44px control minimum after peer review, and executed qualification serially after freezing source. No backend or SQL permission work entered this patch.
+
+Verified query search now returns focus to the input on ArrowUp; ArrowDown stays on the single result without scrolling the dialog. Palette results use an inset theme ring with forced-color support, and all palette controls are at least 44px tall. Sessions describes automatic backoff only while Live polling is active; historical and paused requests explicitly name manual retry. TempDB file rows start behind a keyboard-operated, counted disclosure while source receipts, gaps, summary totals and paging remain visible. Opening that disclosure causes no API read; the opened state survives same-context paging and refresh.
+
+Final whole owning groups passed **234/234**, with zero failures, skips or automatic retries: mounted interaction/Operations/Sessions112, built-App search/Operations12, complete dashboard accessibility110. TypeScript, production build and asset-manifest generation/verification also passed. Every owning execution preserved source; consumed inputs match the final **700-input frontend freeze**. No passing subsets were aggregated. No database tests were necessary because source collectors, persistence and APIs were unchanged.
+
+Evidence: `artifacts/dashboard-ui-integration-2026-10-04/completion.md`, `validation.json` and `index.html`. The 172-image synthetic gallery covers final built-App screen states, palette first/last focus at four widths in dark/forced colors, and collapsed TempDB evidence. Pixel-identical primary captures retain the same preserved bytes. All 236 prior captures were restored and hash-verified. Chromium axe, viewport and strict palette painted-focus checks passed; manual screen-reader/device and native SQL certification are not claimed.
+
+Remaining source-reviewed UI findings: isolate health core/database/file reads so ordinary source outages do not hide successful independent evidence or configuration selections; decouple current blocking from analytics success; qualify mobile navigation/query-tab painted focus, query row-trend target sizing and Waits panel insets. Running/long-running Agent source admission, native paired CPU admission and qualified AG transitions remain separate native dependencies. The broader dashboard and original plan remain unfinished. No SSH retry, native mutation, deployment or GitHub push/upload occurred.
+
+## Independent dashboard evidence and diagnostic focus — 2026-10-04 UTC
+
+Three independent owners implemented partial latest-health reads, current blocking independent of analytics, and diagnostic theme/focus/Waits improvements. The lead integrated native HTTP-denial bridges, mounted and built-App outage journeys, fixture registries, accessibility repairs and final serial qualification. File ownership stayed separate; an additional fresh read-only integration review found no material remaining issue in the repaired patch.
+
+Core/collector health, database inventory and logical-file inventory publish validated results progressively. An ordinary outage preserves successful independent sources and labels pending, failed and retained receipts per source. Configuration snapshots/change history and database-option history can be read without a successful core snapshot. Current blocking is read independently of analytics and supplies one shared native receipt to its answer and graph. Its current collection is explicitly distinct from the historical timeline; retained, partial or absent evidence cannot establish all clear.
+
+Native 401/403 from the health family, dashboard analytics or current blocking clears protected health-family evidence and aborts pending siblings. Recovery requires an explicit access retry. Original cancellation signals, target/revision/read generations and subscribers captured at request start fence old/ABA responses. Safe fixed errors do not expose provider bodies. Ordinary503/malformed/empty results retain their independent evidence semantics.
+
+Main navigation, Query tabs/trend controls and blocking/retry controls have scoped 44px targets. Focus rings remain inside their horizontal scrollports, with local focus reveal and outward rounding for fractional link widths. Mobile nav has trailing scroll space; forced-color nav has an explicit Canvas backdrop. Four bare Waits panels receive 20px insets (14px mobile); the already-padded captured-session panel is unchanged. Full-page captures normalize document scroll without blurring the focused control or changing local nav scroll.
+
+Final complete owning groups passed **448/448**, with zero failures, skips or automatic retries in the final runs: contracts 64, mounted components 156, built-App dashboard/search/outage/focus journeys 118, complete dashboard accessibility 110. TypeScript, production build and asset-manifest generation/verification passed. All executions preserved source; final consumed inputs match the **707-input** frontend freeze. No passing subsets were aggregated. SQL collectors, persistence, privileges and HTTP endpoint contracts are unchanged, so database tests were unnecessary.
+
+Four failed whole attempts retain original assertions, source, logs/reports and traces. Qualification caught optional-ref initialization, invalid ARIA naming, duplicate denial announcements, a 41px head-blocker control and fractional mobile nav clipping. These were repaired while keeping safe-message, access purge, cancellation and strict zero-clipping assertions. A timing-dependent history/timeline fixture count was replaced with an additional ordinary analytics outage, restoring the original single selected-history read assertion and proving configuration focus survives both file and analytics outages.
+
+Evidence: `artifacts/dashboard-independent-evidence-2026-10-04/completion.md`, `validation.json` and `index.html`. The **76-image** synthetic gallery contains 36 primary-screen captures, 32 dark/forced-color focus and Waits captures, 4 current-blocking captures and 4 partial-health captures. All **314** prior screenshots were restored and hash-verified. Axe, viewport, keyboard and strict painted-focus checks pass at 320/390/768/1440px; manual screen-reader/device and native SQL certification are not claimed. The existing production bundle-size warning remains.
+
+| Requested requirement | Result |
+|---|---|
+| Independent subagents and one integration lead | Three non-overlapping owners; lead integrated and resolved repairs; fresh read-only review. |
+| Dark theme | Scoped theme/forced-color focus, opaque forced-color navigation and 44px changed controls pass. |
+| Diagnostic-screen review | Independent latest-health/history/current-blocking evidence remains usable through ordinary source outages; denial and missing-data semantics remain explicit. |
+| Interaction tests | Whole affected groups cover exact Rewind URLs, configuration selection/focus, pending sources, retry, denial, cancellation, paging and stale/ABA fences. |
+| Accessibility/responsive | Four widths, dark/forced colors, strict zero-clipping focus, keyboard, axe and viewport checks pass. |
+| Validation after final integration | Final complete contract/component/App/accessibility groups, TypeScript, build and verified assets on frozen inputs. |
+| Screenshots | 76 selected synthetic captures plus a hash/owning-check manifest; prior captures preserved. |
+| Dashboard-only scope | Frontend read composition/presentation/styles/tests; no native activation or unrelated redesign. |
+
+This completes the independent-source and diagnostic-focus follow-ups from the previous UI checkpoint. Native paired CPU admission, running/long-running Agent source admission and qualified AG transitions remain open; the broader dashboard and original repository plan remain unfinished. No native mutation, deployment, SSH retry or GitHub push/upload occurred.
+
+## 2026-10-04: Queries and Waits shared chart inspection
+
+Closed the frontend shared-crosshair gap found in the diagnostic-screen audit. Queries history, selected-plan charts and row previews share the saved UTC inspection; Waits uses the same controls on its received server trend. The exact microsecond `chartAt` URL is independent of query/plan/wait selections. Half-open loaded windows bound each marker, while drawing coordinates remain approximate. Existing plan-only alignment is an explicitly disclosed fallback when shared Queries alignment is cleared.
+
+Three non-overlapping agents owned Queries runtime, Waits runtime/theme review, and built-App interaction/accessibility tests. The lead integrated the shared URL helper, App and fleet links, 44 px control styling, review, serial final validation and evidence. Same-server/window navigation, database/filter edits and Health-tab round trips retain alignment; target/window changes drop it. Invalid or repeated raw selections remain explicit until repaired or cleared. Retired hash/context/gesture owners cannot mutate a new workspace or restore protected evidence after caller denial.
+
+Final frozen-code qualification: **180 passed cases** (20 URL contracts, 127 complete owning component cases, 33 complete built-App cases), TypeScript, final production build and asset generation/verification. **36 synthetic screenshots**, dark 320/390/768/1440, light-system-preference resilience and forced-color 320/1440, axe, focus geometry, 44 px alignment controls, and zero document overflow in the new workflows. 60 prior screenshot bytes restored and verified; 1 failed whole attempt preserved. Input hashes remained unchanged through checks. The existing large JavaScript bundle warning remains.
+
+Authoritative local evidence: `artifacts/dashboard-diagnostic-alignment-2026-10-04/completion.md`, `validation.json`, `frozen-inputs.json`, and `index.html`. The completion document gives a requirement-by-requirement matrix distinguishing this patch, prior implemented workflows, and incomplete source dependencies.
+
+This is not completion of the full plan. Native CPU comparison admission, Agent activity access/association/elapsed-time qualification, physical failover qualification, fully historical latest-only cards, and the optional assistant remain incomplete. Existing fleet CPU/memory/HA dots describe available evidence rather than admitted health verdicts. No database/native tests, collector activation, external upload or GitHub push were needed or performed for this frontend patch.
+
+## Retained TempDB completion-window checkpoint — 2026-10-04 UTC
+
+Health checks → TempDB now follows the shared Live/Rewind completion window through canonical `collection_run_v2` receipts and existing M9 summary/file payload. Failed, missing, empty, partial and older-revision sources remain explicit; no older successful sample substitutes for a failed default or missing exact pin. Current target revision authorizes the read, while run/sample revision owns the retained source. Exact decimal byte facts survive above JavaScript safe precision. Collector observation time is monitoring-worker time, separately labeled from repository completion, and establishes no native SQL clock or TempDB pressure verdict.
+
+Three independent non-overlapping backend, UI and interaction/accessibility lanes worked under one integration lead. The lead owns production registration, protected URL/cursor integration, shared forced-color tokens and legacy sidebar system colors, source review, repairs, final checks and evidence. Canonical read functions ship only in new forward migration0361; no collector or monitoring-permission changes were made. Both authenticated routes require same-target read roles, private/no-store output, bounded seven-day windows, authenticated15-minute nonrenewing continuations, native revision/source checks and safe failures. Denial purges both sources and fences siblings; ordinary failures and cancel/retry preserve exact received evidence. Receipt and file tables scroll locally behind disclosures.
+
+Final validation passed **317/317** cases:38 contract/URL,20 unit/preamble,67 HTTP/route-authorization,24 real PostgreSQL18.4/canonical-writer/retention/reference,7 release producer,119 mounted owning Operations/TempDB,24 built-App journeys and18 forced-color regressions across nine diagnostic screens. TypeScript, production build, asset generation/verification and Git whitespace checks passed. All complete owning groups executed on unchanged final consumed inputs; no passing subsets were combined. The source freeze contains2442 inputs. The existing large JavaScript bundle warning remains.
+
+5 complete failed attempts remain preserved with original sources and reports. PostgreSQL fixture over-request64 vs maximum16 and stale pre-existing release project pin were corrected without runtime relaxation. Browser repair opened disclosures before interacting with their contents and aligned authored forced-color palette/legacy sidebar colors with system colors; strict axe/keyboard/overflow checks stayed enabled. A Windows long-path archive error after the first mounted run was repaired; its complete original source/report/trace/screenshot bytes were recovered and verified. Terminal empty-line normalization and resulting new migration/release digest changes were recorded before final native/runtime checks. The new18-case extra screen spec's finite fixture registration was repaired after its first attempt; only its entire owning group required a rerun. Its test-only changes are not consumed by the other passing groups; exact exceptions are recorded in validation.json.
+
+| Requested requirement | This checkpoint's result |
+|---|---|
+| Independent agents and one integration lead | Non-overlapping owners; lead integrated and resolved repairs. |
+| Dark theme | Shared dark tokens,44px changed controls, visible focus; forced system-color mapping and light-preference resilience verified. |
+| Diagnostic-screen review | Latest-only TempDB gap closed with truthful canonical completion-window evidence; broader native source gaps remain. |
+| Interaction tests | Exact URLs/history, Live-to-Rewind, paging/cache, retries/cancel, independent gaps, denial and context/ABA fences pass. |
+| Accessibility/responsive | TempDB320/390/768/1440; nine primary forced-color screens320/1440; strict axe/focus/viewport checks. No manual device/screen-reader certification claim. |
+| Validation after final integration | Full affected backend/PostgreSQL/component/App groups on frozen final inputs and built assets. |
+| Screenshots and completion summary | 84 synthetic screenshots plus requirement matrix;122 previous screenshot bytes restored and verified. |
+| Dashboard-only scope | Health checks diagnostics and scoped canonical read dependency; no native activation, permission expansion or unrelated redesign. |
+
+Evidence lives at `artifacts/dashboard-tempdb-history-2026-10-04/completion.md`, `validation.json`, `frozen-inputs.json`, and `index.html`. The read/privacy/clock boundary is `docs/technical/TempDB-Window-History.md`. Migration0361 SHA-256:`778c3f8803c10e4d3a3c685fea163591f79d0678b650cb420c49721af155472b`.
+
+The configured lab SSH route192.168.50.76:22 timed out in one fresh bounded read-only preflight; no SQL command ran and no remote file was written. Host/VPN clarification remains pending. Local isolated PostgreSQL qualification does not establish native SQL Server capture. Native CPU comparison admission, Agent running/long-running access/association/elapsed-time qualification, physical failover qualification, other latest-only evidence and the optional assistant remain open. The broader dashboard and original plan remain incomplete. No production migration/deployment, GitHub push or upload occurred.
+
+### TempDB mobile grid containment follow-up — 2026-10-04 UTC
+
+Final screenshot review found a mobile defect the document-overflow assertion did not catch: the receipt table expanded an implicit grid column, and the outer panel hid surrounding text. The TempDB panel now uses an explicit `minmax(0,1fr)` track and constrained child/details widths; only wide tables overflow their own scroll region. Existing320/390/768/1440 component and App cases now measure internal text, disclosures, controls and scroll-region bounds before/after browsing, open receipt identity fields, and assert genuine mobile local scrolling.
+
+The complete119-case mounted group,24-case built-App group and18-case forced-color screen group ran again against rebuilt final assets. All passed. The overall final qualified count remains317; unchanged native, Node and TypeScript checks do not consume the CSS/spec repair inputs, and exact exceptions are recorded in validation.json. The initial local checkpoint452e0bc and its84 screenshots/metadata remain preserved in `before-mobile-clip-repair`; final gallery captures replace its clipped scenes. Final84-image gallery,2442-input freeze, prior122-image restoration and requirement matrix are verified. No SQL/native source, collector activation, external push or upload changed.
+
+## SQL volume planning in Live and Rewind — 2026-10-04 UTC
+
+Three independent owners handled the canonical backend contract, Resources dark-theme/runtime work and interaction/accessibility coverage. The lead integrated routes/DI, URL pins, fixtures and integrity pins, resolved defects and ran qualification serially after freezing source. File ownership remained separate.
+
+Resources capacity planning now uses canonical completion-window receipts and an exact run/sample revision, including older off-list selections. The newest attempt is selected by default even when failed, missing or empty; older success is never substituted. Capacities remain exact Int64 decimal strings. SQL observation, ingestion and repository completion clocks remain distinct. Forecasts use the selected receipt's inclusive 14-day completion lookback; unsuitable or overflowing history refuses an estimate while preserving exact raw evidence. Matching opaque keys do not certify physical-volume continuity or native health.
+
+Forward migration 0362 introduces bounded same-target authorized reads and original-expiry signed continuations. It also replaces the legacy capacity helper's original-run references with canonical references, retaining that API's observation-axis semantics. Valid planning pins survive database/compare changes and equivalent microseconds; genuine time changes retire the planning pin. Browsing fixes a fresh Live investigation to its received window/tuple. Exact selected provenance exposes outcome, loss kind, minimum lost and stored/expected source volumes independently of list membership. Denial purge, paging/cache, retries, cancellation and context/ABA fences remain explicit.
+
+The changed controls use dark tokens, inset focus and 44px minimum targets. The inline planning link is underlined. Removing the artificial 320px page floor and allowing mobile toolbar time controls to shrink repairs actual 200% zoom reflow; wide evidence tables scroll locally without hiding surrounding content.
+
+Final whole affected groups passed **424/424** with no skipped cases or flaky retries: Node contracts 80, unit 41, HTTP/authorization 87, real PostgreSQL 34, release pins 7, mounted components 108, built App 30, browsing 6, evidence contracts 13 and forced colors 18. Types, production build, asset integrity and staged whitespace pass. Final consumed inputs match the 2464-input freeze; exact unconsumed-input exceptions are recorded. The existing bundle-size warning remains.
+
+Real local PostgreSQL 18.4 exercises production migration/read roles, sealed original-run boundaries, canonical writers, cursor mutation/expiry and overflow/refusal. The genuine five-day forecast uses a private container clock and administratively configured daily test cadence. Cadence management, retention-worker behavior, native SQL capture and physical identity are not certified.
+
+Seven complete failed attempts retain source/logs and available TRX/reports/traces. Repairs addressed analyzer naming/task consumption, stale reference inventory and invalid native fixtures, color-only links, actual zoom overflow, actual time-pin retention, stale disclosure assertion order and missing selected loss metadata. Production constraints and strict assertions were retained; complete owning groups reran without aggregating passing subsets.
+
+| Requested requirement | Result for this checkpoint |
+|---|---|
+| Multiple independent agents and one lead | Complete; separate owners and lead integration. |
+| Dark-theme work | Complete for changed workflows, including forced colors and light preference. |
+| Diagnostic-screen review | Latest-only planning gap closed with exact historical source evidence. |
+| Interaction tests | Complete affected groups cover URLs, paging, context changes, cancellation and denial. |
+| Accessibility/responsive checks | 320/390/768/1440 workflows; forced colors and 200% zoom at 320/1440; nine primary forced-color screens. |
+| Final integrated validation | 424 passed cases plus types/build/assets/whitespace on final consumed inputs. |
+| Screenshots and completion summary | 69 synthetic screenshots and requirement matrix; 148 prior captures restored and hash-verified. |
+| Dashboard-refactor scope | Resources planning and its scoped canonical read dependency; no native activation or permission expansion. |
+
+Evidence: `artifacts/dashboard-volume-planning-2026-10-04/completion.md`, `validation.json`, `frozen-inputs.json`, `repair-notes.md` and `index.html`. Read/source/privacy semantics: `docs/technical/Sql-Volume-Planning-Window.md`. Migration 0362 SHA-256: `c197eeb9f687bec7d413eb41e57c80476752dcbae2bb041eb280e3e406f5af2c`.
+
+The configured SSH route 192.168.50.76:22 remains unavailable; host/network clarification is pending and no unchanged probe was repeated. Native CPU comparison, running/long-running Agent qualification, physical failover, other latest-only operational evidence, replication exact-attempt history and the optional assistant remain open. The broader dashboard and original repository plan remain active. No production migration, GitHub push or upload occurred.
+
+## Retained replication completion-window history — 2026-10-04 UTC
+
+Separate backend, UI/dark-theme and interaction/accessibility owners worked in parallel; the lead integrated routes, exact URL pins, subscription row keys, migration/release integrity and final serial qualification. Health checks → Replication now reads canonical completed attempts in the shared window plus independent exact run/sample revisions. Failed, partial, missing, empty and unbound source gaps cannot silently fall back to older successful evidence. Monitor capture, ingestion and repository completion remain distinct clocks; legacy status and Agent liveness remain unqualified, and unretained topology/rate/last-success facts remain unavailable.
+
+Forward migration0363 adds bounded same-target reads with signed original-cutoff/expiry cursors and a canonical payload dependency. Large/orphaned upgrades retain conservative cleanup holds until reviewed constraint validation; replay-ledger retirement and production retention scheduling are not certified. Writer row keys now bind both protected publication and subscription identities, preserving multiple subscriptions sharing one publication in a run.
+
+The UI retains exact pins/pages through Live investigation, retry and cancellation, with access purge and authority/revision/window/selection/mount/ABA fences. Tables scroll locally. Screenshot review found an active category hidden on mobile direct links; scoped horizontal reveal and label wrapping now preserve full selected-tab visibility through resize/200% zoom without stealing focus or moving the page vertically. Strict intermediate Availability and final Replication category regressions pass.
+
+**355/355 final affected cases pass**, no skipped cases or flaky retries: URL17, unit34, HTTP/authorization67, real PostgreSQL47, release7, mounted137, built App28 and forced colors18. Types, final production build, asset integrity and staged whitespace pass. Final2485-input freeze matches consumed source; precise unconsumed-input exceptions are recorded. The existing bundle warning remains. Native PostgreSQL qualifies production role/HTTP, canonical Begin/Commit/sealed replay, authorization/RLS, exact reads, bounded paging/cursor refusal, explicit source partition disappearance, canonical dependency gates and genuine isolated-clock expiry. SQL Server capture, physical identity and production retirement-worker behavior are not certified.
+
+Eight complete failed attempts retain original source/logs/TRX/browser reports/traces. Repairs addressed encoded URL fixtures, Windows host access, stopped Docker, historical migration/partition assumptions, required breaker transitions, finite supporting routes and safe pre-mount zoom setup. One unchanged rerun resolved a loopback-server stop; another preserved Chromium ERR_NO_BUFFER_SPACE before module mounting. Strict assertions and zero-retry settings remain.
+
+| Requested requirement | Result | Evidence or limit |
+|---|---|---|
+| Multiple independent owners and one lead | Complete for this checkpoint | Separate backend, dark-theme/runtime and interaction/accessibility ownership; lead integrates URLs, registration, integrity pins and final validation. |
+| Dark theme | Complete for changed workflow | Shared dark tokens, visible keyboard focus and 44px controls, with forced colors and 200% zoom evidence. |
+| Diagnostic-screen review | Replication history gap closed | Canonical completion attempts plus independent exact run/sample reads replace duplicate observation-only cards. Failed, partial, empty, missing and unbound evidence remain explicit. |
+| Interaction tests | Complete affected groups | Exact URLs/reload/history, Live investigation, paging/cache, retry/cancel, source/cutoff validation, authority/revision/window/ABA fences and access purge. |
+| Accessibility and responsive checks | Complete for automated scoped checks | 320/390/768/1440, forced colors, 200% CSS zoom, actual panel/disclosure bounds, local table scrolling, keyboard/focus recovery and axe. Manual screen-reader/device certification is not claimed. |
+| Final integrated validation | Complete for affected groups | 355 passed cases plus types, production build, asset integrity and Git whitespace; complete owners on final consumed inputs, without passing-subset aggregation. |
+| Screenshots and completion summary | Complete | 92 synthetic screenshots in the gallery; 152 previous captures restored and hash-verified. |
+| Dashboard-refactor scope | Maintained | Replication diagnostic reads and their scoped canonical source dependency; forward migration0363 and subscription row-key correctness. No native enrollment, permission expansion or scheduling redesign. |
+| Retained replication source semantics | Complete within legacy source limits | Monitor capture, ingestion and completion clocks remain distinct. Reported legacy status stays unqualified; discarded topology/rate/last-success facts remain unavailable. |
+| Native qualification | Open | Configured SSH route remains unavailable and clarification pending. Real local PostgreSQL qualifies persistence, reads, source-partition disappearance and canonical dependency gates; synthetic UI evidence does not qualify SQL Server replication capture or Agent liveness. |
+| Broader dashboard and original repository plan | Still active | Native paired CPU admission, running/long-running Agent qualification, physical failover and latest-only supporting backup/AG cards remain incomplete. The assistant is optional. |
+
+
+
+Evidence: `artifacts/dashboard-replication-history-2026-10-04/completion.md`, `validation.json`, `frozen-inputs.json`, `repair-notes.md` and `index.html`. Gallery:92 synthetic screenshots;152 previous captures restored/hash-verified. Original17,092 design files and two handoff-plan files were hash-verified unchanged. Source/privacy/time semantics: `docs/technical/Replication-Window-History.md`. Migration0363 SHA256:`b90d4615248eb57cca5888c82f51a8867f958e7c43be36ff234d31e867d5796f`.
+
+The unchanged SSH route192.168.50.76:22 remains unavailable; corrected host/network details are pending and no unchanged probe was repeated. Native paired CPU admission, running/long-running Agent qualification, physical failover and latest-only supporting backup/AG cards remain open. Assistant work is optional. The broader dashboard and original plan remain active. No production migration/deployment, GitHub push or upload occurred.
+
+## Retained supporting backup and availability receipts — 2026-10-04 UTC
+
+Independent backend, dark-theme/runtime and interaction/accessibility owners worked in parallel; the lead integrated shared-window URLs, reviewed the source contracts, froze inputs and ran serial qualification. The latest-only supporting backup and AG cards now expose on-demand canonical completion-window lists and independent exact run/sample receipts. Failed, empty, missing, incompatible and partial attempts cannot fall back to an older successful source. Both AG row streams bind the same selected run with independent paging and recovery. The primary backup assessment and richer v2 availability views retain their existing contracts.
+
+Forward migration0364 adds bounded same-target reads with private helpers, repeatable-read transactions and signed original-cutoff/15-minute cursors. Exact reads remain independent of list/run caps. Compatible legacy payload accounting is separate from newer-schema expected counts. Legacy monitor observation and repository completion clocks remain distinct; no ingestion timestamp is fabricated. Offset-free SQL local backup finish remains literal, and identifiers/byte counts preserve their signed 64-bit decimal values. Reported AG states do not qualify liveness, continuity, RPO or failover.
+
+The UI retains exact URL pins and received Live-to-Rewind windows, independent stream pages and original retry intent. Target/current-revision/authority/window/selection/mount/route changes fence late replies; denial purges sibling supporting evidence and requires explicit access recovery. A failed Return-to-latest replacement now remains unpinned through Retry and Cancel, allowing a validated new receipt to become the default. Dark tokens, 44px controls, keyboard focus, local table scroll and zoom reflow are preserved.
+
+**503/503 final affected cases pass**, with no skipped cases or flaky retries: Node contracts58, unit43, HTTP/authorization68, real PostgreSQL30, release pins7, mounted components210, built App69 and forced colors18. Types, final production build, asset integrity and staged whitespace pass. Final2507-input freeze matches consumed inputs; precise unconsumed-input exceptions are recorded. The existing large-bundle warning remains (1,695.49kB minified entry chunk).
+
+Four complete failed attempts preserve source/logs and available TRX/browser reports/traces/captures. Repairs corrected an unpublished SQL timeout-column reference, replacement retry intent, disclosure sequencing and local-scroll geometry, and obsolete eager-read expectations in the forced-color owner. A terminated MSBuild worker was addressed with serialized builds and disabled build-server reuse. One verified local Vite leaf was terminated after all mounted cases completed to release stalled teardown. Production deadlines, bounds and strict accessibility/traffic assertions were retained; complete consuming owners reran without passing-subset aggregation.
+
+| Requested requirement | Result for this checkpoint |
+|---|---|
+| Independent work and one integration lead | Complete; separate backend, dark-theme/runtime and interaction/accessibility ownership. |
+| Dark-theme work | Complete for changed panels, including browser system colors and visible keyboard focus. |
+| Diagnostic-screen review | Supporting backup/AG history gap closed with canonical attempts and exact retained receipts. |
+| Interaction tests | Complete affected owners cover URLs, paging/cache, retry/cancel, source gaps and access/context fences. |
+| Accessibility/responsive checks | 320/390/768/1440; forced colors and 200% CSS zoom; local bounds, keyboard reveal and axe. No manual screen-reader/device certification claimed. |
+| Final integrated validation | 503 passed cases plus types/build/assets/whitespace on final consumed inputs. |
+| Screenshots and completion summary | 144 synthetic screenshots and requirement matrix; 244 prior captures restored and hash-verified; seven representative final captures manually inspected. |
+| Dashboard-refactor scope | Maintained; existing legacy source reads and their scoped dependency, without native activation, permission expansion or retention redesign. |
+
+Evidence: `artifacts/dashboard-backup-availability-history-2026-10-04/completion.md`, `validation.json`, `frozen-inputs.json`, `repair-notes.md`, `operations-test-migration.md` and `index.html`. Source/privacy/time semantics: `docs/technical/Backup-Availability-Window-History.md`. Migration0364 SHA256:`6442cbf7ffe63c18a9c1bbd8dc9ee9e75418def4751a1f778398d69ac0636c35`. Original17,092 design files and both supplied plans remain hash-verified unchanged.
+
+Real local PostgreSQL18.4 qualifies production read roles/HTTP, canonical sealed-source accounting, exact/list bounds, cursor mutation/expiry and source disappearance. Owner-driven partition detach and synthetic canonical overflow/newer-schema fixtures qualify reader boundaries; they do not certify an authorized production retention workflow or actual v2 producer admission. Browser sources and screenshots are synthetic. Native paired CPU admission, running/long-running Agent qualification and physical failover remain open; the configured SSH route remains unavailable and no unchanged probe was repeated. The optional assistant is nonblocking. The broader dashboard and original repository plan remain active. No production migration/deployment, GitHub push or upload occurred.
+
+## Primary availability access ownership — 2026-10-04 UTC
+
+Independent product, interaction-test and scoped dark-theme/accessibility owners worked in parallel; the lead integrated the changes, reviewed final evidence and ran affected validation serially. Diagnostic review found that the primary v2 AG panel lost HTTP denial status, omitted current revision/authority from its context, and could retain sibling facts or reopen denied reads after polling or tab remount.
+
+Both primary streams now share an access owner while retaining independent publication cutoffs and paging. Either HTTP401/403 clears both streams and aborts siblings before publication. Polling, window changes under the same authority and Health checks category changes preserve the denial latch until explicit access recovery. Target/current-revision/authority/window/request/mount/raw-URL fences reject late callbacks and A → B → A replies. Temporary errors and cancellation preserve actual facts and the original attempted cutoff/cursor. A whole workspace leave or reload starts a fresh owner and normal server authorization; no persistent browser-wide denial policy is claimed.
+
+Scoped dark styles wrap expanded fingerprints, provide 44px controls/disclosures and inset keyboard focus, and support forced colors. Recovery moves focus within owned evidence without stealing outside workspace focus. Distinct publications retain their mismatch warning; incomplete coverage, remote reported state, literal offset-free SQL local clocks and RPO limits remain explicit.
+
+**203/203 affected cases pass**, with no skipped cases or retries: 15 contract, 112 mounted, 58 built App and 18 forced-color cases. TypeScript, production build, asset generation/verification and whitespace checks pass. The 768-input freeze is verified. Earlier owners retain only precise per-file generated-output/unimported-test exceptions recorded in `validation.json`; complete consuming owners reran after repairs, without passing-subset aggregation. The existing entry chunk warning remains (1,701.60kB minified, 407.68kB gzip).
+
+Two complete failed attempts preserve source/logs/reports/traces/captures. Repairs corrected the new harness observation wrapping and native scroll readiness, then the built screenshot helper's pointer activation before keyboard-focus assertions. Production source and assets stayed unchanged during both test repairs; strict bounds, traffic, axe and zero-retry settings were preserved.
+
+| Requested requirement | Result for this checkpoint |
+|---|---|
+| Independent owners and one lead | Product, test and theme/accessibility lanes; fresh diagnostic review; lead integration and serial validation. |
+| Dark-theme work | Scoped tokens, wrapped opaque values and visible inset focus, including system colors. |
+| Diagnostic-screen review | Primary AG sibling disclosure/access-ownership defect repaired; source/time/coverage limits retained. |
+| Interaction tests | Complete affected owners cover denial purge, explicit retry, tab retention, stale/ABA/raw-route fences, current authority/revision/window, independent paging, retry and cancellation. |
+| Accessibility/responsive | Keyboard recovery, outside-focus preservation, named local scrollports, axe, 320/390/768/1440 dark layouts, 320/1440 forced colors and 320px at 200% CSS zoom. Native browser zoom/device/screen-reader certification is not claimed. |
+| Final integrated validation | 203 passing cases plus types/build/assets/whitespace, with exact consumed-input evidence. |
+| Screenshots and summary | 22 dedicated final synthetic captures and 55 regenerated affected captures; 188 prior captures restored/hash-verified. Requirement matrix and screenshot gallery saved locally. |
+| Dashboard scope | Frontend primary AG ownership only; no backend, migration, permission expansion or source activation. |
+
+Evidence: `artifacts/dashboard-availability-access-2026-10-04/completion.md`, `validation.json`, `frozen-inputs.json`, `repair-notes.md`, `manual-review.json` and `index.html`. Access lifetime and diagnostic limits: `docs/technical/Availability-Evidence-Access-Ownership.md`. Final local identity is recorded in `commit.json`. Original17,092 design files and both supplied plans remain hash-verified unchanged.
+
+Native paired CPU comparison, running/long-running Agent access/association/duration and physical failover source/admission remain unfinished requirements. Synthetic UI evidence does not qualify native SQL Server behavior. The configured SSH route remains unavailable; corrected host/network details are pending and no unchanged probe was repeated. The optional assistant is nonblocking. The broader dashboard and original repository plan remain active. No production migration/deployment, GitHub push or upload occurred.
+
+## CPU identity on the owned capture connection — 2026-10-04 UTC
+
+The next source qualification dependency closes the native harness's separate-connection identity gap. Independent source and test owners implemented the opt-in attested bracket; a diagnostic/documentation reviewer checked the final seams, and the lead integrated and qualified frozen inputs serially. The ordinary public CPU capture remains unattested. Existing pinned SQL witness assets, schema1 persistence, retained diagnostics, UI and absent-admission contracts retain their current semantics.
+
+The fixed parameterized identity query runs on the same SQL connection before witness1 and after witness2. Native TCP/CPU/TCP work completes and disposes before witness2 and final identity checks. Both typed receipts require all eight actor/security comparisons and bind target/revision/run, source UTC, owned session, SqlClient connection and actual SQL connection/session identities within their own namespaces. Bounded SID copies are made before await, withheld from receipts/errors and cleared after use. Missing, malformed, denied, mismatched or inconsistently timed evidence refuses an attested result. Initial refusal starts no native helper. The original capture deadline, cancellation, cleanup and quarantine remain in effect.
+
+**413/413 selected managed cases pass**, with no failures, skipped cases or retries:360 full affected CPU cases, including60 new identity cases, and53 native environment-contract cases. The updated native harness's three live facts compiled but were not executed; managed evidence is not native identity proof or source admission. Whitespace passes. Each complete owner matches the final1281 recorded source/tool inputs; no exceptions or passing subsets were used.
+
+| Requested requirement | Result for this checkpoint |
+|---|---|
+| Independent owners / one lead | Separate source, tests and diagnostic/docs lanes; lead integration and serial frozen validation. |
+| Diagnostic-screen review | Necessary CPU capture actor-binding gap repaired; source admission and native matrix remain open. |
+| Interaction tests | Exact typed parsing, eight refusal checks, every identity namespace, sequencing, SID snapshot/wipe, deadline/cancellation, quarantine and ordinary-path regression coverage. |
+| Dark theme / accessibility / responsive | No UI change;768 prior qualified UI inputs and77 screenshots remain byte-identical. Prior203-case UI evidence retained without redundant browser checks. |
+| Final integrated validation | 413 managed cases plus native-harness compilation and whitespace; native cases expressly unexecuted. |
+| Screenshots and summary | Prior22 dedicated and55 affected captures linked with original provenance; current requirement matrix saved locally. |
+| Dashboard scope | CPU source qualification dependency only; no native mutation, permission expansion, migration, source activation or API/UI admission. |
+
+Evidence: `artifacts/dashboard-cpu-owned-identity-2026-10-04/completion.md`, `validation.json`, `frozen-inputs.json`, `unchanged-ui.json`, whole-owner source/log/TRX folders and `commit.json`. Native invocation and limits: `tools/qualification/paired-cpu/native-sql-qualification.md` and `docs/technical/Cpu-Paired-Capture.md`. The existing local `sqldm-lab` alias currently has no DNS result; no unchanged IP probe was repeated. No successful native receipt is claimed.
+
+Native CPU supported-version/fault qualification and a reviewed measurement/admission contract remain required for SQL-versus-host trends/API/MCP. Agent activity still needs a usable bounded read path and execution/time qualification before canonical/dashboard integration. AG transitions require a passive retained event source and actual native qualification; physical movement, cause or uninterrupted coverage cannot be invented from snapshot changes. The optional assistant is nonblocking. The broader dashboard and original plan remain active. No production deployment, GitHub push or upload occurred.
+
+## Finite native Agent source replay — 2026-10-07 UTC
+
+The later [Agent module enrollment](Sql-Agent-Module-Enrollment.md), [retained observations](Sql-Agent-Activity-Observations.md) and [activity window history](Sql-Agent-Activity-Window-History.md) slices now provide the guarded bounded reader, canonical receipts, default-off controls and scoped Operations history. This checkpoint joins one original Run17 restored-phase actual-monitor capture to a disposable restricted canonical repository, root HTTP and the unchanged built Operations UI. Before monitor launch, a protected sidecar preserves the original full authorization and validated installed snapshot. No source clocks, run identity or validity window are synthesized during replay.
+
+Three independent owners handled the sidecar exporter, strict portable parser/contracts and repository/HTTP/browser journey. Peer reviews and a fresh final reviewer found no remaining blocker. Final checks pass137 portable contracts, one explicitly synthetic rehearsal, four signed/DENY/restored actual-monitor cases and one native replay journey, with zero skips. The source at06:21:33UTC was admitted with fresh repository completion at06:24:19UTC inside its unchanged five-minute fence. Twelve retained jobs, exact source/local clocks, replay/revocation/history, target-scoped authorization and private-field exclusion pass. The built browser verifies actual list/original/missing HTTP traffic, exact URL/reload, keyboard scrolling, viewport fit and scoped axe at320/1440px. All failed attempts are preserved.
+
+Evidence: `artifacts/dashboard-agent-native-replay-2026-10-07/completion-v1.json`, frozen source archives, native Run17 report/private sidecar/TRX, separate rehearsal/native browser traces and final review. The native fixture uses finite enrollment resolution, test authentication and synthetic scheduling prerequisites. It qualifies recorded-source replay; native repository-backed collection, continuously deployed acceptance, running/session/time, attached-invalid signature construction, interruption recovery and persistent provisioning remain open. Public admission and service/session association stay false with qualification `Absent`.
+
+The broader goal remains active: native CPU supported-version/process-access/load/restart/deployed qualification, qualified Agent execution/time and continuous collection, a physical AG transition source and final cross-screen acceptance. No production migration, persistent SQL installation, live schedule opt-in, deployment, GitHub push or upload occurred.
+
+## Finite native Agent repository resolution — 2026-10-07 UTC
+
+The Run20 checkpoint (local output: `artifacts/dashboard-agent-repository-native-2026-10-07/completion-v1.json`) closes actual-monitor public reader/collector qualification through the concrete repository-backed enrollment port. Eight cases pass with zero skips across signed, explicit-DENY, restored and repository-revoked phases. Four fresh identity-bound workers obtain authoritative answers without a cached or finite resolver. Protected original authority is enrolled with exact readback and revoked only after the restored worker terminates; revocation refusal occurs inside the unchanged original validity window. Both session/effective collector identities lack elevated memberships and direct control-table/column mutation privileges.
+
+The source owner implemented76 portable input contracts and three opt-in native tests. The fixture owner produced a blank owner/ACL-preserving archive with all372 migrations and implemented the private loopback PostgreSQL18.6 fixture. Independent reviews found and repaired two pre-launch wrapper issues; a separate seven-case real ACL probe qualified strict relation permission equivalence and refusal after raw default ACL representation and empty-array corrections. All1,621 relation permissions match, while function/raw metadata and other state sections retain existing strict checks. Raw artifacts and failed Run18/19/Probe01/02 attempts remain immutable. The existing guest PostgreSQL cluster is unchanged. All four worker termination fences, normal SQL baseline cleanup and owned PostgreSQL clean shutdown pass; the blank archive producer and all76 portable contracts also pass without skips.
+
+Evidence and next work: `artifacts/dashboard-agent-repository-native-2026-10-07/completion-v1.json`, `fixture-probe03-qualification-v1.json`, frozen source/runner packages, native Run20 report/TRX/private sidecar and `running-job-next-plan-v1.json`. Run17's native-source history/browser replay remains a distinct finite proof. Public admission/association stay false with qualification `Absent`. Running service/session association, local source time and execution duration, attached-invalid signatures, worker interruption recovery, persistent provisioning and continuously deployed acceptance remain open. Native CPU matrix/process access and its existing approval blocker, a physical AG transition source and final cross-screen acceptance also remain open. The broader goal stays active.
+
+## Running-job preparation checkpoint — 2026-10-07 UTC
+
+Independent owners implemented the owned SQL job/database witness and protected write-ahead
+journal, plus the two repository-backed actual-monitor running/completed tests. A separate held
+SCM/process controller is prepared in ignored artifacts. The signed-only metadata-policy entry
+point reuses schema 3; existing trial entry points and runtime admission behavior are unchanged.
+Review repaired completed-history predicate grouping and prevented deletion of unfinished owned
+requested/queued jobs. Managed verification passes **131** monitor/repository contracts and
+**578** trial contracts, with zero skips, and the separate controller builds without warnings.
+
+The successful guest inventory reports 12 jobs, 11 enabled, no unfinished latest-session activity,
+and unchanged stopped Agent configuration/PID zero. It executes zero native qualification cases
+and performs no job/database/Agent mutation. The existing jobs fail the controlled-start gate.
+`artifacts/dashboard-agent-running-job-2026-10-07/job-isolation-proposal-v1.json` describes an exact
+temporary enabled-flag isolation/restoration scope; it remains proposed. The next steps are its
+reviewed implementation/authorization, the native phase coordinator and immutable payload/receipt
+binding, then both actual captures with independent source/execution/OS witnesses and cleanup.
+
+Running execution, association/time, interruption, persistent deployment, native CPU matrix,
+physical AG transition evidence and final cross-screen acceptance remain open. Admission and
+association stay false with `Absent`; the broader goal remains active.
+
+## Running-job coordinator and signature preparation checkpoint — 2026-10-07 UTC
+
+The later running-job completion-v2 record (local output: `artifacts/dashboard-agent-running-job-2026-10-07/completion-v2.json`)
+and source-readiness-v2 freeze (local output: `artifacts/dashboard-agent-running-job-2026-10-07/source-readiness-v2.json`)
+record **313** passing pure managed receipt, coordinator, worker-boundary and monitor-worker
+contracts with zero failures/skips. The native coordinator builds with zero warnings/errors;
+**zero native running/completed cases have executed**. Source, receipt and worker fences are
+prepared, while actual running execution and cleanup remain unqualified.
+
+The more complete Probe05 baseline (local output: `artifacts/dashboard-agent-running-job-2026-10-07/baseline-probe-05/guest-baseline-20261007T093858172Z.json`)
+finds **three older-session unfinished rows** as well as **eleven enabled foreign jobs**.
+The rows belong to session2, before latest session4; two have execution starts and one is
+requested without a start. All retain NULL stop/history IDs. Neither latest-session inactivity
+nor older-session membership proves completion or cancellation. The all-history and enabled-job
+gates both refuse the current trial. Agent stays stopped; original jobs, enabled flags and msdb
+activity/session/history rows are preserved. The earlier enabled-flag isolation proposal alone
+cannot satisfy these prerequisites.
+
+The clean-lab plan v2 (local output: `artifacts/dashboard-agent-running-job-2026-10-07/clean-lab-plan-v2.json`)
+proposes a separate clean SQL17 default instance; destination and installation scope remain
+pending. Current source does not support a named instance. A fresh destination needs independent
+physical database GUIDs, validated TCP/TLS, the actual integrated monitor SID/deployed
+configuration, persisted CPU host binding, a fresh selected target/revision and original
+enrollment authority, plus an owned sealed repository archive. A finite proof on that lab would
+not satisfy original-selected-target or continuously deployed acceptance. No installation scope
+or permission to alter original jobs/history is inferred from this plan.
+
+Independent source and journal owners have also prepared rollback-only genuine-signature
+construction tooling. The journal binds one physical DBA session and immutable target/donor
+images, refuses unresolved reuse or replay, and requires acknowledged construction/readback
+rollbacks with exact absent-baseline and independent OS/foreign-inventory verification. The
+expanded managed tooling suite (local output: `artifacts/dashboard-agent-attached-invalid-2026-10-07/managed/trial-signature-contracts-attempt1.trx`)
+passes **709** cases with zero failures/skips: the previous **578** plus **131** new
+signature/journal contracts. These are the same whole-suite cases counted once; the separate
+313-case running coordinator group remains separate evidence.
+
+The Probe06 native construction report (local output: `artifacts/dashboard-agent-attached-invalid-2026-10-07/construction-probe-06/guest-signature-construction-20261007T111503590Z.json`)
+and completion record (local output: `artifacts/dashboard-agent-attached-invalid-2026-10-07/completion-v1.json`)
+record a transactional, rollback-only module experiment on SQL Server build 17.0.1000.7. It was not read-only.
+The signed image and distinct genuine target/donor signatures, each 392 bytes, were verified.
+SQL `ADD SIGNATURE` refused the donor import with error 15299, state 1, yielding
+`UnsupportedDonorSignatureImport` before an attached-invalid postimage was established. This
+is evidence about that construction candidate on the observed build, not universal unsupported
+behavior. Construction/readback rollback acknowledgements, exact absent-module baseline,
+unchanged foreign-inventory digest and held stopped-Agent configuration all passed. Cleanup and
+journal `rollback_verified` were confirmed, and the exact probe process was joined after exit 0.
+The first five pre-mutation failed attempts remain preserved.
+
+Construction feasibility and attached-invalid qualification remain false. No monitor launched
+and zero native collector cases executed. No native invalid-signature monitor behavior,
+committed-invalid recovery or production admission is claimed.
+
+Admission/association remain false with `Absent`; derived elapsed/UTC job-start/long-running
+fields remain null. Running execution/time, interruption, persistent deployment, native CPU
+matrix, physical AG transition evidence and final cross-screen acceptance remain open. The
+broader goal remains active.
+
+
+## Worker interruption audit preparation — 2026-10-07
+
+`TrialWorkerTerminationAudit` adds a closed, immutable preparation contract for a future
+independently supervised interruption. `TrialJournal.ReadWithDigest()` authenticates the opened
+file handle and parses and hashes the same bounded bytes. Pure parsers cannot manufacture
+protected-read provenance. The contract binds the original supervisor, both suspended roots,
+complete process ledger, source pins, journal phase and deployment/fixture identities. Every
+process birth must fall between the independently held supervisor birth and the interruption.
+
+The expanded whole tooling suite passes **833** cases with zero failures or skips: **709** prior
+contracts plus **124** audit/journal contracts. Definitions, results, execution IDs and test entries
+link uniquely. Build validation reports zero warnings or errors. The independently reviewed
+frozen evidence (local output: `artifacts/dashboard-agent-interruption-2026-10-07/audit-source-freeze-v3.json`) records the exact source and test hashes.
+These totals supersede the earlier whole-suite count; they do not add to it.
+
+This is managed preparation only. Selection can return `EligibleForIndependentSqlValidation`;
+it cannot authorize SQL mutation, recovery, replay or a worker launch. Existing native recovery
+refusals remain enforced. A future gateway must independently prove all contained processes
+exited and the owned scope is empty, then fence and drain both the monitor SQL epoch and the
+coordinator DBA SQL epoch (or prove the coordinator has no SQL connection). The current monitor
+binding alone cannot discharge that coordinator requirement. SQL local `datetime` epochs remain
+separate from full-precision UTC process observations.
+
+The separate harmless containment prototype is still being qualified. Its complete published
+runtime closure, explicit launch environment, original held process epochs, external supervisor
+watchdog and native token/profile behavior require their own evidence. No native interruption,
+containment or standalone recovery case is qualified by these contracts; earlier Run16/Run20
+are not retroactively contained. Production/association/continuous admission remains false,
+qualification remains `Absent`, and derived execution/time fields remain null. The broader goal
+is active; the separate clean SQL17 default-instance destination remains unresolved.
+
+
+## Harmless watchdog preparation and native refusal — 2026-10-07
+
+The separate containment prototype v6 passes **138** pure checks and validates its actual
+self-contained 192-file Windows payload. The separate watchdog v2 passes **76** pure checks;
+its own actual 192-file payload and repaired Windows PowerShell 5.1 bounded output capture
+were verified and independently reviewed. These are separate preparation groups, not additions
+to the 833-case tooling suite. Source packages and failed SDK-shape checks remain preserved.
+
+The first watchdog VM report (local output: `artifacts/dashboard-agent-interruption-2026-10-07/watchdog-native-01/guest-harmless-watchdog-20261007T123815783Z.json`)
+observes a freshly created harmless Administrator supervisor assigned before resume. Its deadline
+expired, termination of the held private Job was accepted, the original supervisor exited with
+code76, and the queried Job had zero active members. The original watchdog driver also exited
+and was joined. Qualification nevertheless refused: lifetime `TotalProcesses` was **2**, while
+the reviewed gate requires **1**. The additional historical member has no identity/held-exit
+provenance. An empty current scope does not establish that missing provenance.
+
+The reviewed refusal evidence (local output: `artifacts/dashboard-agent-interruption-2026-10-07/watchdog-native-refusal-v1.json`) preserves raw duplicate-free
+output, exact package/source pins, original process epochs and the fresh nonce. The original
+candidate must not be rerun unchanged, and its count gate must not be loosened. The next fresh
+diagnostic must observe suspended supervisor membership in any existing Job before assignment,
+then record bounded accounting and owned-Job PID-list snapshots without opening or adopting
+those PIDs. Unknown nesting must refuse before assignment. No monitor logon, CWT or SQL path
+was exercised. This does not qualify worker interruption/recovery, CWT/startup hard timeouts,
+all historical members, production admission or the broader goal.
+
+
+### Native02 diagnostic continuation (2026-10-07)
+
+The fresh watchdog stage diagnostic completed as an independently verified refusal: one suspended original member before resume, two active members at the later pre-termination snapshot, then held-root exit76 and Job active0/empty after termination. Driver PID24148 joined94; supervisor PID19064, extra diagnostic PID6228, nonce `9d01dc77-e500-4df1-8452-dca7d535c0e1`. The extra member's image/token/birth and exact association time remain unknown. No PID was reopened/adopted. The gate still requires cumulative total1 and native02 remains unqualified, with no unchanged retry.
+
+Preserve native01/native02 reports, bundles, source freezes and wrapper freezes. Native02 report SHA256 `2784d7427e01fe0e5d3d0ff84e590bebf4fa43f1c0c62f0137365c3c4dc8eb0c`; bounded root/reviewer evidence `artifacts/dashboard-agent-interruption-2026-10-07/watchdog-native-diagnostic-v2.json` SHA256 `ecc688ff672c858b53b697ccf157882361bb94ac595d326cdee3c9f595838f9d`. V3 preparation built cleanly, passed 113 pure checks and validated all192 published files. No CWT, SQL, monitor/service/rights mutation or recovery/production admission was performed. Any next diagnostic needs changed frozen source, fresh pins/nonce, finite reviewed scope and the unchanged total-one gate. The broader goal remains active.
+
+
+### WinExe watchdog checkpoint (2026-10-07)
+
+One fresh project-only `Exe`→`WinExe` comparison completed with source `SupervisorJoinedOnly` and driver exit0, while the diagnostic wrapper remains qualified0. Pinned actual apphost AMD64/PE32+/Windows subsystem2, all192 fresh runtime files, bounded redirected output, 113 pure checks and both original process epochs were independently verified. Stable complete snapshots were 0/0 empty,1/1 sole original supervisor PID11108 before resume,1/1 sole11108 before termination,1/0 empty afterward; supervisor exited76. No extra member was observed in this case, and native02's extra member remains unidentified.
+
+Preserve native03 report `artifacts/dashboard-agent-interruption-2026-10-07/watchdog-native-03/guest-harmless-watchdog-20261007T132548624Z.json` SHA256 `1456e72527f9e0ad11dd349642db9b8889b7f08bf41fec8fe014a6948d5d6d6e` and reviewed `watchdog-winexe-diagnostic-v3.json` SHA256 `3f32ac9b43bf27248e4d10cd6082a4cfef9d786b2b4959519f84720d27b7cadd`. No CWT, SQL, monitor/service/rights changes or recovery admission followed. Prepare independently authenticated transfer of duplicate original worker/inner-Job handles before resume for later rehearsals; missing registration preserves evidence. Existing any-Job worker admission remains closed, and pre-return CWT containment/late-child cleanup is still unresolved. The broad goal remains active.
+
+
+### Two-phase external-registration contracts (2026-10-07)
+
+The separate pure registration module now preserves causal creation order: early scope/permit
+messages carry no worker PID or birth, but retain the approved image and primary-token SID.
+A separately parsed immutable returned-original-handle simulation context completes the worker
+epoch after creation; incoming receipts cannot supply their own expected worker. Closed schema2
+and producer `RegistrationPureSimulationV2` reject the earlier wire version. Head/full digests,
+model-specific creator/issuer/directions, distinct nonces, original handle continuity and worker
+birth between creation permission and return are checked. Prior AnyJob=true remains a sticky
+refusal, and equal process/Job slots in the same source table are refused.
+
+Root built the exact extracted seven-file v4 freeze with locked restore and repository
+analyzers: zero warnings/errors, **286 logical cases / 887 assertions passed**.
+These are separate pure checks, not additions to the 833-case tooling suite or native qualification.
+Manifest SHA256 `8e8bb82c1a921ea49b6afde372a37b8ebb3e42f1398a64ca9276ccffe95bd72a`; archive SHA256
+`57e1f45567a5f8bbb635db2657ad85613229498cf3ea6aea3977df712bdf28b1`. Source bytes remained unchanged after the build.
+Root record `artifacts/dashboard-agent-interruption-2026-10-07/registration-managed-validation-v4.json`
+SHA256 `881f875ebfb419be5e7c3ec0cb16d172e3fe811eaba089a5ccca62abe7758d93`; independent review is retained separately. Earlier freezes, failed initial
+build and v3's 210-case/620-assertion result remain preserved.
+
+No native bootstrap, actual duplicate custody, ACK/resume/recovery authority, SQL drain or
+startup-timeout qualification follows from parsed simulation facts; all authority/admission flags
+remain false and relaunch remains forbidden. The frozen credentialed factory still uses
+CreateProcessWithLogonW with ordinary STARTUPINFO; the reviewed current-API research records
+that AsUser/WithToken Job-list proposals need a distinct implementation and actual validation.
+Next implement authenticated original-handle bootstrap and bounded credential-free Job custody,
+then original-worker custody before resume. Actual two-root interruption/SQL drainage, standalone
+recovery, deployed CPU/Agent/dashboard qualification and pre-return containment remain open.
+The broad goal remains active; no native, credential, SQL, service or rights change occurred here.
+
+
+## 2026-10-07: actual authenticated empty-Job bootstrap checkpoint
+
+The isolated Stage A prototype is in
+`artifacts/dashboard-agent-interruption-2026-10-07/registration-bootstrap/`.
+It uses an explicitly listed, one-shot inherited read endpoint to bootstrap an original
+suspended Supervisor, authenticates both original process epochs and pipe peers, and
+verifies duplicated custody of a fresh empty Job before releasing duplicates and joining
+the original private scope. The Supervisor creates this empty inner Job; this is distinct
+from the forthcoming Observer-created WorkerJob custody boundary.
+
+The first native attempt is retired. Its original driver joined, but the old wrapper
+retained empty stdout without its exit code; an independently opened protected journal
+contains only the initial Prepared checkpoint. Its exact failure cause and scope cleanup
+remain unknown. Later success does not resolve this earlier attempt or authorize relaunch.
+
+Two concrete source defects were repaired in a new immutable V4 freeze: the closed refusal
+filter explicitly includes InvalidDataException, which is not an IOException subclass;
+Job verification enforces exact effective LimitFlags 0x2000 without requiring ignored,
+inactive storage to be zero. Every additional active limit/breakaway flag still refuses.
+Preparation stages are journaled inside the diagnostic bound try, unknown cleanup remains
+unknown, and stream failures preserve independently available bounded output and original
+exit status. These defects are not asserted to be the unobserved first attempt's cause.
+
+Root built the exact extracted 18-file V4 freeze with locked restore and repository
+analyzers: zero warnings/errors, **304 logical cases / 601 assertions passed**. The fresh
+published GUI executable independently passed those checks, validated all **192 files /
+80,684,833 bytes** of its runtime payload, and refused malformed read-only input with
+original exit 65, exact three-key refusal, 96 stdout bytes and zero stderr. Separate
+Windows PowerShell stream-evidence regressions passed **12 cases / 60 assertions** with
+zero processes/native cases. These suites are separate from the earlier 286/887 contract
+simulation and the 833-case tooling suite; no counts are added to native qualification.
+
+V4 source manifest SHA256 `358936c3b7986db8ec1a6a184feb7725ef4c0594269139d434805b69906a56b6`;
+source archive SHA256 `5119ce73779d3718cffa29b0031524adf5f66086100884a4e1bc202d8c23335c`.
+The independently reviewed native02 wrapper manifest SHA256 is
+`db23bd70dfe056aaf046e922b2502f3cd74925a5ca934d6b1ff10b9d9ded1b03`;
+payload manifest SHA256 `a09ae57c60c22f5ab9d1ca8abc1c26441ad2df0a31ddc49e6e87e196f3615d92`.
+
+One separately reviewed finite native02 diagnostic on Server2025Test completed with
+`registered_empty_job_only` / `CleanupJoined`: original driver 23424, born
+2026-10-07T16:44:02.8425109Z, exited 0; original Supervisor 21672, born
+2026-10-07T16:44:04.1017815Z, exited 0. The actual original-thread resume returned prior
+count 1, and the outer Job ended with total 1 / active 0. Its 1,785-byte closed raw result
+matches the materialized capture. Independently opened final-path and protected-ACL
+verification read back the 1,042-byte journal; SHA256
+`482ea17f929bd6b62e21bb006fe69ade57adbc96f82d684ff53e525192de7405` matches the native
+result and scope/epoch/cleanup fields. Launch nonce
+`2acb4fc2-69cd-4655-b910-deeac150d9cf` is retired; submission markers forbid replay.
+
+Root evidence `artifacts/dashboard-agent-interruption-2026-10-07/bootstrap-native02-diagnostic-v1.json`
+SHA256 `d31772a929ad85e91f8fccd73eaaf50386a31201da9e5ab6abd330c8df65db4d` retains the raw
+report, opened-journal readback, frozen package and review pins. This is one credential-free
+empty-Job mechanism observation, with native qualified cases still zero. No worker/CWT,
+SQL/SCM, recovery, native-creation timeout or production authority follows from it.
+
+Next work has started in the separate `registration-worker-custody/` prototype: the Observer
+creates and retains the WorkerJob and original suspended worker process/thread, installs
+only process-query/wait and Job-query/terminate/read-control duplicates into the held original
+Supervisor, independently re-pulls them against its originals, and resumes its original worker
+thread exactly once after verified custody. The first diagnostic remains credential-free;
+the existing credentialed factory/API and account rights are not changed by this checkpoint.
+Actual worker custody, pre-return containment, two-root interruption/coordinator SQL drainage,
+standalone recovery, genuine attached-invalid signature, deployed CPU/Agent/AG/dashboard
+qualification and final acceptance remain open. The broad goal remains active.
+
+
+## 2026-10-07: actual partial Observer-owned worker custody checkpoint
+
+The separate credential-free prototype is in
+`artifacts/dashboard-agent-interruption-2026-10-07/registration-worker-custody/`.
+The Observer reserves the immutable custody head before creation, retains its original
+suspended worker process/thread and separate fresh WorkerJob, and installs only noninheritable
+process query/wait and Job query/terminate/read-control duplicates into the original Supervisor.
+It authenticates the custody ACK, re-pulls the installed slots against its held originals,
+persists an acknowledged verified checkpoint and attempts its own original worker resume once.
+No thread is transferred. The harmless GUI worker waits 250ms and naturally exits.
+
+The V1 syntax-error build and V2 analyzer-error build remain preserved. The exact extracted
+22-file V3 freeze passed locked restore and repository analyzers with zero warnings/errors.
+Actual bootstrap checks passed **304 logical cases / 601 assertions**; independent worker
+checks passed **316 cases / 474 assertions**. The earlier 574 assertion estimate was a manual
+counting error, not an actual result. The fresh GUI publish independently matched both suites,
+validated **192 files / 80,849,727 bytes**, and refused malformed read-only input with original
+exit 65, exact three-key refusal and zero stderr. Windows PowerShell wrapper checks passed
+133 cases / 141 assertions and stream-evidence checks passed 12 / 60, with no native workers.
+These separate pure suites do not add to native qualification.
+
+V3 source manifest SHA256 `f8fcf14028845abbb0adfa3ba22a749e7a3ddbb68b956848658e81cf9cb37056`;
+archive SHA256 `c5d49a71f042c5924bd733d40b38f64af43bcadc7a2b178e744990d5f3779d21`.
+The reviewed 13-file wrapper manifest SHA256 is
+`ce4a61ed6d303756acc8c2e77c89102742ff20c6449daf342a17555f78ec0bdd`;
+payload manifest SHA256 `748e46fa55d3fa3756d1c197596cc3bbff866081f2330e81db9c92a0709d37a5`.
+The submission entry point durably reserves its one attempt before reading secure credentials;
+both prior reports and reservations prohibit replay. Optimized Python explicitly refuses.
+
+One separately reviewed finite native attempt on Server2025Test reached verified custody,
+checkpoint persistence and original worker resume with prior count 1. Original driver 23428,
+born 2026-10-07T17:45:03.9000666Z, exited 94; original Supervisor 24828, born
+2026-10-07T17:45:04.8706888Z, exited 87; original worker 11656, born
+2026-10-07T17:45:05.7424290Z, naturally exited 0. Both separately assigned private Jobs ended
+with total 1 / active 0, and both held original process exits and scoped cleanup were confirmed.
+
+Custody release was not acknowledged. The closed 58-key, 2,557-byte result reports
+`OriginalWorkerJoined` / `native_refused`, with `custodyReleased=false` and
+`cleanupConfirmed=true`. This is a partial mechanism observation, not a completed worker
+custody diagnostic. The exact Supervisor release-refusal cause remains unknown; the last
+Observer stage and internal exit 87 do not identify the failing Supervisor operation.
+
+Independent opened-final-path and protected-ACL inspection read back the 3,118-byte journal;
+SHA256 `b94bb2b1a72cad0ca4ca15b9df748544f48f92726bd134750d70c399d39ad2bf` matches the native
+result and both scope-bound process/job ledgers. Immutable custody-head SHA256 is
+`e03a1c3e751cc5558fd9ef2cc832abca99455103f58256c2c31baa0b0dac4b19`.
+Launch nonce `a35b83d8-a2ce-4e57-9f14-c6d92c0468f8` is retired; no replay is authorized.
+
+Root record `artifacts/dashboard-agent-interruption-2026-10-07/worker-custody-native01-diagnostic-v1.json`
+SHA256 `800b046fd0fc7f77a0885cf4b6aad4f45bf31edf0ec0512f1133ef91b781b91a` retains the raw
+capture, opened-journal readback and exact source/package/review/submission pins. Qualified
+native cases remain zero; no monitor account, CWT, SQL, SCM, recovery, hard creation timeout
+or production authority follows. Historical unknown scopes and their retired nonces remain
+unchanged. Next work must locate the release refusal using explicit operation evidence in
+a new candidate, preserving existing gates. Credentialed custody additionally requires distinct
+ordinary monitor token/profile/image/environment bindings; Administrator assumptions cannot be
+reused for SqlObserverCollector. Full two-root interruption/coordinator SQL drain, standalone
+recovery, attached-invalid signature, deployed CPU/Agent/AG/dashboard qualification and final
+acceptance remain open. The broad goal remains active.
+
+
+### Terminal exit provenance remains unknown
+
+The observed Supervisor exit 87 can also be produced by the Observer's existing
+`TerminateOwned` cleanup (`TerminateJobObject(..., 87)`). The partial result does not record
+whether that call was attempted or accepted. References above to a release refusal describe
+the incomplete protocol; they do not establish that the Supervisor entered its internal
+refusal handler. Both the failing operation and the exit's producer remain unknown.
+The new `registration-worker-observation/` candidate is adding authenticated terminal-operation
+evidence and explicit parent termination-attempt/result observations while retaining every
+existing custody, identity, Job and cleanup guard. No new native attempt has occurred here.
+
+
+### Authenticated post-exit image query refusal (2026-10-07)
+
+One distinct credential-free `registration-worker-observation/` attempt recorded an
+authenticated Supervisor terminal refusal at `EpochQueryFullProcessImageName`, category
+`win32`, native error 31, after the original worker exited naturally with code 0.
+The driver returned 94, Supervisor exit was 87, and custody release remained false.
+Both independently held Job ledgers ended at total 1 / active 0 with original exits and
+scoped cleanup confirmed. The original worker resumed once with prior count 1, after
+verified custody and a persisted checkpoint. The protected journal was independently
+opened with its final path and ACL verified; its 4,111 UTF-8 bytes hash to
+`99a8ab8fc7027168344d453e854c11e8635ddd6f7ccc3b1bb92732ddad0fa0e4`.
+Its terminal frame, process epochs and separate Job ledgers match the captured result.
+
+The Observer recorded Supervisor-job termination attempted and accepted as true; these
+report the native call outcome, not the producer of exit 87. That producer remains unknown.
+The earlier Stage B refusal cause also remains unknown. This new attempt did not reach
+the post-exit token or Job membership checks, so neither is inferred to pass or fail.
+Nonce `e65b14a4-712f-4bf6-bfca-f7af52f1dfd8` is retired and must not be replayed.
+Actual result: `artifacts/dashboard-agent-interruption-2026-10-07/worker-observation-native01-diagnostic-v1.json`
+(SHA-256 `fb0fe4061eb16064ca72f3e58a9a6341595b179d17b63b12411d72fb425d3eb4`).
+
+Preparation now targets a native lease captured while the original worker is alive,
+retaining verified process and token handles, followed by same-kernel-object, PID,
+creation-time, signal and exit-code validation after join. Historical live token evidence
+must not be promoted into current token authority. All live pre-resume checks, Job
+membership, ACL, flags, complete accounting/member lists and deadlines remain required.
+The new identity candidate has not yet been built or run. Completed custody diagnostics
+and qualified native cases remain zero; no monitor, credentialed worker, SQL or SCM action,
+recovery permission or production admission follows from this observation. The goal is active.
+
+
+### Retained worker identity and custody joined (2026-10-07)
+
+The distinct `registration-worker-identity/` candidate completed one harmless native
+custody diagnostic. Driver 25200, Supervisor 22992 and original worker 8224 all exited
+with code 0. The result reached `CleanupJoined` / `observer_worker_custody_joined`,
+with custody verified, checkpoint persisted, original resume prior counts 1,
+custody released, original exits confirmed and both Job ledgers at total 1 / active 0.
+Neither owned Job termination was attempted. The unchanged post-exit Job membership,
+ACL, exact flags, stable accounting and complete member-list guards passed in this case.
+
+The private native identity lease captures and retains verified live process/token
+handles before ACK4. After join it validates the same held kernel process object,
+PID, raw creation/exit FILETIME, signal and exit code; it does not requery an exited
+process's image or token. Existing live pre-resume checks and Job guards remain intact.
+Historical token evidence grants no present token authority or privilege-stability claim.
+Fresh source/archive/extracted verification covered 27 files; locked restore and build
+passed with zero warnings/errors. DLL and published GUI suites agreed at 304/601,
+316/474, 152/168 and 89/105 cases/assertions. Wrapper checks passed 307/415 and stream
+checks 12/60. A copied stale-pin stream refusal remains preserved separately; after
+alignment with the new frozen sources its rerun passed. These are pure-check counts.
+
+The independent protected-journal inspection verified final path, protected ACL and
+all 3,361 UTF-8 bytes (SHA-256 `e6ac2579aef5dc1962ad514f7a86ec4f5cb5fb31d786d8bd9e8a835b8ade47fc`).
+Its epochs, custody head, separate ledgers and no-termination observations match the
+duplicate-free 64-key / 2,800-byte raw result. Evidence record:
+`artifacts/dashboard-agent-interruption-2026-10-07/worker-identity-native01-diagnostic-v1.json`
+(SHA-256 `7b7e9ac8775d928f65a7f20589478005c70e0199aee7c876e34fca916fe02be1`).
+Nonce `ce20c077-f5ec-4329-bcf6-9884bdf338cd` is retired and must not be replayed.
+
+Completed harmless custody diagnostics are now one; qualified native cases remain zero.
+The wrapper's broad success/admission flags deliberately remain false. No monitor-account,
+CWT, SQL or SCM action occurred. The synchronous credentialed-creation timeout, real
+DBA/monitor two-root cleanup and both SQL-drain gates remain unqualified. Next preparation
+is a distinct harmless monitor-account candidate with separate worker SID/profile/image,
+payload/environment pins and memory-only credential transport. No rights fallback follows
+from this success, and prior refusal causes/exit provenance retain their recorded limits.
+The broader goal remains active.
+
+
+### Monitor credentialed creation refused; provenance remains limited (2026-10-07)
+
+The distinct Monitor preparation passed locked restore/build with zero warnings/errors.
+DLL and published GUI suites agreed at 304/601, 316/474, 152/168, 89/105 and 333/508
+cases/assertions. The frozen wrapper passed 392/544 diagnostic and 12/60 stream cases.
+Four actual original-stdin cases (empty, partial header, partial secret, withheld EOF)
+refused with exit 65 after 10,088 / 10,087 / 10,160 / 10,151 ms while stdin remained
+open. These checks establish those input observations, not CWT startup containment.
+The repaired decoder polls the original synchronous byte pipe under its deadline;
+it does not rely on cancellation interrupting an already blocked console read.
+Earlier source, failed analyzer build, helper refusal and review records are preserved.
+
+One separately reviewed guarded submission reserved its attempt before secure inputs.
+Driver 8912 joined with exit 94 and emitted a duplicate-free 70-key / 2,873-byte
+MonitorAccountCustodyDiagnostic. It reached CreatingOriginalWorker / native_refused.
+CWT entered and returned from 20:38:17.5363508Z to 20:38:17.5492026Z; no original
+Monitor process handle or epoch was reported. Monitor launch remains null/unknown,
+not an absence claim. No custody offer, verified checkpoint or Monitor resume occurred.
+The Monitor exit and worker Job total/active observations remain null; cleanup is false.
+Supervisor 25128 joined with exit 87 and its Job ledger was total 1 / active 0.
+Its Job termination was attempted and accepted, which does not identify the producer
+of exit 87. No authenticated Supervisor terminal diagnostic was observed.
+
+The native CWT return Boolean, failed-call error and observer exception provenance
+were not persisted by this candidate. The cause remains unknown. Independent current
+artifact inspection is retained in the evidence record. A separate read-only query
+found no Security 4625/4648 events in the call window expanded by two seconds; that
+does not prove credential acceptance or process absence. A final journal snapshot
+and supplemental events cannot reconstruct unrecorded syscall error provenance.
+The wrapper skipped explicit remote-session removal but helper exit may release it;
+durable retention of those remote leases is not proven. No missing proof is repaired
+by replaying, reopening a PID, relabeling the Supervisor or adopting a process.
+
+Evidence: artifacts/dashboard-agent-interruption-2026-10-07/monitor-custody-native01-diagnostic-v1.json
+(SHA-256 8cbb7c8b3482df2365a8329fcc6f91fc65a1534c7feeacb4ccc304945b4d9ece), independently reviewed at b010671b3c5f0b05fc911c6f939a92533440f049aba56da87dbd5b72e4b919d2.
+Nonce b982e80c-6d86-469a-b285-af3b7ff44524 is retired and must not be replayed.
+One Monitor CWT attempt entered/returned; qualified native Monitor cases remain zero.
+SQL/SCM, recovery and production admission stayed false. Existing account rights and
+ancestor ACLs were unchanged; only fresh protected payload scope files were created.
+Next work is managed preparation in a fresh observer-provenance source clone to retain
+the actual CWT return/error and typed private observer failure without secret text.
+No second native launch is implied. CWT hard timeout containment, original two-root
+Coordinator DBA/Monitor cleanup and both SQL drains remain unqualified. Goal active.
+
+
+### Monitor creation error captured without changing account rights (2026-10-07)
+
+The distinct observer-provenance source retains the actual credentialed-creation
+Boolean and failed-call error before further interop. Its private journal has a new
+schema4/kind and 38 keys; the public diagnostic remains schema3 with 70 keys.
+The 44-file source passed locked restore/build with zero warnings/errors. DLL and
+published GUI suites agreed at 304/601, 316/474, 152/168, 89/105 and 443/657
+cases/assertions. These are managed checks; the published payload contains 192 files.
+
+One guarded native attempt entered and returned CWT. Driver3184 joined with exit94;
+Supervisor9868 joined with exit87. The raw 70-key result contains 2,872 UTF-8 bytes.
+Independent protected readback verified the 5,085-byte private journal, public pin,
+canonical custody-head/scope hashes and all192 runtime files with held-path/ACL checks.
+The actual syscall Boolean is false and its immediately cached failed-call error is
+1385. The bound first Observer failure records NativeCwtCall / win32 / nativeError1385.
+[Microsoft defines 1385 as ERROR_LOGON_TYPE_NOT_GRANTED](https://learn.microsoft.com/en-us/windows/win32/debug/system-error-codes--1300-1699-).
+[Ordinary CreateProcessWithLogonW requires local interactive logon permission](https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-createprocesswithlogonw).
+The effective policy causing this refusal has not yet been independently inspected.
+
+Evidence: artifacts/dashboard-agent-interruption-2026-10-07/monitor-observer-provenance-native01-diagnostic-v1.json
+(SHA-256 9591ffa9db06df0f1fb8c3f0b44e627248ca7ac6518ef955c4396e4a493c5d62),
+independently reviewed at 873a3200d9d55ce5c2e5e82e65f9ae39f6d0700ecd21cc13e79334f8b5106a1e.
+Nonce19f82411-28fc-4120-8faa-4ad8961b1197 is retired. Monitor launch remains null,
+cleanup remains false, worker identity/counts are null, and the producer of Supervisor87
+remains unknown. This does not establish process absence, password correctness or cleanup.
+The earlier b982e80c-6d86-469a-b285-af3b7ff44524 case retains its unknown syscall cause.
+
+The preparer's outer UTF-8 BOM refusal and the first remote read-only validation refusal
+are preserved. A local Windows PowerShell probe reproduced the epoch clock rejection:
+an untyped format array selects the wrong TryParseExact overload. Explicit string[]
+formats passed both real public epochs without changing format/UTC requirements. A fresh
+reviewed reader then completed the protected readback; the old remote failure site itself
+was not recorded. No failure, source freeze or used wrapper was rewritten or replayed.
+
+The initial installer explicitly configured the Collector for service-only logon and
+denied interactive/remote-interactive logon. That historical intent is distinct from
+current LSA policy evidence. Next work reads the exact current allow/deny assignments;
+any service-compatible launch design needs separate preparation, review and qualification.
+Existing rights and ancestor ACLs remain unchanged. There are now two entered/returned
+Monitor CWT attempts and zero qualified native Monitor cases. SQL/SCM actions, recovery
+and production admission stay false. CWT startup hard containment, original DBA/Monitor
+two-root cleanup and both SQL drains remain unqualified. The broader goal is active.
+
+
+### Current service-only account policy verified (2026-10-07)
+
+A query-only LSA readback now verifies a direct SeDenyInteractiveLogonRight assignment
+to Collector SID S-1-5-21-2389219679-3887908296-627854502-1013. The full allow/deny
+SID lists and successful open/enumeration/free/close statuses survived remoting and
+independent review. This current snapshot agrees with the initial service-only installer;
+it does not prove the policy at either retired creation attempt or validate a password.
+The first reader's serialization loss is preserved as partial evidence.
+
+Evidence: artifacts/dashboard-agent-interruption-2026-10-07/monitor-logon-rights-readonly-observation-v2.json
+(SHA-256 7af006b0b1fd465cfb30f60c25113b6708ae89965e7920c8b4a2e3b148d2ecdb),
+independently reviewed at b489a2dba4ea8dc9b8f5fffce13aec81b2fbd747f9807c7b6e266551037b0093.
+Next-stage design V3 preserves the service-only policy and requires a distinct original
+suspended-process launch mechanism. Service allow/deny rights, current caller privileges
+and profile/desktop compatibility must be verified before mechanism selection or a new
+native case. No account rights or existing ACLs were changed; neither retired CWT case
+is replayable. Native Monitor qualification, recovery and production admission remain
+absent. Two-root cleanup and both SQL drains remain deferred; the broader goal is active.
+
+
+### Service token authenticated; native worker launch remains pending (2026-10-07)
+
+The current service allow list contains Collector SID1013 and the complete service deny
+list is empty. The current Administrator token holds enabled SeImpersonatePrivilege;
+SeAssignPrimaryTokenPrivilege is absent and SeIncreaseQuotaPrivilege is present but
+disabled. These are current prerequisites, not historical launch evidence. A distinct
+SERVICE/provider-zero LogonUserW attempt succeeded once with the updated credential:
+exact Collector SID1013, primary token, session zero, 13 queried groups and no
+Administrators SID. The token was explicitly closed and the native secret cleared.
+This validates that credential for that service logon; closing the token does not prove
+logon-session termination. No worker was created and the attempt nonce is retired.
+
+The conditional ServiceTokenWithTokenV1 adapter builds with zero warnings/errors and
+passes 102 pure checks / 117 assertions against the pinned DLL. Independent source
+review accepts original process/thread ownership, cached native outcomes and once-only
+resume semantics. No CreateProcessWithTokenW call has run. Future integration must
+enforce valid UTF-16/no-NUL credentials before entry, real desktop access, held runtime
+and registered-profile leases, durable nonce reservation and custody before resume.
+Startup containment, recovery authority and production admission remain unqualified.
+
+The minimal READ_CONTROL query enumerated ten station names, read three owner/DACL
+snapshots and closed their owned handles; seven opens were refused with error 5.
+Optional metadata/enumeration refusals remain separate from successful security reads.
+No effective Collector access follows from these partial ACL snapshots. A query-only
+inspection of the existing running Collector found SID1013/primary/session zero and
+AuthenticationId 0x1-f5b9e2cc, descriptively matching Service-0x1-f5b9e2cc$ in the earlier
+inventory. Its process/token query handles were closed. Different observation times
+do not prove continuous object identity. The existing service process/token supplies
+no original-launch, worker-custody or cleanup capability and is not borrowed for launch.
+
+Evidence and reviews are preserved under artifacts/dashboard-agent-interruption-2026-10-07:
+monitor-service-prerequisites-observation-v1.json; monitor-service-authentication-observation-v2.json;
+monitor-service-token-launch-adapter-source-review-v1.json;
+monitor-existing-station-security-observation-v3.json; and the running-Collector read-only snapshot.
+Next implementation evaluates a fresh private desktop or Collector-hosted launch path;
+no existing ACL, account right, privilege, service or SQL state was changed by these queries.
+The two-root cleanup, both SQL drains and broader qualification goal remain open.
+
+
+### Protected staging fixed; private station trial remains partial (2026-10-07)
+
+ServiceTokenWithTokenV2 now validates the same unmanaged credential buffer for UTF-16
+and embedded NUL before authentication. Its pinned DLL passes 115 pure cases / 143
+assertions; no native WithToken call has run. The private desktop lease source passes
+93 pure cases / 116 assertions. These source checks do not qualify native worker launch.
+
+The first setup wrapper refused at TransferredBundlePins with zero diagnostic starts.
+An independent current readback found correct transferred bytes but unprotected file
+ACLs that failed the exact protected-file gate; scope and runtime directory ACLs passed.
+That readback does not reconstruct the original exception or precise copy mutation.
+The fresh V2 wrapper passes 79 local assertions, transfers separate ingress files,
+pins both held contents, then creates explicit protected CREATE_NEW final files.
+
+The fresh VM trial verified all 194 runtime files / 80,431,091 bytes, flushed its guest
+reservation and started original diagnostic PID19540, which joined with exit95. The
+private station was created and its name/type/flags/security readback verified. Desktop
+enumeration returned FALSE with cached error0 and zero callbacks, so the owner refused
+before desktop creation. Empty inventory and the cause of that return remain unknown.
+Both original associations were restored and re-queried; the owned station close was
+acknowledged and wrapper file leases were disposed. This does not prove global object
+destruction, private desktop setup completion, Collector access or worker qualification.
+
+Both setup nonces are retired: 86d7125e-e030-4830-9ea1-1676c0d3f17a and
+160ab79c-3aa2-479a-ab20-b580427df15a. Used source, payloads and raw results remain
+immutable under artifacts/dashboard-agent-interruption-2026-10-07. Evidence records:
+monitor-private-desktop-staging-current-observation-v1.json and
+monitor-private-desktop-setup-partial-observation-v2.json, with independent reviews.
+Next work resolves the native enumeration/target freshness boundary on a distinct
+candidate, then integrates same-token access checks and original-thread desktop lifetime
+with custody before the sole worker resume. No Monitor worker, SQL, SCM, account-right,
+privilege or existing-ACL change occurred in these trials. Recovery and production
+admission remain unqualified; two-root cleanup and both SQL drains remain required.

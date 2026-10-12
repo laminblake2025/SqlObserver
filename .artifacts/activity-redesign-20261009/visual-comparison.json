@@ -1,0 +1,377 @@
+{
+  "schemaVersion": 1,
+  "method": "Manual inspection of rendered screenshots against the supplied illustrative references; browser assertions for geometry, keyboard, overflow and WCAG A/AA checks.",
+  "referenceData": "Illustrative; never substituted for native evidence",
+  "references": [
+    {
+      "path": ".artifacts/activity-redesign-20261009/references/all-session-desktop.png",
+      "bytes": 1596443,
+      "sha256": "90207c6705f6ad07a607e92a34e8de2b4f8a2d3a341cd073d70074b512e62303"
+    },
+    {
+      "path": ".artifacts/activity-redesign-20261009/references/selected-blocking-desktop.png",
+      "bytes": 1701359,
+      "sha256": "2cfe6bdd514833edd86a59abdb78ca26484ec8069a2346813c835e9f184704a0"
+    },
+    {
+      "path": ".artifacts/activity-redesign-20261009/references/mobile-inspection.png",
+      "bytes": 1551245,
+      "sha256": "ed4971df513292f0928d253e6dbd4afba417d2a19b3a61c4b9ec0e666b05e3d6"
+    }
+  ],
+  "comparisons": [
+    {
+      "viewport": {
+        "width": 1600,
+        "height": 1000
+      },
+      "allSessions": {
+        "path": ".artifacts/activity-redesign-20261009/screenshots/all-1600.png",
+        "bytes": 138339,
+        "sha256": "d177aa9f6a95dc198c4c3f55136cc41187252ba7d2e5511f2f4e14be6a8efeb9"
+      },
+      "selectedSession": {
+        "path": ".artifacts/activity-redesign-20261009/screenshots/selected-1600.png",
+        "bytes": 164615,
+        "sha256": "5f4c4596cbac1aee5d5f913cb6161c73490ad0267222eea6237bbbbbbffbe580"
+      },
+      "nativeBlocking": {
+        "path": ".artifacts/activity-redesign-20261009/native/blocking-1600.png",
+        "bytes": 157581,
+        "sha256": "a28845c8128888cf23e1d0c3aea4566e2ca33713cbdf55bd3a2216295ca780d9"
+      },
+      "geometry": [
+        {
+          "class": "topbar",
+          "x": 230,
+          "y": 0,
+          "width": 1370,
+          "height": 61,
+          "minWidth": "0px"
+        },
+        {
+          "class": "page-heading",
+          "x": 254,
+          "y": 81,
+          "width": 1322,
+          "height": 70,
+          "minWidth": "0px"
+        },
+        {
+          "class": "server-navigation",
+          "x": 254,
+          "y": 159,
+          "width": 1322,
+          "height": 41,
+          "minWidth": "0px"
+        },
+        {
+          "class": "activity-capture-heading",
+          "x": 1316.28125,
+          "y": 212,
+          "width": 259.71875,
+          "height": 36,
+          "minWidth": "0px"
+        },
+        {
+          "class": "activity-capture-status",
+          "x": 254,
+          "y": 220,
+          "width": 1050.28125,
+          "height": 16,
+          "minWidth": "0px"
+        },
+        {
+          "class": "activity-summary-grid",
+          "x": 254,
+          "y": 256,
+          "width": 1322,
+          "height": 100.59375,
+          "minWidth": "0px"
+        },
+        {
+          "class": "activity-quick-filters",
+          "x": 267,
+          "y": 416.984375,
+          "width": 1296,
+          "height": 40,
+          "minWidth": "0px"
+        },
+        {
+          "class": "activity-list-toolbar",
+          "x": 267,
+          "y": 456.984375,
+          "width": 1296,
+          "height": 34,
+          "minWidth": "0px"
+        },
+        {
+          "class": "activity-session-table",
+          "x": 255,
+          "y": 523.484375,
+          "width": 1296,
+          "height": 2685,
+          "minWidth": "700px"
+        },
+        {
+          "class": "activity-session-row",
+          "x": 255,
+          "y": 553.484375,
+          "width": 1296,
+          "height": 52,
+          "minWidth": "0px"
+        },
+        {
+          "class": "activity-inspect-cell",
+          "x": 1408.40625,
+          "y": 553.484375,
+          "width": 142.59375,
+          "height": 52,
+          "minWidth": "0px"
+        }
+      ]
+    },
+    {
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "allSessions": {
+        "path": ".artifacts/activity-redesign-20261009/screenshots/all-1440.png",
+        "bytes": 118556,
+        "sha256": "f6f8f5c9703ac5fd5a0a4b00cca84324ea183beda8355f3bd1b5309df6074f13"
+      },
+      "selectedSession": {
+        "path": ".artifacts/activity-redesign-20261009/screenshots/selected-1440.png",
+        "bytes": 139960,
+        "sha256": "0dc37058526a032ba79ee0698a1047f994298ae829157f682434acb5d1f7e0c2"
+      },
+      "nativeBlocking": {
+        "path": ".artifacts/activity-redesign-20261009/native/blocking-1440.png",
+        "bytes": 136724,
+        "sha256": "8f45c317e24bb42f4fa7737e4d028b41c20ece39ca9c15d579031c4b6fd6d03e"
+      },
+      "geometry": [
+        {
+          "class": "topbar",
+          "x": 230,
+          "y": 0,
+          "width": 1210,
+          "height": 61,
+          "minWidth": "0px"
+        },
+        {
+          "class": "page-heading",
+          "x": 254,
+          "y": 81,
+          "width": 1162,
+          "height": 70,
+          "minWidth": "0px"
+        },
+        {
+          "class": "server-navigation",
+          "x": 254,
+          "y": 159,
+          "width": 1162,
+          "height": 41,
+          "minWidth": "0px"
+        },
+        {
+          "class": "activity-capture-heading",
+          "x": 1156.28125,
+          "y": 212,
+          "width": 259.71875,
+          "height": 36,
+          "minWidth": "0px"
+        },
+        {
+          "class": "activity-capture-status",
+          "x": 254,
+          "y": 220,
+          "width": 890.28125,
+          "height": 16,
+          "minWidth": "0px"
+        },
+        {
+          "class": "activity-summary-grid",
+          "x": 254,
+          "y": 256,
+          "width": 1162,
+          "height": 100.59375,
+          "minWidth": "0px"
+        },
+        {
+          "class": "activity-quick-filters",
+          "x": 267,
+          "y": 416.984375,
+          "width": 1136,
+          "height": 40,
+          "minWidth": "0px"
+        },
+        {
+          "class": "activity-list-toolbar",
+          "x": 267,
+          "y": 456.984375,
+          "width": 1136,
+          "height": 34,
+          "minWidth": "0px"
+        },
+        {
+          "class": "activity-session-table",
+          "x": 255,
+          "y": 523.484375,
+          "width": 1136,
+          "height": 2685,
+          "minWidth": "700px"
+        },
+        {
+          "class": "activity-session-row",
+          "x": 255,
+          "y": 553.484375,
+          "width": 1136,
+          "height": 52,
+          "minWidth": "0px"
+        },
+        {
+          "class": "activity-inspect-cell",
+          "x": 1265.984375,
+          "y": 553.484375,
+          "width": 125.015625,
+          "height": 52,
+          "minWidth": "0px"
+        }
+      ]
+    },
+    {
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "allSessions": {
+        "path": ".artifacts/activity-redesign-20261009/screenshots/all-390.png",
+        "bytes": 47323,
+        "sha256": "8010e4545203cf8559f132bb242edc5dc6c3612e10d46bc8cae0246825c3e103"
+      },
+      "selectedSession": {
+        "path": ".artifacts/activity-redesign-20261009/screenshots/selected-390.png",
+        "bytes": 46942,
+        "sha256": "760fca54d7812d38c234b63cc04e5656e8e55d0bd7d5a381e1c31ff48aa48b3a"
+      },
+      "nativeBlocking": {
+        "path": ".artifacts/activity-redesign-20261009/native/blocking-390.png",
+        "bytes": 50477,
+        "sha256": "2364c7590838c3d25c077727b7a7e845379cd3390753aabea9c3690440983893"
+      },
+      "geometry": [
+        {
+          "class": "topbar",
+          "x": 0,
+          "y": 69,
+          "width": 390,
+          "height": 113,
+          "minWidth": "0px"
+        },
+        {
+          "class": "page-heading",
+          "x": 16,
+          "y": 198,
+          "width": 358,
+          "height": 92,
+          "minWidth": "0px"
+        },
+        {
+          "class": "server-navigation",
+          "x": 16,
+          "y": 300,
+          "width": 358,
+          "height": 38,
+          "minWidth": "0px"
+        },
+        {
+          "class": "activity-capture-heading",
+          "x": 16,
+          "y": 350,
+          "width": 358,
+          "height": 40,
+          "minWidth": "0px"
+        },
+        {
+          "class": "activity-capture-status",
+          "x": 16,
+          "y": 398,
+          "width": 358,
+          "height": 40,
+          "minWidth": "0px"
+        },
+        {
+          "class": "activity-summary-grid",
+          "x": 16,
+          "y": 450,
+          "width": 358,
+          "height": 139,
+          "minWidth": "0px"
+        },
+        {
+          "class": "activity-quick-filters",
+          "x": 27,
+          "y": 647.390625,
+          "width": 336,
+          "height": 50,
+          "minWidth": "0px"
+        },
+        {
+          "class": "activity-list-toolbar",
+          "x": 27,
+          "y": 697.390625,
+          "width": 336,
+          "height": 40,
+          "minWidth": "0px"
+        },
+        {
+          "class": "activity-session-table",
+          "x": 27,
+          "y": 769.890625,
+          "width": 336,
+          "height": 8759.6875,
+          "minWidth": "0px"
+        },
+        {
+          "class": "activity-session-row",
+          "x": 27,
+          "y": 769.890625,
+          "width": 336,
+          "height": 166.59375,
+          "minWidth": "0px"
+        },
+        {
+          "class": "activity-inspect-cell",
+          "x": 287.984375,
+          "y": 780.890625,
+          "width": 64.015625,
+          "height": 44,
+          "minWidth": "auto"
+        }
+      ]
+    }
+  ],
+  "mobileInspectionDetail": {
+    "path": ".artifacts/activity-redesign-20261009/screenshots/inspection-390.png",
+    "bytes": 30485,
+    "sha256": "c86879835abc194ae8e6eed5c0868ab72b044a75238ad06622a50cef16b5c169"
+  },
+  "matched": [
+    "Navy surfaces, teal actions, thin borders and compact type",
+    "230px desktop navigation and 24px workspace padding",
+    "Four clickable distinct-session summaries above one problems-first list",
+    "Six session columns with expandable exact requests",
+    "Desktop side inspector and mobile cards with inline inspection",
+    "Captured blocking graph beside the selected session",
+    "No empty graph or details surface before selection"
+  ],
+  "deliberateDifferences": [
+    "Coverage, capture controls and existing investigation access remain visible.",
+    "Long native names wrap to keep the inspection action in view.",
+    "Workload ordering follows measured threshold exceedance, rather than illustrative row order.",
+    "Missing rates, context and unresolved evidence stay explicit."
+  ]
+}

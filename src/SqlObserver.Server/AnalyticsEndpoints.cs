@@ -2,7 +2,9 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Globalization;
 using System.Security.Cryptography;
+using Microsoft.Net.Http.Headers;
 using SqlObserver.Application.Ports;
+using SqlObserver.Application.Services;
 using SqlObserver.Domain.Analytics;
 using SqlObserver.Domain.Authorization;
 using SqlObserver.Domain.Retention;
@@ -23,7 +25,16 @@ public static class AnalyticsEndpoints
     private static readonly JsonSerializerOptions MutationJsonOptions = new(JsonSerializerDefaults.Web) { UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow };
     private static readonly HashSet<string> RetentionDataClasses = new(StringComparer.Ordinal)
     {
-        "m10_host_metrics", "m10_replication", "m10_rollups", "m10_evidence"
+        "raw_metric_samples", "diagnostic_events",
+        "m5_activity", "m5_requests", "m5_waits", "m5_blocking",
+        "m9_backup_status", "m9_agent_history", "m9_agent_occurrences",
+        "m9_ag_replicas", "m9_ag_databases", "m9_tempdb",
+        "m9_ag_replica_evidence", "m9_ag_database_evidence",
+        "m9_backup_evidence", "m6_deadlock_read_receipts",
+        "m10_host_metrics", "m10_replication", "m10_rollups", "m10_evidence",
+        "sql_volume_capacity", "m7_group_watermarks", "m7_group_deltas",
+        "m7_query_performance", "collection_run_original_copy", "collection_run_canonical", "sql_metric_baselines",
+        "server_lifecycle_receipts", "server_lifecycle_events"
     };
     private static readonly HashSet<string> MutationReceiptStates = new(StringComparer.Ordinal)
     {
@@ -37,6 +48,7 @@ public static class AnalyticsEndpoints
         targets.MapGet("/rollups", RollupsAsync);
         targets.MapGet("/compare", CompareAsync);
         targets.MapGet("/baselines", BaselinesAsync);
+        targets.MapGet("/sql-baselines", SqlBaselinesAsync);
         targets.MapGet("/forecasts", ForecastsAsync);
         targets.MapGet("/jobs", JobsAsync);
         targets.MapGet("/backfill", BackfillAsync);
@@ -112,6 +124,22 @@ public static class AnalyticsEndpoints
         try { if (fromUtc.HasValue != toUtc.HasValue) return Results.BadRequest(); if (limit is < 1 or > 200) return Results.BadRequest(); DateTimeOffset to = toUtc ?? DateTimeOffset.UtcNow, from = fromUtc ?? to.AddDays(-31); if (!ValidWindow(from, to, TimeSpan.FromDays(31))) return Results.BadRequest(); var target = new MonitoredInstanceId(instanceId); AuthorizationContext auth = resolver.Resolve(context.User); if (!CanReadTarget(auth, target)) return Results.Forbid(); var rows = await repository.ReadBaselinesAsync(new AnalyticsQueryRequest(target, metricKey, from, to, limit, RepositoryTimeout), cancellationToken).ConfigureAwait(false); return Bounded(new { targetId = instanceId, metricKey, fromUtc = from, toUtc = to, items = rows, state = rows.Count == 0 ? "no_data" : rows.Any(x => x.VisibilityState == "unsupported") ? "unsupported" : rows.Any(x => x.VisibilityState != "complete" || x.Confidence < .5) ? "partial" : "complete" }); }
         catch (UnauthorizedAccessException) { return Results.Forbid(); } catch (ArgumentException) { return Results.BadRequest(); } catch (TimeoutException) { return Results.StatusCode(StatusCodes.Status504GatewayTimeout); } catch { return Results.StatusCode(StatusCodes.Status503ServiceUnavailable); }
     }
+    private static async Task<IResult> SqlBaselinesAsync(HttpContext context, Guid instanceId, SqlMetricBaselineQueryService service,
+        WindowsGroupRoleResolver resolver, string metricKey, long targetRevision, DateTimeOffset fromUtc, DateTimeOffset toUtc,
+        int catalogVersion = 2, long generation = 1, DateTimeOffset? snapshotUtc = null, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var request = new AnalyticsQueryRequest(new MonitoredInstanceId(instanceId), metricKey, fromUtc, toUtc, 168,
+                RepositoryTimeout, new ObservationTargetRevision(targetRevision), snapshotUtc);
+            return Bounded(await service.GetAsync(resolver.Resolve(context.User), request, catalogVersion, generation, cancellationToken).ConfigureAwait(false));
+        }
+        catch (UnauthorizedAccessException) { return Results.Forbid(); }
+        catch (ArgumentException) { return Results.BadRequest(); }
+        catch (TimeoutException) { return Results.StatusCode(StatusCodes.Status504GatewayTimeout); }
+        catch { return Results.StatusCode(StatusCodes.Status503ServiceUnavailable); }
+    }
+
     private static async Task<IResult> ForecastsAsync(HttpContext context, Guid instanceId, IAnalyticsRepositoryPort repository, WindowsGroupRoleResolver resolver, string metricKey, string? dimensionsSha256 = null, string? volumeFingerprint = null, int horizonDays = 30, CancellationToken cancellationToken = default)
     {
         try { if (horizonDays is < 1 or > 366 || dimensionsSha256 is not null && (dimensionsSha256.Length != 64 || !dimensionsSha256.All(Uri.IsHexDigit)) || volumeFingerprint is not null && (volumeFingerprint.Length is 0 or > 256 || volumeFingerprint.Any(char.IsControl))) return Results.BadRequest(); var target = new MonitoredInstanceId(instanceId); AuthorizationContext auth = resolver.Resolve(context.User); if (!CanReadTarget(auth, target)) return Results.Forbid(); IReadOnlyDictionary<string, string>? dimensions = volumeFingerprint is null ? null : new Dictionary<string, string>(StringComparer.Ordinal) { ["volume"] = volumeFingerprint }; string? effectiveHash = dimensions is null ? dimensionsSha256 : CanonicalDimensions.Sha256(dimensions); var request = new AnalyticsQueryRequest(target, metricKey, DateTimeOffset.UtcNow.AddDays(-31), DateTimeOffset.UtcNow, 200, RepositoryTimeout, DimensionsSha256: effectiveHash, Dimensions: dimensions); var rows = await repository.ReadForecastsAsync(request, TimeSpan.FromDays(horizonDays), cancellationToken).ConfigureAwait(false); return Bounded(new { targetId = instanceId, metricKey, dimensionsSha256 = effectiveHash, horizonDays, items = rows, state = rows.Count == 0 ? "no_data" : rows.Any(x => x.VisibilityState == "unsupported") ? "unsupported" : rows.Any(x => x.VisibilityState != "complete" || x.Confidence < .5) ? "partial" : "complete" }); }
@@ -136,13 +164,69 @@ public static class AnalyticsEndpoints
         catch (UnauthorizedAccessException) { return Results.Forbid(); } catch (KeyNotFoundException) { return Results.NotFound(); } catch (ArgumentException) { return Results.BadRequest(); } catch (InvalidOperationException) { return Results.Conflict(); } catch (TimeoutException) { return Results.StatusCode(StatusCodes.Status504GatewayTimeout); } catch { return Results.StatusCode(StatusCodes.Status503ServiceUnavailable); }
     }
     private static async Task<IResult> BindHostAsync(HttpContext context, Guid instanceId, IAnalyticsSurfaceRepositoryPort repository, WindowsGroupRoleResolver resolver, IdentityFingerprintKey fingerprintKey, long expectedRevision = 0, Guid? operationId = null, CancellationToken cancellationToken = default)
-    { try { AuthorizationContext auth = resolver.Resolve(context.User); var target = new MonitoredInstanceId(instanceId); if (!auth.CanAccess(ApplicationRole.TargetAdministrator, target)) return Results.Forbid(); using JsonDocument document = await ReadBoundedJsonAsync(context, cancellationToken).ConfigureAwait(false); HostBindingBody body = ParseHostBinding(document.RootElement, instanceId, expectedRevision, operationId, fingerprintKey); JsonElement profile = body.Payload.GetProperty("profile"); byte[] computed = MutationDigestV1.HostBinding(instanceId, body.HostId, body.HostName, body.IdentityFingerprint, body.BindingRevision, body.ProfileRevision, body.ExpectedRevision, profile, body.OperationId, auth.ActorSid.Value, MutationDigestV1.Scope(auth.GetScopeForRoles(new[] { ApplicationRole.TargetAdministrator })), body.CorrelationId, body.ChangeReason); VerifyDigest(body.RequestDigest, computed); AnalyticsMutationReceipt receipt = ValidateReceipt(await repository.BindHostAsync(new HostBindingMutationRequest(instanceId, body.Payload, body.ExpectedRevision, body.OperationId, computed, auth.ActorSid.Value, body.CorrelationId, body.ChangeReason), cancellationToken).ConfigureAwait(false)); context.Response.Headers["X-Correlation-ID"] = body.CorrelationId.ToString("D"); return Results.Ok(receipt); } catch (InvalidOperationException) { return Results.Conflict(); } catch (UnauthorizedAccessException) { return Results.Forbid(); } catch (ArgumentException) { return Results.BadRequest(); } catch (JsonException) { return Results.BadRequest(); } catch { return Results.StatusCode(StatusCodes.Status503ServiceUnavailable); } }
+    { try { AuthorizationContext auth = resolver.Resolve(context.User); var target = new MonitoredInstanceId(instanceId); if (!auth.CanAccess(ApplicationRole.TargetAdministrator, target)) return Results.Forbid(); using JsonDocument document = await ReadBoundedJsonAsync(context, cancellationToken).ConfigureAwait(false); HostBindingBody body = ParseHostBinding(document.RootElement, instanceId, expectedRevision, operationId, fingerprintKey); JsonElement profile = body.Payload.GetProperty("profile"); byte[] computed = MutationDigestV1.HostBinding(instanceId, body.HostId, body.HostName, body.IdentityFingerprint, body.BindingRevision, body.ProfileRevision, body.ExpectedRevision, profile, body.OperationId, auth.ActorSid.Value, MutationDigestV1.Scope(auth.GetScopeForRoles(new[] { ApplicationRole.TargetAdministrator })), body.CorrelationId, body.ChangeReason); VerifyDigest(body.RequestDigest, computed); AnalyticsMutationReceipt receipt = ValidateReceipt(await repository.BindHostAsync(new HostBindingMutationRequest(instanceId, body.Payload, body.ExpectedRevision, body.OperationId, computed, auth.ActorSid.Value, body.CorrelationId, body.ChangeReason), cancellationToken).ConfigureAwait(false)); context.Response.Headers["X-Correlation-ID"] = body.CorrelationId.ToString("D"); return Results.Ok(receipt); } catch (UnsupportedMutationMediaTypeException) { return Results.StatusCode(StatusCodes.Status415UnsupportedMediaType); } catch (InvalidOperationException) { return Results.Conflict(); } catch (UnauthorizedAccessException) { return Results.Forbid(); } catch (ArgumentException) { return Results.BadRequest(); } catch (JsonException) { return Results.BadRequest(); } catch { return Results.StatusCode(StatusCodes.Status503ServiceUnavailable); } }
     private static async Task<IResult> StartBackfillAsync(HttpContext context, Guid instanceId, IAnalyticsSurfaceRepositoryPort repository, WindowsGroupRoleResolver resolver, DateTimeOffset? fromUtc = null, DateTimeOffset? toUtc = null, string? metricKey = null, long? expectedRevision = null, CancellationToken cancellationToken = default)
-    { try { AuthorizationContext auth = resolver.Resolve(context.User); var target = new MonitoredInstanceId(instanceId); if (!auth.CanAccess(ApplicationRole.TargetAdministrator, target)) return Results.Forbid(); using JsonDocument document = await ReadBoundedJsonAsync(context, cancellationToken).ConfigureAwait(false); BackfillBody body = ParseBackfill(document.RootElement, instanceId, fromUtc, toUtc, metricKey, expectedRevision); byte[] computed = MutationDigestV1.Backfill(instanceId, body.FromUtc, body.ToUtc, body.MetricKey, body.ExpectedRevision, body.OperationId, auth.ActorSid.Value, MutationDigestV1.Scope(auth.GetScopeForRoles(new[] { ApplicationRole.TargetAdministrator })), body.CorrelationId, body.ChangeReason); VerifyDigest(body.RequestDigest, computed); AnalyticsMutationReceipt receipt = ValidateReceipt(await repository.StartBackfillAsync(new BackfillMutationRequest(instanceId, body.FromUtc, body.ToUtc, body.MetricKey, body.ExpectedRevision, body.OperationId, computed, auth.ActorSid.Value, body.CorrelationId, body.ChangeReason), cancellationToken).ConfigureAwait(false)); context.Response.Headers["X-Correlation-ID"] = body.CorrelationId.ToString("D"); return Results.Accepted($"/api/v1/observation-targets/{instanceId:D}/analytics/jobs", receipt); } catch (InvalidOperationException) { return Results.Conflict(); } catch (UnauthorizedAccessException) { return Results.Forbid(); } catch (ArgumentException) { return Results.BadRequest(); } catch (JsonException) { return Results.BadRequest(); } catch (TimeoutException) { return Results.StatusCode(StatusCodes.Status504GatewayTimeout); } catch { return Results.StatusCode(StatusCodes.Status503ServiceUnavailable); } }
+    { try { AuthorizationContext auth = resolver.Resolve(context.User); var target = new MonitoredInstanceId(instanceId); if (!auth.CanAccess(ApplicationRole.TargetAdministrator, target)) return Results.Forbid(); using JsonDocument document = await ReadBoundedJsonAsync(context, cancellationToken).ConfigureAwait(false); BackfillBody body = ParseBackfill(document.RootElement, instanceId, fromUtc, toUtc, metricKey, expectedRevision); byte[] computed = MutationDigestV1.Backfill(instanceId, body.FromUtc, body.ToUtc, body.MetricKey, body.ExpectedRevision, body.OperationId, auth.ActorSid.Value, MutationDigestV1.Scope(auth.GetScopeForRoles(new[] { ApplicationRole.TargetAdministrator })), body.CorrelationId, body.ChangeReason); VerifyDigest(body.RequestDigest, computed); AnalyticsMutationReceipt receipt = ValidateReceipt(await repository.StartBackfillAsync(new BackfillMutationRequest(instanceId, body.FromUtc, body.ToUtc, body.MetricKey, body.ExpectedRevision, body.OperationId, computed, auth.ActorSid.Value, body.CorrelationId, body.ChangeReason), cancellationToken).ConfigureAwait(false)); context.Response.Headers["X-Correlation-ID"] = body.CorrelationId.ToString("D"); return Results.Accepted($"/api/v1/observation-targets/{instanceId:D}/analytics/jobs", receipt); } catch (UnsupportedMutationMediaTypeException) { return Results.StatusCode(StatusCodes.Status415UnsupportedMediaType); } catch (InvalidOperationException) { return Results.Conflict(); } catch (UnauthorizedAccessException) { return Results.Forbid(); } catch (ArgumentException) { return Results.BadRequest(); } catch (JsonException) { return Results.BadRequest(); } catch (TimeoutException) { return Results.StatusCode(StatusCodes.Status504GatewayTimeout); } catch { return Results.StatusCode(StatusCodes.Status503ServiceUnavailable); } }
     private static async Task<IResult> RecordAttestationAsync(HttpContext context, IAnalyticsSurfaceRepositoryPort repository, WindowsGroupRoleResolver resolver, CancellationToken cancellationToken = default)
-    { try { AuthorizationContext auth = resolver.Resolve(context.User); if (!auth.HasRoleForAllTargets(ApplicationRole.SecurityAdministrator)) return Results.Forbid(); using JsonDocument document = await ReadBoundedJsonAsync(context, cancellationToken).ConfigureAwait(false); (JsonElement Payload, Guid OperationId, Guid CorrelationId, string ChangeReason, string? RequestDigest) = ParseAttestation(document.RootElement); JsonElement root = Payload; byte[] computed = MutationDigestV1.Attestation(OperationId, RequiredText(root, "digest", 64), RequiredText(root, "backupSetReference", 512), RequiredText(root, "attestedBy", 256), DateTimeOffset.Parse(root.GetProperty("expiresAtUtc").GetString()!, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind), auth.ActorSid.Value, "all", CorrelationId, ChangeReason); if (RequestDigest is not null) VerifyDigest(RequestDigest, computed); AnalyticsMutationReceipt receipt = ValidateReceipt(await repository.RecordAttestationAsync(new AttestationMutationRequest(Payload, OperationId, auth.ActorSid.Value, CorrelationId, ChangeReason, computed), cancellationToken).ConfigureAwait(false)); context.Response.Headers["X-Correlation-ID"] = CorrelationId.ToString("D"); return Results.Ok(receipt); } catch (InvalidOperationException) { return Results.Conflict(); } catch (UnauthorizedAccessException) { return Results.Forbid(); } catch (ArgumentException) { return Results.BadRequest(); } catch (JsonException) { return Results.BadRequest(); } catch { return Results.StatusCode(StatusCodes.Status503ServiceUnavailable); } }
+    {
+        try
+        {
+            AuthorizationContext auth = resolver.Resolve(context.User);
+            if (!auth.HasRoleForAllTargets(ApplicationRole.SecurityAdministrator)) return Results.Forbid();
+            using JsonDocument document = await ReadBoundedJsonAsync(context, cancellationToken).ConfigureAwait(false);
+            (JsonElement payload, Guid operationId, Guid correlationId, string changeReason, string requestDigest) =
+                ParseAttestation(document.RootElement);
+            byte[] computed = MutationDigestV1.Attestation(
+                operationId,
+                RequiredText(payload, "digest", 64),
+                RequiredText(payload, "backupSetReference", 512),
+                RequiredText(payload, "attestedBy", 256),
+                DateTimeOffset.Parse(payload.GetProperty("expiresAtUtc").GetString()!, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind),
+                auth.ActorSid.Value, "all", correlationId, changeReason);
+            VerifyDigest(requestDigest, computed);
+            AnalyticsMutationReceipt receipt = ValidateReceipt(await repository.RecordAttestationAsync(
+                new AttestationMutationRequest(payload, operationId, auth.ActorSid.Value, correlationId, changeReason, computed),
+                cancellationToken).ConfigureAwait(false));
+            context.Response.Headers["X-Correlation-ID"] = correlationId.ToString("D");
+            return Results.Ok(receipt);
+        }
+        catch (UnsupportedMutationMediaTypeException) { return Results.StatusCode(StatusCodes.Status415UnsupportedMediaType); }
+        catch (InvalidOperationException) { return Results.Conflict(); }
+        catch (UnauthorizedAccessException) { return Results.Forbid(); }
+        catch (ArgumentException) { return Results.BadRequest(); }
+        catch (JsonException) { return Results.BadRequest(); }
+        catch { return Results.StatusCode(StatusCodes.Status503ServiceUnavailable); }
+    }
     private static async Task<JsonDocument> ReadBoundedJsonAsync(HttpContext context, CancellationToken cancellationToken)
-    { if (context.Request.ContentLength is > MaxMutationBytes) throw new ArgumentException("Mutation body is too large."); using var buffer = new MemoryStream(); byte[] chunk = new byte[4096]; int read; while ((read = await context.Request.Body.ReadAsync(chunk, cancellationToken).ConfigureAwait(false)) > 0) { if (buffer.Length + read > MaxMutationBytes) throw new ArgumentException("Mutation body is too large."); buffer.Write(chunk, 0, read); } JsonDocument result = JsonDocument.Parse(buffer.ToArray()); if (result.RootElement.ValueKind != JsonValueKind.Object) { result.Dispose(); throw new ArgumentException("Mutation body must be a JSON object."); } return result; }
+    {
+        if (!MediaTypeHeaderValue.TryParse(context.Request.ContentType, out MediaTypeHeaderValue? contentType)
+            || !contentType.MediaType.Equals("application/json", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new UnsupportedMutationMediaTypeException();
+        }
+
+        if (context.Request.ContentLength is > MaxMutationBytes)
+            throw new ArgumentException("Mutation body is too large.");
+        using var buffer = new MemoryStream();
+        byte[] chunk = new byte[4096];
+        int read;
+        while ((read = await context.Request.Body.ReadAsync(chunk, cancellationToken).ConfigureAwait(false)) > 0)
+        {
+            if (buffer.Length + read > MaxMutationBytes)
+                throw new ArgumentException("Mutation body is too large.");
+            buffer.Write(chunk, 0, read);
+        }
+
+        JsonDocument result = JsonDocument.Parse(buffer.ToArray());
+        if (result.RootElement.ValueKind != JsonValueKind.Object)
+        {
+            result.Dispose();
+            throw new ArgumentException("Mutation body must be a JSON object.");
+        }
+        return result;
+    }
+
+    private sealed class UnsupportedMutationMediaTypeException : Exception;
 
     private static bool ValidCursor(string? value) => value is null || value.Length is > 0 and <= 1024 && value.All(static c => c is >= 'A' and <= 'Z' or >= 'a' and <= 'z' or >= '0' and <= '9' or '-' or '_' or '.' or ':' or '|' or '/' or '+' or '=');
 
@@ -191,13 +275,13 @@ public static class AnalyticsEndpoints
         return new HostBindingBody(root.Clone(), hostId, hostName, fingerprint, bindingRevision, profileRevision, expectedRevision, operationId, correlationId, requestDigest, changeReason);
     }
 
-    private static (JsonElement Payload, Guid OperationId, Guid CorrelationId, string ChangeReason, string? RequestDigest) ParseAttestation(JsonElement root)
+    private static (JsonElement Payload, Guid OperationId, Guid CorrelationId, string ChangeReason, string RequestDigest) ParseAttestation(JsonElement root)
     {
         EnsureKeys(root, ["attestationId", "attestedBy", "backupSetReference", "expiresAtUtc", "digest", "correlationId", "changeReason", "requestDigest"]);
         Guid id = RequiredGuid(root, "attestationId"); _ = RequiredText(root, "attestedBy", 256); _ = RequiredText(root, "backupSetReference", 512);
         if (!root.TryGetProperty("expiresAtUtc", out JsonElement expiry) || expiry.ValueKind != JsonValueKind.String || !DateTimeOffset.TryParse(expiry.GetString(), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out DateTimeOffset expires) || expires.Offset != TimeSpan.Zero || expires <= DateTimeOffset.UtcNow) throw new ArgumentException("Attestation expiry must be future UTC.");
         _ = RequiredSha256(root, "digest"); Guid correlation = root.TryGetProperty("correlationId", out JsonElement correlationValue) ? GuidFromElement(correlationValue, "correlationId") : id; string reason = RequiredText(root, "changeReason", 512);
-        string? requestDigest = root.TryGetProperty("requestDigest", out JsonElement requestValue) && requestValue.ValueKind != JsonValueKind.Null ? RequiredSha256(root, "requestDigest") : null;
+        string requestDigest = RequiredSha256(root, "requestDigest");
         return (root.Clone(), id, correlation, reason, requestDigest);
     }
 
@@ -232,7 +316,7 @@ public static class AnalyticsEndpoints
     { try { if (!RetentionDataClasses.Contains(dataClass)) return Results.BadRequest(); return Results.Ok(await service.GetPolicyAsync(resolver.Resolve(context.User), dataClass, cancellationToken).ConfigureAwait(false)); } catch (UnauthorizedAccessException) { return Results.Forbid(); } catch (ArgumentException) { return Results.BadRequest(); } catch (KeyNotFoundException) { return Results.NotFound(); } catch { return Results.StatusCode(StatusCodes.Status503ServiceUnavailable); } }
 
     private static async Task<IResult> UpdatePolicyAsync(string dataClass, PolicyBody body, HttpContext context, IRetentionPolicyService service, WindowsGroupRoleResolver resolver, CancellationToken cancellationToken = default)
-    { try { if (body is null || !RetentionDataClasses.Contains(dataClass) || body.ExpectedRevision < 1 || body.ChangeReason is null || body.ChangeReason.Length is 0 or > 512 || dataClass != body.DataClass || body.MinimumPartitionsToKeep is < 1 or > 10000 || body.RetainFor is not null && (body.RetainFor < TimeSpan.FromDays(1) || body.RetainFor > TimeSpan.FromDays(3650)) || body.Enabled && body.RetainFor is null) return Results.BadRequest(); AuthorizationContext auth = resolver.Resolve(context.User); RetentionPolicy policy = new(dataClass, body.Enabled, body.RetainFor, body.MinimumPartitionsToKeep); return Results.Ok(await service.UpdatePolicyAsync(new RetentionPolicyUpdateRequest(auth, policy, body.ExpectedRevision, body.ChangeReason, RepositoryTimeout), cancellationToken).ConfigureAwait(false)); } catch (UnauthorizedAccessException) { return Results.Forbid(); } catch (ArgumentException) { return Results.BadRequest(); } catch (InvalidOperationException) { return Results.Conflict(); } catch { return Results.StatusCode(StatusCodes.Status503ServiceUnavailable); } }
+    { try { if (body is null || !RetentionDataClasses.Contains(dataClass) || body.ExpectedRevision < 1 || body.ChangeReason is null || body.ChangeReason.Length is 0 or > 512 || dataClass != body.DataClass || body.MinimumPartitionsToKeep is < 1 or > 10000 || body.RetainFor is not null && (body.RetainFor < TimeSpan.FromDays(1) || body.RetainFor > TimeSpan.FromDays(3650)) || body.Enabled && body.RetainFor is null || (dataClass is "server_lifecycle_receipts" or "server_lifecycle_events") && (body.MinimumPartitionsToKeep < 3 || body.RetainFor is not null && body.RetainFor < TimeSpan.FromDays(90))) return Results.BadRequest(); AuthorizationContext auth = resolver.Resolve(context.User); RetentionPolicy policy = new(dataClass, body.Enabled, body.RetainFor, body.MinimumPartitionsToKeep); return Results.Ok(await service.UpdatePolicyAsync(new RetentionPolicyUpdateRequest(auth, policy, body.ExpectedRevision, body.ChangeReason, RepositoryTimeout), cancellationToken).ConfigureAwait(false)); } catch (UnauthorizedAccessException) { return Results.Forbid(); } catch (ArgumentException) { return Results.BadRequest(); } catch (InvalidOperationException) { return Results.Conflict(); } catch { return Results.StatusCode(StatusCodes.Status503ServiceUnavailable); } }
 
     private static async Task<IResult> PreviewRetentionAsync(HttpContext context, IRetentionService service, WindowsGroupRoleResolver resolver, int limit = 100, string? cursor = null, CancellationToken cancellationToken = default)
     { try { if (limit is < 1 or > 1024 || cursor is { Length: > 1024 } || cursor is not null && !ValidCursor(cursor)) return Results.BadRequest(); var result = await service.PreviewAsync(new RetentionPreviewQuery(resolver.Resolve(context.User), limit, RepositoryTimeout, cursor), cancellationToken).ConfigureAwait(false); return Bounded(result); } catch (UnauthorizedAccessException) { return Results.Forbid(); } catch (ArgumentException) { return Results.BadRequest(); } catch (TimeoutException) { return Results.StatusCode(StatusCodes.Status504GatewayTimeout); } catch { return Results.StatusCode(StatusCodes.Status503ServiceUnavailable); } }
@@ -257,7 +341,7 @@ public static class AnalyticsEndpoints
             if (!authorization.HasRoleForAllTargets(ApplicationRole.SecurityAdministrator)) return Results.Forbid();
             using JsonDocument document = await ReadBoundedJsonAsync(context, cancellationToken).ConfigureAwait(false);
             RetentionExecutionBody? body = document.RootElement.Deserialize<RetentionExecutionBody>(MutationJsonOptions);
-            if (body is null || !RetentionDataClasses.Contains(body.DataClass) || body.OperationId == Guid.Empty || body.ExecutionId == Guid.Empty || body.ExpectedPolicyRevision < 1 || body.CorrelationId == Guid.Empty || !SafeIdentifier(body.ParentSchema, 128) || !SafeIdentifier(body.ParentTable, 128) || !SafeIdentifier(body.PartitionName, 128) || body.ChangeReason is null || body.ChangeReason.Length is 0 or > 512 || body.RequestDigest is not { Length: 64 } digest || !digest.All(Uri.IsHexDigit) || body.Operation is not null && !string.Equals(body.Operation, operation, StringComparison.Ordinal)) return Results.BadRequest();
+            if (body is null || !RetentionDataClasses.Contains(body.DataClass) || (body.DataClass is "collection_run_original_copy" or "collection_run_canonical") || body.OperationId == Guid.Empty || body.ExecutionId == Guid.Empty || body.ExpectedPolicyRevision < 1 || body.CorrelationId == Guid.Empty || !SafeIdentifier(body.ParentSchema, 128) || !SafeIdentifier(body.ParentTable, 128) || !SafeIdentifier(body.PartitionName, 128) || body.ChangeReason is null || body.ChangeReason.Length is 0 or > 512 || body.RequestDigest is not { Length: 64 } digest || !digest.All(Uri.IsHexDigit) || body.Operation is not null && !string.Equals(body.Operation, operation, StringComparison.Ordinal)) return Results.BadRequest();
             byte[] computed = MutationDigestV1.Retention(operation, body.DataClass, body.ParentSchema, body.ParentTable, body.PartitionName, body.ExpectedPolicyRevision, body.ExecutionId, body.OperationId, authorization.ActorSid.Value, "all", body.CorrelationId, body.ChangeReason);
             VerifyDigest(body.RequestDigest, computed);
             RetentionExecutionRequest request = new(authorization, body.DataClass, body.ParentSchema, body.ParentTable, body.PartitionName, body.ExecutionId, RepositoryTimeout, body.ExpectedPolicyRevision, MutationDigestV1.Hex(computed), body.CorrelationId, body.ChangeReason, operation, body.OperationId);
@@ -265,6 +349,7 @@ public static class AnalyticsEndpoints
             RetentionExecutionResult result = await service.ExecuteAsync(request, cancellationToken).ConfigureAwait(false);
             return result.State == RetentionExecutionState.Blocked ? Results.Conflict(result) : Results.Ok(result);
         }
+        catch (UnsupportedMutationMediaTypeException) { return Results.StatusCode(StatusCodes.Status415UnsupportedMediaType); }
         catch (UnauthorizedAccessException) { return Results.Forbid(); }
         catch (ArgumentException) { return Results.BadRequest(); }
         catch (JsonException) { return Results.BadRequest(); }

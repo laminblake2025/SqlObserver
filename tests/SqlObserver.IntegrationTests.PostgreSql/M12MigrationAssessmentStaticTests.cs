@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using System.Text.Json;
 using SqlObserver.Application.Ports;
 using SqlObserver.Domain.Repository;
 using SqlObserver.Infrastructure.PostgreSql;
@@ -28,8 +29,24 @@ public sealed class M12MigrationAssessmentStaticTests
         string contracts = Path.Combine(root, "installer/contracts");
         string checksumText = File.ReadAllText(Path.Combine(contracts, "checksums.sha256"));
         string migrationSchema = File.ReadAllText(Path.Combine(contracts, "migration-assessment.v1.schema.json"));
-        foreach (string migration in Directory.EnumerateFiles(Path.Combine(root, "database/migrations"), "*.sql").Select(path => Path.GetFileName(path)!).OrderBy(static name => name, StringComparer.Ordinal))
+        string[] migrations = Directory.EnumerateFiles(Path.Combine(root, "database/migrations"), "*.sql")
+            .Select(path => Path.GetFileName(path)!)
+            .OrderBy(static name => name, StringComparer.Ordinal).ToArray();
+        foreach (string migration in migrations)
             Assert.Contains($"\"{migration}\"", migrationSchema, StringComparison.Ordinal);
+        using (JsonDocument schema = JsonDocument.Parse(migrationSchema))
+        {
+            JsonElement rootElement = schema.RootElement;
+            JsonElement properties = rootElement.GetProperty("properties");
+            Assert.Equal(MigrationNumber.MaximumValue,
+                properties.GetProperty("observedHistoryCount").GetProperty("maximum").GetInt32());
+            Assert.Equal(MigrationNumber.MaximumValue,
+                properties.GetProperty("history").GetProperty("maxItems").GetInt32());
+            string[] allowed = rootElement.GetProperty("$defs").GetProperty("historyEntry")
+                .GetProperty("properties").GetProperty("name").GetProperty("enum")
+                .EnumerateArray().Select(item => item.GetString()!).ToArray();
+            Assert.Equal(migrations, allowed);
+        }
         foreach (string name in new[] { "lifecycle-assessment.v1.schema.json", "migration-assessment.v1.schema.json" })
         {
             string path = Path.Combine(contracts, name);

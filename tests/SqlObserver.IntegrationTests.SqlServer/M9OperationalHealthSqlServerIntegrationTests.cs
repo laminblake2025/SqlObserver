@@ -10,7 +10,7 @@ using System.Text.Json.Nodes;
 
 namespace SqlObserver.IntegrationTests.SqlServer;
 
-public sealed class M9OperationalHealthSqlServerIntegrationTests
+public sealed partial class M9OperationalHealthSqlServerIntegrationTests
 {
     private static readonly string[] CollectorIds = ["backups.status", "sql-agent.failures", "tempdb.health", "availability-groups.health"];
     [Fact]
@@ -82,7 +82,7 @@ public sealed class M9OperationalHealthSqlServerIntegrationTests
     }
 
     [Fact]
-    public void M9SqlAssetsDeriveAvailabilityGroupVisibilityAndOmitAgentSourceTime()
+    public void M9SqlAssetsDeriveAvailabilityGroupVisibilityAndReadAgentSourceStart()
     {
         SqlServerOperationalHealthAssetCatalog catalog = SqlServerOperationalHealthAssetCatalog.LoadEmbedded();
         foreach (int major in new[] { 15, 16, 17 })
@@ -91,8 +91,8 @@ public sealed class M9OperationalHealthSqlServerIntegrationTests
             string agent = catalog.Get($"sql-agent.failures.sqlserver{major}-windows.v1.sql");
             Assert.Contains("local_role", ag, StringComparison.OrdinalIgnoreCase);
             Assert.Contains("visibility_scope", ag, StringComparison.OrdinalIgnoreCase);
-            Assert.DoesNotContain("run_date", agent, StringComparison.OrdinalIgnoreCase);
-            Assert.DoesNotContain("run_time", agent, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("h.run_date", agent, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("h.run_time", agent, StringComparison.OrdinalIgnoreCase);
         }
     }
 
@@ -189,8 +189,8 @@ public sealed class M9OperationalHealthSqlServerIntegrationTests
     {
         var reader = new FakeOperationalHealthRowReader(
             [
-                [new byte[16], 1, new DateTime(2026, 8, 25, 12, 0, 0), 100L, true, true, false, 9L, (short)127],
-                [new byte[16], 2, new DateTime(2026, 8, 25, 13, 0, 0), 200L, false, true, false, 10L, (short)127],
+                [new byte[16], 1, new DateTime(2026, 8, 25, 12, 0, 0), 100L, true, true, false, 9L, (short)127, false],
+                [new byte[16], 2, new DateTime(2026, 8, 25, 13, 0, 0), 200L, false, true, false, 10L, (short)127, false],
             ]);
         var collector = new SqlServerBackupsStatusCollector(SqlServerOperationalHealthAssetCatalog.LoadEmbedded());
         var result = await collector.ReadRowsForTestAsync(CreateRequest(), reader, CancellationToken.None);
@@ -201,12 +201,78 @@ public sealed class M9OperationalHealthSqlServerIntegrationTests
         Assert.Equal(10L, snapshot.Items[^1].BackupSetId);
     }
 
+    [Theory]
+    [InlineData(-300)]
+    [InlineData(330)]
+    [InlineData(-720)]
+    [InlineData(720)]
+    public async Task M9BackupCorrectionConvertsSignedMinuteOffset(int offsetMinutes)
+    {
+        DateTime local = new(2026, 8, 25, 12, 0, 0, DateTimeKind.Unspecified);
+        var reader = new FakeOperationalHealthRowReader(
+            [[new byte[32], 1, local, 100L, false, true, false, 9L, (short)offsetMinutes, false]]);
+        var collector = new SqlServerBackupsStatusCollector(SqlServerOperationalHealthAssetCatalog.LoadEmbedded());
+        var result = await collector.ReadRowsForTestAsync(CreateRequest(), reader, CancellationToken.None);
+        BackupStatusObservation item = Assert.Single(Assert.IsType<BackupStatusSnapshot>(result.Snapshot).Items);
+
+        Assert.Equal(new DateTimeOffset(local.AddMinutes(-offsetMinutes), TimeSpan.Zero), item.LastFinishUtc);
+        Assert.Equal(local, item.SourceLocalFinish);
+        Assert.False(item.SourceTimeUnknown);
+        Assert.Equal(BackupCoverage.Complete, item.Coverage);
+        Assert.Equal(9L, item.BackupSetId);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData(127)]
+    [InlineData(735)]
+    [InlineData(-735)]
+    [InlineData(855)]
+    [InlineData(1)]
+    public async Task M9BackupCorrectionPreservesLocalTimeForUnknownOffset(int? offsetMinutes)
+    {
+        DateTime local = new(2026, 8, 25, 12, 0, 0, DateTimeKind.Unspecified);
+        var reader = new FakeOperationalHealthRowReader(
+            [[new byte[32], 1, local, 100L, false, true, false, 9L, offsetMinutes.HasValue ? (short)offsetMinutes.Value : null, false]]);
+        var collector = new SqlServerBackupsStatusCollector(SqlServerOperationalHealthAssetCatalog.LoadEmbedded());
+        var result = await collector.ReadRowsForTestAsync(CreateRequest(), reader, CancellationToken.None);
+        BackupStatusObservation item = Assert.Single(Assert.IsType<BackupStatusSnapshot>(result.Snapshot).Items);
+
+        Assert.Null(item.LastFinishUtc);
+        Assert.Equal(local, item.SourceLocalFinish);
+        Assert.True(item.SourceTimeUnknown);
+        Assert.Equal(BackupCoverage.Complete, item.Coverage);
+    }
+
+    [Theory]
+    [InlineData(null, false, BackupCoverage.NotSeenWithin35Days)]
+    [InlineData(null, true, BackupCoverage.Unknown)]
+    [InlineData(9L, false, BackupCoverage.Unknown)]
+    public async Task M9BackupCorrectionPreservesMissingFinishAndCoverage(long? backupSetId, bool identityUnknown, BackupCoverage coverage)
+    {
+        var reader = new FakeOperationalHealthRowReader(
+            [[new byte[32], 1, null, null, null, null, null, backupSetId, null, identityUnknown]]);
+        var collector = new SqlServerBackupsStatusCollector(SqlServerOperationalHealthAssetCatalog.LoadEmbedded());
+        var result = await collector.ReadRowsForTestAsync(CreateRequest(), reader, CancellationToken.None);
+        BackupStatusObservation item = Assert.Single(Assert.IsType<BackupStatusSnapshot>(result.Snapshot).Items);
+
+        Assert.Null(item.LastFinishUtc);
+        Assert.Null(item.SourceLocalFinish);
+        Assert.False(item.SourceTimeUnknown);
+        Assert.Equal(coverage, item.Coverage);
+        Assert.Null(item.SizeBytes);
+        Assert.Null(item.CopyOnly);
+        Assert.Null(item.HasChecksum);
+        Assert.Null(item.IsDamaged);
+        Assert.Equal(backupSetId, item.BackupSetId);
+    }
+
     [Fact]
-    public async Task M9AgentReaderOmitsSourceLocalTimeAndUsesStableFingerprint()
+    public async Task M9AgentReaderPreservesUnknownSourceTimeAndUsesStableFingerprint()
     {
         Guid job = Guid.NewGuid();
         var reader = new FakeOperationalHealthRowReader(
-            [[job, 42L, 1, 1, 500, 16, 3, 10203]]);
+            [[job, 42L, 1, 0, 500, 16, 3, 10203, null, null]]);
         var collector = new SqlServerSqlAgentFailuresCollector(SqlServerOperationalHealthAssetCatalog.LoadEmbedded());
         var result = await collector.ReadRowsForTestAsync(CreateRequest(), reader, CancellationToken.None);
         var snapshot = Assert.IsType<SqlAgentFailureSnapshot>(result.Snapshot);
@@ -259,17 +325,32 @@ public sealed class M9OperationalHealthSqlServerIntegrationTests
     }
 
     [Fact]
-    public async Task M9BackupRuntimeGateRequiresVersionSpecificViewAndBackupsetPermissions()
+    public async Task M9BackupRuntimeGateRequiresVersionSpecificViewDatabaseVisibilityAndBackupsetPermissions()
     {
         var collector = new SqlServerBackupsStatusCollector(SqlServerOperationalHealthAssetCatalog.LoadEmbedded());
         foreach (int major in new[] { 15, 16, 17 })
         {
             string view = major == 15 ? "server.view-state" : "server.view-performance-state";
-            var missingView = await collector.CollectAsync(CreateRequest(major, [new PermissionEvidence(new SqlServerPermissionId("msdb.backupset.select"), PermissionEvidenceScope.Database, PermissionEvidenceOutcome.Granted)]), CancellationToken.None);
+            var missingView = await collector.CollectAsync(CreateRequest(major,
+            [
+                new PermissionEvidence(new SqlServerPermissionId("server.view-any-database"), PermissionEvidenceScope.Server, PermissionEvidenceOutcome.Granted),
+                new PermissionEvidence(new SqlServerPermissionId("msdb.backupset.select"), PermissionEvidenceScope.Database, PermissionEvidenceOutcome.Granted),
+            ]), CancellationToken.None);
             Assert.Equal(CollectorRunOutcome.PermissionDenied, missingView.Outcome);
-            var missingBackupset = await collector.CollectAsync(CreateRequest(major, [new PermissionEvidence(new SqlServerPermissionId(view), PermissionEvidenceScope.Server, PermissionEvidenceOutcome.Granted)]), CancellationToken.None);
+            var missingBackupset = await collector.CollectAsync(CreateRequest(major,
+            [
+                new PermissionEvidence(new SqlServerPermissionId(view), PermissionEvidenceScope.Server, PermissionEvidenceOutcome.Granted),
+                new PermissionEvidence(new SqlServerPermissionId("server.view-any-database"), PermissionEvidenceScope.Server, PermissionEvidenceOutcome.Granted),
+            ]), CancellationToken.None);
             Assert.Equal(CollectorRunOutcome.PermissionDenied, missingBackupset.Outcome);
+            var missingDatabaseVisibility = await collector.CollectAsync(CreateRequest(major,
+            [
+                new PermissionEvidence(new SqlServerPermissionId(view), PermissionEvidenceScope.Server, PermissionEvidenceOutcome.Granted),
+                new PermissionEvidence(new SqlServerPermissionId("msdb.backupset.select"), PermissionEvidenceScope.Database, PermissionEvidenceOutcome.Granted),
+            ]), CancellationToken.None);
+            Assert.Equal(CollectorRunOutcome.PermissionDenied, missingDatabaseVisibility.Outcome);
             Assert.Contains(collector.Manifest.RequiredPermissions, requirement => requirement.PermissionId.Value == view && requirement.ApplicableVersions.MinimumMajor == (major == 15 ? 15 : 16) && requirement.ApplicableVersions.MaximumMajor == (major == 15 ? 15 : 17));
+            Assert.Contains(collector.Manifest.RequiredPermissions, requirement => requirement.PermissionId.Value == "server.view-any-database" && requirement.Scope == PermissionEvidenceScope.Server && requirement.ApplicableVersions.MinimumMajor == 15 && requirement.ApplicableVersions.MaximumMajor == 17);
             Assert.Contains(collector.Manifest.RequiredPermissions, requirement => requirement.PermissionId.Value == "msdb.backupset.select" && requirement.ApplicableVersions.MinimumMajor == 15 && requirement.ApplicableVersions.MaximumMajor == 17);
         }
     }

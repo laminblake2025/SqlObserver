@@ -23,8 +23,8 @@ namespace SqlObserver.IntegrationTests.PostgreSql;
 [Collection(PostgreSql18CollectionDefinition.Name)]
 public sealed class M12ReportsCertificationTests(PostgreSql18Fixture fixture)
 {
-    private static readonly string[] ReportKinds = ["instance-health", "performance-window", "incident-evidence", "capacity-readiness"];
-    private static readonly string[] ReportSections = ["health", "performance", "incidents", "capacity"];
+    private static readonly string[] ReportKinds = ["instance-health", "performance-window", "incident-evidence", "capacity-readiness", "saved-investigation"];
+    private static readonly string[] ReportSections = ["health", "performance", "incidents", "capacity", "investigation", "saved-evidence"];
 
     [Fact]
     [Trait("Category", "RequiresM12ReportsRelease")]
@@ -45,11 +45,11 @@ public sealed class M12ReportsCertificationTests(PostgreSql18Fixture fixture)
             Assert.Equal(ReportKinds, catalog.Reports.Select(static report => report.ReportKind));
             Assert.Equal(ReportSections, catalog.Reports.SelectMany(static report => report.Sections).Select(static section => section.Key));
             Assert.Equal(
-                ["observedAtUtc,metric,value,state", "observedAtUtc,metric,value,coverage", "occurredAtUtc,severity,eventKind,visibility", "observedAtUtc,metric,value,state"],
-                catalog.Reports.Select(static report => string.Join(',', report.Sections.Single().Columns)));
+                ["observedAtUtc,metric,value,state", "observedAtUtc,metric,value,coverage", "occurredAtUtc,severity,eventKind,visibility", "observedAtUtc,metric,value,state", "field,part,value", "packetId,occurredAtUtc,evidenceKind,visibility,confidence,sourceRunId,sourceSha256,identitySha256,sourceCutoffSha256,sourceCutoffUtc,part,evidenceJson"],
+                catalog.Reports.SelectMany(static report => report.Sections).Select(static section => string.Join(',', section.Columns)));
 
             var runs = new List<ReportRun>();
-            foreach ((string kind, int index) in ReportKinds.Select((kind, index) => (kind, index)))
+            foreach (string kind in ReportKinds.Take(4))
             {
                 DateTimeOffset from = seed.BaseUtc.AddMinutes(-1);
                 DateTimeOffset to = seed.BaseUtc.AddMinutes(15);
@@ -66,28 +66,29 @@ public sealed class M12ReportsCertificationTests(PostgreSql18Fixture fixture)
             });
 
             ReportRun health = runs[0];
-            ReportSectionPage firstPage = await service.ReadPageAsync(target, health.RunId, "health", 0, ReportContract.PageRows, authorization, CancellationToken.None);
-            ReportSectionPage secondPage = await service.ReadPageAsync(target, health.RunId, "health", firstPage.Rows[^1].Ordinal, ReportContract.PageRows, authorization, CancellationToken.None);
-            ReportSectionPage finalPage = await service.ReadPageAsync(target, health.RunId, "health", secondPage.Rows[^1].Ordinal, ReportContract.PageRows, authorization, CancellationToken.None);
-            Assert.Equal(200, firstPage.Rows.Count);
-            Assert.True(firstPage.HasMore);
-            Assert.Equal(200, secondPage.Rows.Count);
-            Assert.True(secondPage.HasMore);
-            Assert.Single(finalPage.Rows);
-            Assert.False(finalPage.HasMore);
+            // The health projection deliberately returns at most 64 metrics.
+            // Exercise multi-page boundaries with the performance series below.
             IReadOnlyList<ReportRow> readAll = await service.ReadAllAsync(target, health.RunId, "health", 401, ReportContract.MaterializationBytes, authorization, CancellationToken.None);
-            Assert.Equal(401, readAll.Count);
+            Assert.Equal(64, readAll.Count);
             Assert.Equal("engine.metric.001", readAll[0].Values["metric"]);
-            Assert.Equal("401", readAll[^1].Values["value"]);
+            Assert.Equal("64", readAll[^1].Values["value"]);
 
             ReportRun performance = runs[1];
             ReportSectionPage performancePage = await service.ReadPageAsync(target, performance.RunId, "performance", 0, ReportContract.PageRows, authorization, CancellationToken.None);
             Assert.Equal(ReportContract.PageRows, performancePage.Rows.Count);
             Assert.True(performancePage.HasMore);
+            ReportSectionPage secondPage = await service.ReadPageAsync(target, performance.RunId, "performance", performancePage.Rows[^1].Ordinal, ReportContract.PageRows, authorization, CancellationToken.None);
+            ReportSectionPage finalPage = await service.ReadPageAsync(target, performance.RunId, "performance", ReportContract.TotalRows - ReportContract.PageRows, ReportContract.PageRows, authorization, CancellationToken.None);
+            Assert.Equal(200, secondPage.Rows.Count);
+            Assert.True(secondPage.HasMore);
+            Assert.Equal(200, finalPage.Rows.Count);
+            Assert.False(finalPage.HasMore);
             IReadOnlyList<ReportRow> productExportRows = await service.ReadAllAsync(target, performance.RunId, "performance", ReportContract.TotalRows, ReportContract.MaterializationBytes, authorization, CancellationToken.None);
             Assert.Equal(ReportContract.TotalRows, productExportRows.Count);
             Assert.Equal("host.cpu.percent", productExportRows[0].Values["metric"]);
             Assert.Equal("1", productExportRows[0].Values["value"]);
+            Assert.Equal("10000", productExportRows[^1].Values["value"]);
+            Assert.Equal(Enumerable.Range(1, ReportContract.TotalRows).Select(static ordinal => (long)ordinal), productExportRows.Select(static row => row.Ordinal));
             byte[] productCsv = ReportRenderer.RenderCsv(ReportCatalog.Get(ReportKind.PerformanceWindow), ReportCatalog.Get(ReportKind.PerformanceWindow).Sections[0], productExportRows);
             Assert.Equal(ReportContract.TotalRows + 1, ParseCsv(Encoding.UTF8.GetString(productCsv)).Count);
             Assert.InRange(productCsv.Length, 1, ReportContract.MaterializationBytes);
@@ -116,11 +117,11 @@ public sealed class M12ReportsCertificationTests(PostgreSql18Fixture fixture)
                 Assert.Equal(4, ParseCsv(Encoding.UTF8.GetString(sectionCsv)).Count);
                 Assert.InRange(sectionCsv.Length, 1, ReportContract.MaterializationBytes);
             }
-            bool page200 = firstPage.Rows.Count == ReportContract.PageRows && secondPage.Rows.Count == ReportContract.PageRows && finalPage.Rows.Count == 1 && firstPage.HasMore && secondPage.HasMore && !finalPage.HasMore;
+            bool page200 = performancePage.Rows.Count == ReportContract.PageRows && secondPage.Rows.Count == ReportContract.PageRows && finalPage.Rows.Count == ReportContract.PageRows && performancePage.HasMore && secondPage.HasMore && !finalPage.HasMore;
             bool export10000 = productExportRows.Count == ReportContract.TotalRows && ParseCsv(Encoding.UTF8.GetString(productCsv)).Count == ReportContract.TotalRows + 1;
 
             await AppendUpstreamAfterSnapshotAsync(database, seed);
-            Assert.Equal(401, (await service.ReadAllAsync(target, health.RunId, "health", 401, ReportContract.MaterializationBytes, authorization, CancellationToken.None)).Count);
+            Assert.Equal(64, (await service.ReadAllAsync(target, health.RunId, "health", 401, ReportContract.MaterializationBytes, authorization, CancellationToken.None)).Count);
             Assert.Equal(ReportContract.TotalRows, (await service.ReadAllAsync(target, performance.RunId, "performance", ReportContract.TotalRows, ReportContract.MaterializationBytes, authorization, CancellationToken.None)).Count);
             Assert.Equal(3, (await service.ReadAllAsync(target, runs[2].RunId, "incidents", 201, ReportContract.MaterializationBytes, authorization, CancellationToken.None)).Count);
             Assert.Equal(3, (await service.ReadAllAsync(target, runs[3].RunId, "capacity", 201, ReportContract.MaterializationBytes, authorization, CancellationToken.None)).Count);
@@ -143,12 +144,13 @@ public sealed class M12ReportsCertificationTests(PostgreSql18Fixture fixture)
             ReportRow[] oversizedRows = Enumerable.Range(1, 10_000).Select(index => new ReportRow(index, new Dictionary<string, string?> { ["metric"] = new string('x', 1_024) })).ToArray();
             Assert.Throws<ReportLimitException>(() => ReportRenderer.RenderCsv(definition, definition.Sections[0], oversizedRows));
             bool html2000 = CountOccurrences(htmlText, "<tr>") == ReportContract.HtmlRows + 1 && html.Length <= ReportContract.ResponseBytes;
-            bool reports = runs.Count == 4 && catalog.Version == ReportContract.Version;
+            runs.Add(await AssertSavedInvestigationAsync(database, service));
+            bool reports = runs.Count == 5 && catalog.Version == ReportContract.Version;
             bool exports = export10000 && productCsv.Length <= ReportContract.MaterializationBytes;
 
             await AssertReportExpiryFenceAsync(database);
 
-            await WriteResultAsync("m12-reports-exports", nameof(LiveReleaseReportsExportsRepresentativeVolumeIsBounded), new { reports, exports, reportKind = (string?)null, definitions = runs.Count, sections = ReportSections, page200, html2000, export10000, responseBytes = ReportContract.ResponseBytes, materializationBytes = ReportContract.MaterializationBytes, observedPostgreSqlVersion });
+            await WriteResultAsync("m12-reports-exports", nameof(LiveReleaseReportsExportsRepresentativeVolumeIsBounded), new { reports, exports, reportKind = (string?)null, definitions = runs.Count, sections = ReportSections, page200, html2000, export10000, responseBytes = ReportContract.ResponseBytes, materializationBytes = ReportContract.MaterializationBytes, testCount = 1, savedInvestigation = true, observedPostgreSqlVersion });
         }
     }
 
@@ -197,7 +199,8 @@ public sealed class M12ReportsCertificationTests(PostgreSql18Fixture fixture)
             await Assert.ThrowsAsync<UnauthorizedAccessException>(() => service.ReadPageAsync(target, first.RunId, "health", 0, 1, Allowed(unrelatedTarget, ApplicationRole.Viewer), CancellationToken.None).AsTask());
             bool targetIsolation = true;
             await Assert.ThrowsAsync<ReportLimitException>(() => service.ReadPageAsync(target, first.RunId, "health", 0, 201, viewer, CancellationToken.None).AsTask());
-            await Assert.ThrowsAsync<ArgumentException>(() => service.CreateAsync(new ReportCreateRequest(target, new ReportRequest("performance-window", Guid.NewGuid(), DateTimeOffset.UtcNow, DateTimeOffset.UtcNow), viewer), CancellationToken.None).AsTask());
+            DateTimeOffset equalBoundary = DateTimeOffset.UtcNow;
+            await Assert.ThrowsAsync<ArgumentException>(() => service.CreateAsync(new ReportCreateRequest(target, new ReportRequest("performance-window", Guid.NewGuid(), equalBoundary, equalBoundary), viewer), CancellationToken.None).AsTask());
 
             IReadOnlyDictionary<(string Kind, string Outcome), long> audit = await ReadAuditCountsAsync(database, target);
             Assert.True(audit.GetValueOrDefault(("create", "succeeded")) >= 2);
@@ -211,7 +214,8 @@ public sealed class M12ReportsCertificationTests(PostgreSql18Fixture fixture)
             Assert.True(audit.GetValueOrDefault(("deny", "denied")) >= 5);
             bool audited = true;
             await AssertReportExpiryFenceAsync(database);
-            await WriteResultAsync("m12-report-contract", nameof(LiveReleaseReportContractIsSnapshotScopedAndAudited), new { reports = true, exports = false, reportKind = "report", snapshotScoped = first.ExpiresAtUtc - first.SnapshotUtc == TimeSpan.FromHours(24) && first.TargetRevision > 0 && first.DefinitionVersion == ReportContract.Version, audited, idempotentReplay = first == replay, targetIsolation, roles, testCount = 1, observedPostgreSqlVersion });
+            await AssertSavedInvestigationAsync(database, service);
+            await WriteResultAsync("m12-report-contract", nameof(LiveReleaseReportContractIsSnapshotScopedAndAudited), new { reports = true, exports = false, reportKind = "report", snapshotScoped = first.ExpiresAtUtc - first.SnapshotUtc == TimeSpan.FromHours(24) && first.TargetRevision > 0 && first.DefinitionVersion == ReportContract.Version, audited, idempotentReplay = first == replay, targetIsolation, roles, testCount = 1, savedInvestigation = true, observedPostgreSqlVersion });
         }
     }
 
@@ -265,8 +269,112 @@ public sealed class M12ReportsCertificationTests(PostgreSql18Fixture fixture)
             IReadOnlyDictionary<(string Kind, string Outcome), long> audit = await ReadAuditCountsAsync(database, target);
             Assert.True(audit.GetValueOrDefault(("export", "succeeded")) >= 1);
             Assert.True(audit.GetValueOrDefault(("failure", "failed")) >= 1);
-            await WriteResultAsync("m12-export-contract", nameof(LiveReleaseExportContractIsInertAndFormulaSafe), new { reports = false, exports = true, reportKind = "export", inertHtml = html.Contains("&lt;script&gt;alert(1)&lt;/script&gt;", StringComparison.Ordinal) && !html.Contains("<script>", StringComparison.OrdinalIgnoreCase), rfc4180 = parsed.All(static row => row.Length == 4) && csv.Contains("\r\n", StringComparison.Ordinal), formulaNeutralization = parsed[6][1] == "'=SUM(A1:A2)" && parsed[7][1] == "'+cmd" && parsed[8][1] == "'-1" && parsed[9][1] == "'@HYPERLINK", formulaSentinels = 4, testCount = 1, observedPostgreSqlVersion });
+            await AssertSavedInvestigationAsync(database, service);
+            await WriteResultAsync("m12-export-contract", nameof(LiveReleaseExportContractIsInertAndFormulaSafe), new { reports = false, exports = true, reportKind = "export", inertHtml = html.Contains("&lt;script&gt;alert(1)&lt;/script&gt;", StringComparison.Ordinal) && !html.Contains("<script>", StringComparison.OrdinalIgnoreCase), rfc4180 = parsed.All(static row => row.Length == 4) && csv.Contains("\r\n", StringComparison.Ordinal), formulaNeutralization = parsed[6][1] == "'=SUM(A1:A2)" && parsed[7][1] == "'+cmd" && parsed[8][1] == "'-1" && parsed[9][1] == "'@HYPERLINK", formulaSentinels = 4, testCount = 1, savedInvestigation = true, observedPostgreSqlVersion });
         }
+    }
+
+    // Each external case must independently prove the new report path. Local
+    // execution exercises it too, but WriteResultAsync publishes only in Release.
+    private static async Task<ReportRun> AssertSavedInvestigationAsync(RepositoryTestDatabase database, ReportService service)
+    {
+        Guid target = await TargetAsync(database);
+        await using (NpgsqlCommand activate = database.DataSource.CreateCommand("UPDATE control.observation_target SET lifecycle_state='active' WHERE instance_id=@target;"))
+        {
+            activate.Parameters.AddWithValue("target", target);
+            await activate.ExecuteNonQueryAsync();
+        }
+        AuthorizationContext viewer = Allowed(target, ApplicationRole.Viewer);
+        DateTimeOffset to = DateTimeOffset.UtcNow.AddMinutes(-1);
+        to = to.AddTicks(-(to.Ticks % TimeSpan.TicksPerMicrosecond));
+        const string notes = "<script>kept as text</script>\r\nCafe\u0301\t界";
+        string payload = JsonSerializer.Serialize(new { text = new string('x', 205_000) + "=SUM(A1:A2)\r\n界" });
+        await using (NpgsqlCommand seed = database.DataSource.CreateCommand("""
+            INSERT INTO analytics.evidence_packet_v2(occurred_at,packet_id,instance_id,target_revision,evidence_kind,
+                source_digest,identity_digest,source_cutoff_digest,evidence,confidence,visibility_state)
+            VALUES(@at,gen_random_uuid(),@target,1,'metric',decode(repeat('11',32),'hex'),
+                decode(repeat('22',32),'hex'),decode(repeat('33',32),'hex'),@payload::jsonb,.9,'complete');
+            """))
+        {
+            seed.Parameters.AddWithValue("at", to.AddMinutes(-1));
+            seed.Parameters.AddWithValue("target", target);
+            seed.Parameters.AddWithValue("payload", payload);
+            await seed.ExecuteNonQueryAsync();
+        }
+        await using NpgsqlDataSource server = database.CreateServerDataSource();
+        SavedIncident saved = await new PostgreSqlSavedIncidentPort(server).SaveAsync(
+            new(target, 1, Guid.NewGuid(), to.AddHours(-1), to, "=Saved investigation", notes),
+            viewer.ActorSid.Value, Guid.NewGuid(), new(TimeSpan.FromSeconds(5)), CancellationToken.None);
+        Assert.Single(saved.Evidence);
+        Assert.False(saved.EvidenceTruncated);
+
+        // Retire the source partition, as retention does, before generating.
+        var partitions = new List<(string Schema, string Name)>();
+        await using (NpgsqlCommand lookup = database.DataSource.CreateCommand("""
+            SELECT DISTINCT n.nspname,c.relname FROM analytics.evidence_packet_v2 e
+            JOIN pg_class c ON c.oid=e.tableoid JOIN pg_namespace n ON n.oid=c.relnamespace
+            WHERE e.instance_id=@target;
+            """))
+        {
+            lookup.Parameters.AddWithValue("target", target);
+            await using NpgsqlDataReader reader = await lookup.ExecuteReaderAsync();
+            while (await reader.ReadAsync()) partitions.Add((reader.GetString(0), reader.GetString(1)));
+        }
+        Assert.NotEmpty(partitions);
+        using var quoting = new NpgsqlCommandBuilder();
+        foreach (var partition in partitions)
+        {
+            await using NpgsqlCommand drop = database.DataSource.CreateCommand($"DROP TABLE {quoting.QuoteIdentifier(partition.Schema)}.{quoting.QuoteIdentifier(partition.Name)};");
+            await drop.ExecuteNonQueryAsync();
+        }
+        await using (NpgsqlCommand update = database.DataSource.CreateCommand("UPDATE control.observation_target SET revision=2 WHERE instance_id=@target;"))
+        {
+            update.Parameters.AddWithValue("target", target);
+            await update.ExecuteNonQueryAsync();
+        }
+        var request = new ReportRequest("saved-investigation", Guid.NewGuid(), ThreadId: saved.ThreadId);
+        ReportRun run = await service.CreateAsync(new(target, request, viewer), CancellationToken.None);
+        Assert.Equal(run, await service.CreateAsync(new(target, request, viewer), CancellationToken.None));
+        Assert.Equal(ReportKind.SavedInvestigation, run.Kind);
+        Assert.Equal(saved.TargetRevision, run.TargetRevision);
+        Assert.Equal(TimeSpan.FromHours(24), run.ExpiresAtUtc - run.SnapshotUtc);
+        Assert.Equal(Convert.ToHexString(ReportRequestValidation.CanonicalDigest(request)).ToLowerInvariant(), run.ParameterDigest);
+        ReportDefinition definition = ReportCatalog.Get(run.Kind);
+        IReadOnlyList<ReportRow> details = await service.ReadAllAsync(target, run.RunId, "investigation", ReportContract.TotalRows, ReportContract.MaterializationBytes, viewer, CancellationToken.None);
+        ReportSectionPage page = await service.ReadPageAsync(target, run.RunId, "saved-evidence", 0, 200, viewer, CancellationToken.None);
+        Assert.Equal(200, page.Rows.Count);
+        Assert.True(page.HasMore);
+        IReadOnlyList<ReportRow> evidence = await service.ReadAllAsync(target, run.RunId, "saved-evidence", ReportContract.TotalRows, ReportContract.MaterializationBytes, viewer, CancellationToken.None);
+        Assert.True(evidence.Count > 200);
+        Assert.Equal(evidence.Count, evidence.Select(row => row.Ordinal).Distinct().Count());
+        Assert.Equal(notes, string.Concat(details.Where(row => row.Values["field"] == "notes").Select(row => row.Values["value"])));
+        string detailsCsv = Encoding.UTF8.GetString(ReportRenderer.RenderCsv(definition, definition.Sections[0], details));
+        List<string[]> detailRows = ParseCsv(detailsCsv);
+        Assert.Equal(notes, string.Concat(detailRows.Skip(1).Where(row => row[0] == "notes").Select(row => row[2])));
+        Assert.Contains(detailRows, row => row[0] == "title" && row[2] == "'=Saved investigation");
+        string csv = Encoding.UTF8.GetString(ReportRenderer.RenderCsv(definition, definition.Sections[1], evidence));
+        List<string[]> csvRows = ParseCsv(csv);
+        Assert.All(csvRows, row => Assert.Equal(12, row.Length));
+        Assert.Equal(evidence.Count + 1, csvRows.Count);
+        string reassembled = string.Concat(csvRows.Skip(1).Select(row => JsonSerializer.Deserialize<string>(row[11])));
+        Assert.Equal(saved.Evidence[0].Evidence.GetRawText(), reassembled);
+        string html = Encoding.UTF8.GetString(ReportRenderer.RenderHtml(run, definition,
+            new Dictionary<string, IReadOnlyList<ReportRow>> { ["investigation"] = details, ["saved-evidence"] = evidence }));
+        Assert.Contains("&lt;script&gt;kept as text&lt;/script&gt;", html, StringComparison.Ordinal);
+        Assert.DoesNotContain("<script>", html, StringComparison.OrdinalIgnoreCase);
+        foreach (string section in new[] { "investigation", "saved-evidence" })
+            await service.CompleteExportAsync(target, run.RunId, section, "csv", section == "investigation" ? details.Count : evidence.Count, viewer, CancellationToken.None);
+        foreach (ApplicationRole role in new[] { ApplicationRole.Viewer, ApplicationRole.Operator, ApplicationRole.TargetAdministrator })
+            Assert.Equal(run, await service.GetRunAsync(target, run.RunId, Allowed(target, role), CancellationToken.None));
+        foreach (ApplicationRole role in new[] { ApplicationRole.Auditor, ApplicationRole.SecurityAdministrator, ApplicationRole.CollectorService })
+            await Assert.ThrowsAsync<UnauthorizedAccessException>(() => service.GetRunAsync(target, run.RunId, Allowed(target, role), CancellationToken.None).AsTask());
+        Guid otherTarget = await TargetAsync(database);
+        await Assert.ThrowsAsync<KeyNotFoundException>(() => service.ReadPageAsync(otherTarget, run.RunId, "saved-evidence", 0, 1, Allowed(otherTarget, ApplicationRole.Viewer), CancellationToken.None).AsTask());
+        await Assert.ThrowsAsync<PostgresException>(() => service.CreateAsync(new(target, request with { ThreadId = Guid.NewGuid() }, viewer), CancellationToken.None).AsTask());
+        IReadOnlyDictionary<(string Kind, string Outcome), long> audit = await ReadAuditCountsAsync(database, target);
+        Assert.Equal(1, audit.GetValueOrDefault(("create", "accepted")));
+        Assert.Equal(2, audit.GetValueOrDefault(("export", "succeeded")));
+        return run;
     }
 
     private async Task<(RepositoryTestDatabase Database, Guid Target)> PrepareAsync()
@@ -310,7 +418,7 @@ public sealed class M12ReportsCertificationTests(PostgreSql18Fixture fixture)
         RepositoryTestDatabase database,
         Guid target,
         int healthCount = 401,
-        int metricCount = ReportContract.TotalRows,
+        int metricCount = ReportContract.TotalRows + 3,
         int incidentCount = 3,
         int capacityCount = 3)
     {
@@ -365,7 +473,7 @@ public sealed class M12ReportsCertificationTests(PostgreSql18Fixture fixture)
             INSERT INTO telemetry.collection_run(run_id,instance_id,collector_id,collector_version,output_schema_version,target_revision,schedule_revision,work_key,owner_execution_id,fencing_token,request_digest,scheduled_for,started_at)
             SELECT @health,@target,'engine.core',1,1,target.revision,schedule.schedule_revision,'m12/reports-seed',@owner,1,decode(repeat('22',32),'hex'),@base,@base FROM control.observation_target target JOIN control.collector_schedule schedule ON schedule.instance_id=target.instance_id AND schedule.collector_id='engine.core' WHERE target.instance_id=@target;
             INSERT INTO telemetry.collection_run_outcome(run_id,outcome,reason_code,attempt_count,retry_count,duration_ms,source_row_count,output_item_count,inserted_item_count,duplicate_item_count,rejected_item_count,response_bytes,output_bytes,persisted_bytes,truncated,loss_detected,loss_kind,loss_count_exact,lost_row_count,lost_byte_count,completion_digest,completed_at)
-            VALUES(@health,'succeeded','completed',1,0,10,@health_count,@health_count,@health_count,0,0,100,@health_count,@health_count,false,false,'none',true,0,0,decode(repeat('33',32),'hex'),@base);
+            VALUES(@health,'succeeded','completed',1,0,10,@health_count,@health_count,@health_count,0,0,@health_count*100,@health_count*100,@health_count*100,false,false,'none',true,0,0,decode(repeat('33',32),'hex'),@base);
             INSERT INTO telemetry.raw_metric_sample(observed_at,sample_id,instance_id,metric_key,metric_value,dimensions,collected_at,collection_run_id)
             SELECT @base,gen_random_uuid(),@target,'engine.metric.'||lpad(series::text,3,'0'),series::double precision,'{}'::jsonb,@base,@health
             FROM generate_series(1,@health_count) AS value(series);

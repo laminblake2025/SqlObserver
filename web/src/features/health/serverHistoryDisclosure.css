@@ -1,0 +1,12 @@
+.server-history-action { min-height: 44px; min-width: 44px; margin-block: 8px; }
+.server-history-evidence-location { min-width: 0; margin-block: 1rem; }
+.server-history-evidence-location:focus-visible,
+.server-agent-evidence-browser > summary:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+.server-agent-evidence { min-width: 0; padding: 20px; overflow-wrap: anywhere; }
+.server-agent-evidence-browser > summary { min-height: 44px; padding-block: 12px; cursor: pointer; overflow-wrap: anywhere; }
+.server-agent-evidence-browser .table-scroll { max-height: 24rem; }
+.server-agent-evidence p[role="alert"] button { min-width: 44px; min-height: 44px; }
+@media (forced-colors: active) {
+  .server-history-evidence-location:focus-visible,
+  .server-agent-evidence-browser > summary:focus-visible { outline-color: Highlight; }
+}

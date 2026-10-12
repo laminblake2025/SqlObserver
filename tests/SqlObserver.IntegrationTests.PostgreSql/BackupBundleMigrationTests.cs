@@ -1,0 +1,282 @@
+using Microsoft.Extensions.DependencyInjection;
+using Npgsql;
+using SqlObserver.Application.Ports;
+using SqlObserver.Collectors;
+using SqlObserver.Domain.Repository;
+using SqlObserver.Infrastructure.PostgreSql;
+using SqlObserver.Infrastructure.SqlServer;
+
+namespace SqlObserver.IntegrationTests.PostgreSql;
+
+public sealed partial class PassiveCollectorBundleMigrationTests
+{
+    [Fact]
+    public async Task BackupMissingFirstBundleUpgradePreservesRegistryAndHistory()
+    {
+        await using RepositoryTestDatabase database = await CreateMigratedDatabaseAsync(242);
+        Assert.Equal(Enumerable.Repeat("5ab54f5ac93eb67a2626d0c005fc15cda9289d7fc0e3b083c52e7fc58a1a0987", 4),
+            await ReadBackupBundlesAsync(database));
+        string registryBefore = await ReadBackupBundleRegistryAsync(database, omitBundle: true);
+        string historyBefore = await ReadHistoryAndSchedulesAsync(database);
+
+        MigrationBatchResult upgrade = await new PostgreSqlMigrationPort(database.DataSource)
+            .ApplyPendingAsync(new MigrationApplyRequest(1, Timeout), CancellationToken.None);
+
+        Assert.False(upgrade.HasFailures);
+        Assert.Equal(243, Assert.Single(upgrade.Results).Migration.Number.Value);
+        Assert.Equal(Enumerable.Repeat(SqlServerOperationalHealthAssetCatalog.LoadEmbedded().BundleChecksum, 4),
+            await ReadBackupBundlesAsync(database));
+        Assert.Equal(registryBefore, await ReadBackupBundleRegistryAsync(database, omitBundle: true));
+        Assert.Equal(historyBefore, await ReadHistoryAndSchedulesAsync(database));
+        await AssertAppendOnlyTriggerAsync(database);
+        await using ServiceProvider application = CreateApplication();
+        CollectorCatalogEntry[] entries = WithLegacyInventoryAndDeadlocks(application.GetRequiredService<CollectorRegistry>()
+            .CatalogEntries.Take(15).ToArray());
+        await using NpgsqlDataSource collector = database.CreateCollectorDataSource();
+        var lease = await AcquireCatalogLeaseAsync(collector);
+        // This repository stops at 0243; the current v1 deadlock bytes are from
+        // 0309 and must not be imported into the historical reconciliation.
+        Assert.Equal(15, await ReconcileDirectAsync(collector, WithPre309DeadlockBundle(entries), lease));
+    }
+
+    private const string PriorBackupBundle = "5697aaf35aee3f30f339de5fd973041978b6a0d767759e30cd223eb829e74484";
+    private const string UpdatedBackupBundle = "5cead2f81a535b7726c5eb6c6b4abac35cbc8cd85301b60e1867ba694e4a3e8e";
+
+    [Fact]
+    public async Task BackupBundleUpgradeFrom84ChangesOnlyFourPinsAndPreservesHistory()
+    {
+        await using RepositoryTestDatabase database = await CreateMigratedDatabaseAsync(84);
+        await SeedHistoricalRunAsync(database);
+        await SeedHistoricalBackupForBundleAsync(database);
+        string registryBefore = await ReadBackupBundleRegistryAsync(database, omitBundle: true);
+        string historyBefore = await ReadHistoryAndSchedulesAsync(database);
+        string backupsBefore = await ReadHistoricalBackupsForBundleAsync(database);
+        Assert.Equal(Enumerable.Repeat(PriorBackupBundle, 4), await ReadBackupBundlesAsync(database));
+        await using ServiceProvider application = CreateApplication();
+        CollectorCatalogEntry[] entries = WithLegacyInventoryAndDeadlocks(application.GetRequiredService<CollectorRegistry>().CatalogEntries.Take(15).ToArray());
+        string currentBundle = SqlServerOperationalHealthAssetCatalog.LoadEmbedded().BundleChecksum;
+        Assert.All(entries.Skip(9).Take(4), entry => Assert.Equal(currentBundle, entry.AssetBundleDigest.Value));
+        CollectorCatalogEntry[] m85Entries = WithPre309DeadlockBundle(WithHistoricalQueryBundle(WithActivityBundle(
+            WithBackupManifest(
+                WithCoreBundle(entries, "34214cef39c56f1d984bee1da82fd40ac410552eca04f6bd64420b001bd3114c"),
+                "065e9f16747d10316ce420feeb350b097e8e86e9faa2d6f5b1d9c33ae1e29cff"),
+            M80Bundle)));
+        CollectorCatalogEntry[] backupEntries = WithBackupBundle(m85Entries, UpdatedBackupBundle);
+        CollectorCatalogEntry[] priorEntries = WithBackupBundle(m85Entries, PriorBackupBundle);
+        await using (var registered = database.DataSource.CreateCommand("SELECT collector_id,encode(manifest_sha256,'hex'),encode(asset_bundle_sha256,'hex') FROM control.collector_contract ORDER BY execution_order"))
+        await using (NpgsqlDataReader reader = await registered.ExecuteReaderAsync())
+        {
+            foreach (CollectorCatalogEntry entry in priorEntries)
+            {
+                Assert.True(await reader.ReadAsync());
+                Assert.Equal(entry.Manifest.Id.Value, reader.GetString(0));
+                Assert.Equal(entry.ManifestDigest.Value, reader.GetString(1));
+                Assert.Equal(entry.AssetBundleDigest.Value, reader.GetString(2));
+            }
+        }
+        await using NpgsqlDataSource collector = database.CreateCollectorDataSource();
+        var lease = await AcquireCatalogLeaseAsync(collector);
+        Assert.Equal(15, await ReconcileDirectAsync(collector, priorEntries, lease));
+        PostgresException beforeUpgrade = await Assert.ThrowsAsync<PostgresException>(() => ReconcileDirectAsync(collector, backupEntries, lease));
+        Assert.Equal("55000", beforeUpgrade.SqlState);
+
+        MigrationBatchResult upgrade = await new PostgreSqlMigrationPort(database.DataSource)
+            .ApplyPendingAsync(new MigrationApplyRequest(1, Timeout), CancellationToken.None);
+
+        Assert.False(upgrade.HasFailures);
+        Assert.Equal(85, Assert.Single(upgrade.Results).Migration.Number.Value);
+        Assert.Equal(Enumerable.Repeat(UpdatedBackupBundle, 4), await ReadBackupBundlesAsync(database));
+        Assert.Equal(registryBefore, await ReadBackupBundleRegistryAsync(database, omitBundle: true));
+        Assert.Equal(historyBefore, await ReadHistoryAndSchedulesAsync(database));
+        Assert.Equal(backupsBefore, await ReadHistoricalBackupsForBundleAsync(database));
+        await AssertAppendOnlyTriggerAsync(database);
+        Assert.Equal(15, await ReconcileDirectAsync(collector, backupEntries, lease));
+        PostgresException stale = await Assert.ThrowsAsync<PostgresException>(() => ReconcileDirectAsync(collector, priorEntries, lease));
+        Assert.Equal("55000", stale.SqlState);
+
+        // The Agent source-time migration advances the same four pins later.
+        // Keep the 84->85 assertion frozen, then validate the current runtime.
+        MigrationBatchResult remaining = await new PostgreSqlMigrationPort(database.DataSource)
+            .ApplyPendingAsync(new MigrationApplyRequest(MigrationBatchResult.MaximumResults, Timeout), CancellationToken.None);
+        Assert.False(remaining.HasFailures);
+        Assert.Equal(Enumerable.Repeat(currentBundle, 4), await ReadBackupBundlesAsync(database));
+        Assert.Equal(backupsBefore, await ReadHistoricalBackupsForBundleAsync(database));
+        var runtime = new PostgreSqlCollectorRuntimeRepositoryPort(collector);
+        Assert.Equal(15, (await runtime.ReconcileCatalogAsync(new ReconcileCollectorCatalogRequest(entries, lease, Timeout), CancellationToken.None)).UnchangedCount);
+        await Assert.ThrowsAsync<InvalidDataException>(() => runtime.ReconcileCatalogAsync(new ReconcileCollectorCatalogRequest(priorEntries, lease, Timeout), CancellationToken.None).AsTask());
+    }
+
+    [Theory]
+    [InlineData(false, "backups.status")]
+    [InlineData(true, "availability-groups.health")]
+    public async Task BackupBundleDriftOrMissingRowRollsBackAllPinsAndRestoresAppendOnly(bool missing, string collectorId)
+    {
+        await using RepositoryTestDatabase database = await CreateMigratedDatabaseAsync(84);
+        await using (NpgsqlConnection connection = await database.DataSource.OpenConnectionAsync())
+        await using (NpgsqlTransaction transaction = await connection.BeginTransactionAsync())
+        {
+            // Deliberately corrupt only the disposable fixture to exercise the
+            // migration's exact four-row guard and transactional trigger reset.
+            string mutation = missing
+                ? "DELETE FROM control.collector_contract WHERE collector_id=@collector AND collector_version=1;"
+                : "UPDATE control.collector_contract SET asset_bundle_sha256=decode(repeat('ff',32),'hex') WHERE collector_id=@collector AND collector_version=1;";
+            await using var corrupt = new NpgsqlCommand("ALTER TABLE control.collector_contract DISABLE TRIGGER ALL; " + mutation + " ALTER TABLE control.collector_contract ENABLE TRIGGER ALL;", connection, transaction);
+            corrupt.Parameters.AddWithValue("collector", collectorId);
+            await corrupt.ExecuteNonQueryAsync();
+            await transaction.CommitAsync();
+        }
+        string registryBefore = await ReadBackupBundleRegistryAsync(database, omitBundle: false);
+        string historyBefore = await ReadHistoryAndSchedulesAsync(database);
+
+        MigrationBatchResult result = await new PostgreSqlMigrationPort(database.DataSource)
+            .ApplyPendingAsync(new MigrationApplyRequest(1, Timeout), CancellationToken.None);
+
+        MigrationExecutionResult failed = Assert.Single(result.Results);
+        Assert.Equal(85, failed.Migration.Number.Value);
+        Assert.Equal(MigrationOutcome.Failed, failed.Outcome);
+        Assert.Equal("postgres_55000", failed.FailureCode);
+        Assert.Equal(registryBefore, await ReadBackupBundleRegistryAsync(database, omitBundle: false));
+        Assert.Equal(historyBefore, await ReadHistoryAndSchedulesAsync(database));
+        await using var ledger = database.DataSource.CreateCommand("SELECT max(migration_number) FROM system.schema_migration");
+        Assert.Equal(84, Assert.IsType<int>(await ledger.ExecuteScalarAsync()));
+        await AssertAppendOnlyTriggerAsync(database);
+    }
+
+    [Fact]
+    public async Task CurrentOperationalBundleUpgradePreservesHistoricalRunsAndSchedules()
+    {
+        await using RepositoryTestDatabase database = await CreateMigratedDatabaseAsync(108);
+        await SeedHistoricalRunAsync(database);
+        string registryBefore = await ReadBackupBundleRegistryAsync(database, omitBundle: true, omitBackupManifest: true);
+        string historyBefore = await ReadHistoryAndSchedulesAsync(database);
+        Assert.Equal(Enumerable.Repeat("8fa22b58b193640b94e1290fc48820f3d68afdfda9076809f4e9b4fc3b2fa593", 4), await ReadBackupBundlesAsync(database));
+
+        MigrationBatchResult upgrade = await new PostgreSqlMigrationPort(database.DataSource)
+            .ApplyPendingAsync(new MigrationApplyRequest(1, Timeout), CancellationToken.None);
+
+        Assert.False(upgrade.HasFailures);
+        Assert.Equal(109, Assert.Single(upgrade.Results).Migration.Number.Value);
+        Assert.Equal(Enumerable.Repeat("689ae4dc9b8c0f2c15ce1064c0a823e47b79fec62d21d11c48a7804b4e4c1919", 4), await ReadBackupBundlesAsync(database));
+        Assert.Equal(registryBefore, await ReadBackupBundleRegistryAsync(database, omitBundle: true, omitBackupManifest: true));
+        Assert.Equal(historyBefore, await ReadHistoryAndSchedulesAsync(database));
+
+        MigrationBatchResult visibilityUpgrade = await new PostgreSqlMigrationPort(database.DataSource)
+            .ApplyPendingAsync(new MigrationApplyRequest(1, Timeout), CancellationToken.None);
+        Assert.False(visibilityUpgrade.HasFailures);
+        Assert.Equal(110, Assert.Single(visibilityUpgrade.Results).Migration.Number.Value);
+        Assert.Equal(Enumerable.Repeat("29e5a566ecc9b3b7fedecbd72574371d1e31195726482a6b83099f08202d26a0", 4), await ReadBackupBundlesAsync(database));
+        await using (var manifest = database.DataSource.CreateCommand("SELECT encode(manifest_sha256,'hex') FROM control.collector_contract WHERE collector_id='backups.status' AND collector_version=1"))
+            Assert.Equal("7b33dfe41e9e5dbdd8dec1afe5504e34add138f56181f039d838b3e0f854e6e9", await manifest.ExecuteScalarAsync());
+        Assert.Equal(registryBefore, await ReadBackupBundleRegistryAsync(database, omitBundle: true, omitBackupManifest: true));
+        Assert.Equal(historyBefore, await ReadHistoryAndSchedulesAsync(database));
+        MigrationBatchResult later = await new PostgreSqlMigrationPort(database.DataSource)
+            .ApplyPendingAsync(new MigrationApplyRequest(MigrationBatchResult.MaximumResults, Timeout), CancellationToken.None);
+        Assert.False(later.HasFailures);
+        Assert.Equal(Enumerable.Repeat(SqlServerOperationalHealthAssetCatalog.LoadEmbedded().BundleChecksum, 4), await ReadBackupBundlesAsync(database));
+        await AssertAppendOnlyTriggerAsync(database);
+        await using ServiceProvider application = CreateApplication();
+        CollectorCatalogEntry[] entries = WithLegacyInventoryAndDeadlocks(application.GetRequiredService<CollectorRegistry>().CatalogEntries.Take(15).ToArray());
+        await using NpgsqlDataSource collector = database.CreateCollectorDataSource();
+        var lease = await AcquireCatalogLeaseAsync(collector);
+        var runtime = new PostgreSqlCollectorRuntimeRepositoryPort(collector);
+        Assert.Equal(15, (await runtime.ReconcileCatalogAsync(new ReconcileCollectorCatalogRequest(entries, lease, Timeout), CancellationToken.None)).UnchangedCount);
+    }
+
+    [Fact]
+    public async Task CurrentOperationalBundleUpgradeRejectsUnexpectedPriorPinAtomically()
+    {
+        await using RepositoryTestDatabase database = await CreateMigratedDatabaseAsync(109);
+        await using (var corrupt = database.DataSource.CreateCommand("""
+            ALTER TABLE control.collector_contract DISABLE TRIGGER collector_contract_append_only;
+            UPDATE control.collector_contract SET asset_bundle_sha256=decode(repeat('ff',32),'hex')
+            WHERE collector_id='availability-groups.health' AND collector_version=1;
+            ALTER TABLE control.collector_contract ENABLE TRIGGER collector_contract_append_only;
+            """)) await corrupt.ExecuteNonQueryAsync();
+        string[] before = await ReadBackupBundlesAsync(database);
+
+        MigrationBatchResult result = await new PostgreSqlMigrationPort(database.DataSource)
+            .ApplyPendingAsync(new MigrationApplyRequest(1, Timeout), CancellationToken.None);
+
+        MigrationExecutionResult failure = Assert.Single(result.Results);
+        Assert.Equal(110, failure.Migration.Number.Value);
+        Assert.Equal(MigrationOutcome.Failed, failure.Outcome);
+        Assert.Equal("postgres_55000", failure.FailureCode);
+        Assert.Equal(before, await ReadBackupBundlesAsync(database));
+        await using var ledger = database.DataSource.CreateCommand("SELECT max(migration_number) FROM system.schema_migration;");
+        Assert.Equal(109, Assert.IsType<int>(await ledger.ExecuteScalarAsync()));
+        await AssertAppendOnlyTriggerAsync(database);
+    }
+
+    private static CollectorCatalogEntry[] WithBackupBundle(CollectorCatalogEntry[] entries, string bundle) =>
+        entries.Select(entry => entry.Manifest.Id.Value is "backups.status" or "sql-agent.failures" or "tempdb.health" or "availability-groups.health"
+            ? new CollectorCatalogEntry(entry.ExecutionOrder, entry.Manifest, entry.ManifestDigest, new CollectorSha256Digest(bundle))
+            : entry).ToArray();
+
+    private static CollectorCatalogEntry[] WithCoreBundle(CollectorCatalogEntry[] entries, string bundle) =>
+        entries.Select(entry => entry.ExecutionOrder is >= 1 and <= 3
+            ? new CollectorCatalogEntry(entry.ExecutionOrder, entry.Manifest, entry.ManifestDigest, new CollectorSha256Digest(bundle))
+            : entry).ToArray();
+
+    private static CollectorCatalogEntry[] WithBackupManifest(CollectorCatalogEntry[] entries, string digest) =>
+        entries.Select(entry => entry.Manifest.Id.Value == "backups.status"
+            ? new CollectorCatalogEntry(entry.ExecutionOrder, entry.Manifest, new CollectorSha256Digest(digest), entry.AssetBundleDigest)
+            : entry).ToArray();
+
+    private static async Task<string[]> ReadBackupBundlesAsync(RepositoryTestDatabase database)
+    {
+        await using var command = database.DataSource.CreateCommand("SELECT array_agg(encode(asset_bundle_sha256,'hex') ORDER BY execution_order) FROM control.collector_contract WHERE collector_id IN ('backups.status','sql-agent.failures','tempdb.health','availability-groups.health') AND collector_version=1");
+        return Assert.IsType<string[]>(await command.ExecuteScalarAsync());
+    }
+
+    private static async Task<string> ReadBackupBundleRegistryAsync(RepositoryTestDatabase database, bool omitBundle, bool omitBackupManifest = false)
+    {
+        await using var command = database.DataSource.CreateCommand("""
+            SELECT jsonb_agg(CASE WHEN @omit_bundle AND collector_version=1
+                AND collector_id IN ('backups.status','sql-agent.failures','tempdb.health',
+                    'availability-groups.health','activity.sessions','activity.requests',
+                    'waits.server','blocking.current')
+                THEN CASE WHEN @omit_backup_manifest AND collector_id='backups.status'
+                    THEN to_jsonb(c)-'asset_bundle_sha256'-'manifest_sha256'
+                    ELSE to_jsonb(c)-'asset_bundle_sha256' END
+                ELSE to_jsonb(c) END
+                ORDER BY collector_id,collector_version)::text
+            FROM control.collector_contract c;
+            """);
+        command.Parameters.AddWithValue("omit_bundle", omitBundle);
+        command.Parameters.AddWithValue("omit_backup_manifest", omitBackupManifest);
+        return Assert.IsType<string>(await command.ExecuteScalarAsync());
+    }
+
+    private static async Task<string> ReadHistoricalBackupsForBundleAsync(RepositoryTestDatabase database)
+    {
+        await using var command = database.DataSource.CreateCommand("SELECT jsonb_agg(to_jsonb(b) ORDER BY instance_id,run_id,observed_at,database_fingerprint,backup_kind)::text FROM telemetry.backup_status_snapshot b");
+        return Assert.IsType<string>(await command.ExecuteScalarAsync());
+    }
+
+    private static async Task SeedHistoricalBackupForBundleAsync(RepositoryTestDatabase database)
+    {
+        Guid runId = Guid.NewGuid();
+        await using var command = database.DataSource.CreateCommand("""
+            SELECT control.ensure_m9_daily_partitions(current_date);
+            INSERT INTO telemetry.collection_run(run_id,instance_id,collector_id,collector_version,output_schema_version,
+                target_revision,schedule_revision,work_key,owner_execution_id,fencing_token,request_digest,scheduled_for,started_at)
+            SELECT @run,instance_id,'backups.status',1,1,1,1,'collector/run/backups.status/'||replace(instance_id::text,'-',''),
+                owner_execution_id,1,decode(repeat('cc',32),'hex'),statement_timestamp(),statement_timestamp()
+            FROM telemetry.collection_run WHERE collector_id='blocking.current' LIMIT 1;
+            INSERT INTO telemetry.collection_run_outcome(run_id,outcome,reason_code,attempt_count,retry_count,duration_ms,
+                source_row_count,output_item_count,inserted_item_count,duplicate_item_count,rejected_item_count,
+                response_bytes,output_bytes,persisted_bytes,truncated,loss_detected,loss_kind,loss_count_exact,
+                lost_row_count,lost_byte_count,completion_digest,completed_at)
+            VALUES(@run,'succeeded','completed',1,0,10,1,1,1,0,0,160,160,160,false,false,'none',true,0,0,decode(repeat('dd',32),'hex'),statement_timestamp());
+            INSERT INTO telemetry.backup_status_snapshot(instance_id,target_revision,run_id,observed_at,database_fingerprint,
+                backup_kind,backup_set_id,last_finish_utc,source_local_finish,source_time_unknown,size_bytes,copy_only,has_checksum,is_damaged,coverage)
+            SELECT instance_id,1,@run,statement_timestamp(),decode(repeat('ee',32),'hex'),1,9,NULL,
+                timestamp '2026-08-25 12:00:00',true,1024,true,true,false,1
+            FROM telemetry.collection_run WHERE run_id=@run;
+            UPDATE control.collector_schedule SET collection_interval=collection_interval+interval '1 minute',schedule_revision=schedule_revision+1
+            WHERE instance_id=(SELECT instance_id FROM telemetry.collection_run WHERE run_id=@run) AND collector_id='backups.status';
+            """);
+        command.Parameters.AddWithValue("run", runId);
+        await command.ExecuteNonQueryAsync();
+    }
+}

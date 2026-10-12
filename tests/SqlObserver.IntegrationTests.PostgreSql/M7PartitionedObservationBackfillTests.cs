@@ -1,0 +1,984 @@
+using Npgsql;
+using SqlObserver.Application.Ports;
+using SqlObserver.Domain.Repository;
+using SqlObserver.Infrastructure.PostgreSql;
+
+namespace SqlObserver.IntegrationTests.PostgreSql;
+
+[Collection(PostgreSql18CollectionDefinition.Name)]
+[Trait("Category", "RequiresPostgreSql")]
+public sealed class M7PartitionedObservationBackfillTests(PostgreSql18Fixture fixture)
+{
+    [Fact]
+    public async Task HistoricalNullIdentityRowsCopyInBoundedResumableBatches()
+    {
+        await using RepositoryTestDatabase database = await fixture.CreateDatabaseAsync();
+        var migrations = new PostgreSqlMigrationPort(database.DataSource);
+        MigrationBatchResult applied = await migrations.ApplyPendingAsync(new MigrationApplyRequest(
+            MigrationBatchResult.MaximumResults, new RepositoryCallTimeout(TimeSpan.FromMinutes(2))),
+            CancellationToken.None);
+        Assert.False(applied.HasFailures);
+
+        Guid target = Guid.NewGuid(), run = Guid.NewGuid();
+        await using NpgsqlConnection admin = await database.DataSource.OpenConnectionAsync();
+        await using (var seed = new NpgsqlCommand("""
+            INSERT INTO control.observation_target
+              (instance_id,instance_key,display_name,host_name,tcp_port,
+               connect_timeout,authentication_mode,transport_security_mode,
+               lifecycle_state,revision,created_at,updated_at,discovery_requested_at)
+            VALUES(@target,@target::text,'M7 backfill test','sql01',1433,
+              interval '5 seconds','windows_integrated_service_identity',
+              'mandatory_validated','active',1,now(),now(),now());
+            INSERT INTO telemetry.collection_run
+              (run_id,instance_id,collector_id,collector_version,
+               output_schema_version,target_revision,schedule_revision,work_key,
+               owner_execution_id,fencing_token,request_digest,scheduled_for,started_at)
+            VALUES(@run,@target,'queries.performance',1,1,1,1,'test/query-backfill',
+              gen_random_uuid(),1,decode(repeat('00',32),'hex'),now(),now());
+            INSERT INTO events.query_performance_run
+              (collection_run_id,instance_id,target_revision,window_start,window_end,
+               source,source_state,coverage,freshness,truncated,completion_digest)
+            VALUES(@run,@target,1,now()-interval '1 hour',now(),
+              'query_store','read_write','complete',true,false,
+              decode(repeat('00',32),'hex'));
+            INSERT INTO events.query_performance_query
+              (collection_run_id,instance_id,database_id,query_fingerprint)
+            VALUES(@run,@target,5,decode(repeat('11',32),'hex'));
+            -- Permit the pre-0089 nullable shape in this disposable database.
+            ALTER TABLE events.query_performance_observation
+              DROP CONSTRAINT ck_query_observation_instance_present;
+            ALTER TABLE events.query_performance_observation
+              DISABLE TRIGGER query_observation_target_identity;
+            ALTER TABLE events.query_performance_observation
+              DISABLE TRIGGER query_observation_v3_mirror;
+            ALTER TABLE events.query_performance_observation
+              DISABLE TRIGGER query_observation_v3_source_generation;
+            INSERT INTO events.query_performance_observation
+              (collection_run_id,database_id,query_fingerprint,observation_key,
+               source,source_state,interval_start,interval_end,observed_at,
+               semantics,cpu_ms)
+            VALUES
+              (@run,5,decode(repeat('11',32),'hex'),decode(repeat('11',16),'hex'),
+               'query_store','read_write',now()-interval '20 minutes',now()-interval '19 minutes',now(),
+               'query_store_interval',11),
+              (@run,5,decode(repeat('11',32),'hex'),decode(repeat('22',16),'hex'),
+               'query_store','read_write',now()-interval '18 minutes',now()-interval '17 minutes',now(),
+               'query_store_interval',22);
+            ALTER TABLE events.query_performance_observation
+              ENABLE TRIGGER query_observation_target_identity;
+            ALTER TABLE events.query_performance_observation
+              ENABLE TRIGGER query_observation_v3_mirror;
+            ALTER TABLE events.query_performance_observation
+              ENABLE TRIGGER query_observation_v3_source_generation;
+            INSERT INTO events.query_performance_observation
+              (collection_run_id,database_id,query_fingerprint,observation_key,
+               source,source_state,interval_start,interval_end,observed_at,
+               semantics,cpu_ms)
+            VALUES(@run,5,decode(repeat('11',32),'hex'),decode(repeat('33',16),'hex'),
+               'query_store','read_write',now()-interval '16 minutes',now()-interval '15 minutes',now(),
+               'query_store_interval',33);
+            """, admin))
+        {
+            seed.Parameters.AddWithValue("target", target);
+            seed.Parameters.AddWithValue("run", run);
+            await seed.ExecuteNonQueryAsync();
+        }
+
+        // A conflicting row in the successor must abort the batch and leave
+        // its cursor untouched. Roll the deliberate corruption back afterward.
+        await using (NpgsqlTransaction divergent = await admin.BeginTransactionAsync())
+        {
+            await using (var corrupt = new NpgsqlCommand("""
+                INSERT INTO events.query_performance_observation_v3
+                  (instance_id,collection_run_id,database_id,query_fingerprint,
+                   observation_key,source,source_state,interval_start,
+                   interval_end,observed_at,semantics,cpu_ms)
+                SELECT @target,collection_run_id,database_id,query_fingerprint,
+                   observation_key,source,source_state,interval_start,
+                   interval_end,observed_at,semantics,999
+                FROM events.query_performance_observation
+                WHERE collection_run_id=@run
+                  AND observation_key=decode(repeat('11',16),'hex');
+                SET LOCAL ROLE sqlobserver_migrator;
+                SELECT set_config('sqlobserver.target_scope',@target::text,true);
+                """, admin, divergent))
+            {
+                corrupt.Parameters.AddWithValue("target", target);
+                corrupt.Parameters.AddWithValue("run", run);
+                await corrupt.ExecuteNonQueryAsync();
+            }
+            await using var reject = new NpgsqlCommand(
+                "SELECT * FROM control.backfill_query_observation_v3(@target, 1);",
+                admin, divergent);
+            reject.Parameters.AddWithValue("target", target);
+            PostgresException error = await Assert.ThrowsAsync<PostgresException>(
+                () => reject.ExecuteNonQueryAsync());
+            Assert.Equal("55000", error.SqlState);
+            await divergent.RollbackAsync();
+        }
+
+        async Task<(int Checked, int Copied, bool Complete)> BackfillAsync(int limit)
+        {
+            await using NpgsqlTransaction transaction = await admin.BeginTransactionAsync();
+            await using (var context = new NpgsqlCommand("""
+                SET LOCAL ROLE sqlobserver_migrator;
+                SELECT set_config('sqlobserver.target_scope',@target::text,true);
+                """, admin, transaction))
+            {
+                context.Parameters.AddWithValue("target", target);
+                await context.ExecuteNonQueryAsync();
+            }
+            await using var command = new NpgsqlCommand(
+                "SELECT * FROM control.backfill_query_observation_v3(@target, @limit);",
+                admin, transaction);
+            command.Parameters.AddWithValue("target", target);
+            command.Parameters.AddWithValue("limit", limit);
+            await using NpgsqlDataReader reader = await command.ExecuteReaderAsync();
+            Assert.True(await reader.ReadAsync());
+            var result = (reader.GetInt32(0), reader.GetInt32(1), reader.GetBoolean(2));
+            await reader.DisposeAsync();
+            await transaction.CommitAsync();
+            return result;
+        }
+
+        Assert.Equal((1, 1, false), await BackfillAsync(1));
+        await using (NpgsqlTransaction incompleteCopy = await admin.BeginTransactionAsync())
+        {
+            await using (var context = new NpgsqlCommand("""
+                SET LOCAL ROLE sqlobserver_migrator;
+                SELECT set_config('sqlobserver.target_scope',@target::text,true);
+                """, admin, incompleteCopy))
+            {
+                context.Parameters.AddWithValue("target", target);
+                await context.ExecuteNonQueryAsync();
+            }
+            await using var premature = new NpgsqlCommand("""
+                SELECT * FROM control.record_next_query_observation_v3_parity_window(
+                  @target,100);
+                """, admin, incompleteCopy);
+            premature.Parameters.AddWithValue("target", target);
+            PostgresException incomplete = await Assert.ThrowsAsync<PostgresException>(
+                () => premature.ExecuteNonQueryAsync());
+            Assert.Equal("55000", incomplete.SqlState);
+            await incompleteCopy.RollbackAsync();
+        }
+        Assert.Equal((1, 1, false), await BackfillAsync(1));
+        Assert.Equal((1, 0, false), await BackfillAsync(1));
+        Assert.Equal((0, 0, true), await BackfillAsync(1));
+        Assert.Equal((0, 0, true), await BackfillAsync(1));
+
+        await using var inspect = new NpgsqlCommand("""
+            SELECT (SELECT count(*) FROM events.query_performance_observation_v3),
+                   (SELECT checked_rows FROM system.query_observation_v3_backfill
+                    WHERE instance_id=@target),
+                   (SELECT copied_rows FROM system.query_observation_v3_backfill
+                    WHERE instance_id=@target),
+                   (SELECT count(*) FROM events.query_performance_observation AS old_row
+                    JOIN events.query_performance_observation_v3 AS new_row
+                     USING(interval_end,collection_run_id,database_id,
+                           query_fingerprint,observation_key)
+                    WHERE to_jsonb(new_row) IS DISTINCT FROM
+                      jsonb_set(to_jsonb(old_row),'{instance_id}',to_jsonb(@target::uuid))),
+                   has_function_privilege('sqlobserver_collector',
+                     'control.backfill_query_observation_v3(uuid,integer)','EXECUTE'),
+                   has_function_privilege('sqlobserver_server',
+                     'control.verify_query_observation_v3_window(uuid,timestamptz,timestamptz,integer)',
+                     'EXECUTE'),
+                   has_function_privilege('sqlobserver_server',
+                     'control.record_query_observation_v3_parity_window(uuid,timestamptz,timestamptz,integer)',
+                     'EXECUTE'),
+                   has_function_privilege('sqlobserver_server',
+                     'control.query_observation_v3_parity_coverage(uuid)',
+                     'EXECUTE');
+            """, admin);
+        inspect.Parameters.AddWithValue("target", target);
+        await using NpgsqlDataReader resultReader = await inspect.ExecuteReaderAsync();
+        Assert.True(await resultReader.ReadAsync());
+        Assert.Equal(3L, resultReader.GetInt64(0));
+        Assert.Equal(3L, resultReader.GetInt64(1));
+        Assert.Equal(2L, resultReader.GetInt64(2));
+        Assert.Equal(0L, resultReader.GetInt64(3));
+        Assert.False(resultReader.GetBoolean(4));
+        Assert.False(resultReader.GetBoolean(5));
+        Assert.False(resultReader.GetBoolean(6));
+        Assert.False(resultReader.GetBoolean(7));
+        await resultReader.DisposeAsync();
+
+        async Task<(long Source, long Successor, string SourceHash,
+            string SuccessorHash, bool Parity)> VerifyAsync(int maxRows = 100)
+        {
+            await using NpgsqlTransaction transaction = await admin.BeginTransactionAsync();
+            await using (var context = new NpgsqlCommand("""
+                SET LOCAL ROLE sqlobserver_migrator;
+                SELECT set_config('sqlobserver.target_scope',@target::text,true);
+                """, admin, transaction))
+            {
+                context.Parameters.AddWithValue("target", target);
+                await context.ExecuteNonQueryAsync();
+            }
+            await using var verify = new NpgsqlCommand("""
+                SELECT * FROM control.verify_query_observation_v3_window(
+                  @target,now()-interval '1 hour',now()+interval '1 hour',@maxRows);
+                """, admin, transaction);
+            verify.Parameters.AddWithValue("target", target);
+            verify.Parameters.AddWithValue("maxRows", maxRows);
+            await using NpgsqlDataReader reader = await verify.ExecuteReaderAsync();
+            Assert.True(await reader.ReadAsync());
+            var result = (reader.GetInt64(0), reader.GetInt64(1),
+                reader.GetString(2), reader.GetString(3), reader.GetBoolean(4));
+            await reader.DisposeAsync();
+            await transaction.CommitAsync();
+            return result;
+        }
+
+        var matched = await VerifyAsync();
+        Assert.Equal((3L, 3L), (matched.Source, matched.Successor));
+        Assert.Equal(matched.SourceHash, matched.SuccessorHash);
+        Assert.Equal(64, matched.SourceHash.Length);
+        Assert.True(matched.Parity);
+
+        async Task<(DateTimeOffset? From, DateTimeOffset? To,
+            DateTimeOffset? CoveredThrough, bool All, long Verified,
+            long Failed)> CoverageAsync()
+        {
+            await using NpgsqlTransaction transaction = await admin.BeginTransactionAsync();
+            await using (var context = new NpgsqlCommand("""
+                SET LOCAL ROLE sqlobserver_migrator;
+                SELECT set_config('sqlobserver.target_scope',@target::text,true);
+                """, admin, transaction))
+            {
+                context.Parameters.AddWithValue("target", target);
+                await context.ExecuteNonQueryAsync();
+            }
+            await using var coverage = new NpgsqlCommand(
+                "SELECT * FROM control.query_observation_v3_parity_coverage(@target);",
+                admin, transaction);
+            coverage.Parameters.AddWithValue("target", target);
+            await using NpgsqlDataReader reader = await coverage.ExecuteReaderAsync();
+            Assert.True(await reader.ReadAsync());
+            var result = (
+                reader.IsDBNull(0) ? (DateTimeOffset?)null : reader.GetFieldValue<DateTimeOffset>(0),
+                reader.IsDBNull(1) ? (DateTimeOffset?)null : reader.GetFieldValue<DateTimeOffset>(1),
+                reader.IsDBNull(2) ? (DateTimeOffset?)null : reader.GetFieldValue<DateTimeOffset>(2),
+                reader.GetBoolean(3), reader.GetInt64(4), reader.GetInt64(5));
+            await reader.DisposeAsync();
+            await transaction.CommitAsync();
+            return result;
+        }
+
+        async Task<bool> RecordAsync(DateTimeOffset from, DateTimeOffset to)
+        {
+            await using NpgsqlTransaction transaction = await admin.BeginTransactionAsync();
+            await using (var context = new NpgsqlCommand("""
+                SET LOCAL ROLE sqlobserver_migrator;
+                SELECT set_config('sqlobserver.target_scope',@target::text,true);
+                """, admin, transaction))
+            {
+                context.Parameters.AddWithValue("target", target);
+                await context.ExecuteNonQueryAsync();
+            }
+            await using var record = new NpgsqlCommand("""
+                SELECT parity FROM control.record_query_observation_v3_parity_window(
+                  @target,@from,@to,100);
+                """, admin, transaction);
+            record.Parameters.AddWithValue("target", target);
+            record.Parameters.AddWithValue("from", from);
+            record.Parameters.AddWithValue("to", to);
+            bool parity = (bool)(await record.ExecuteScalarAsync())!;
+            await transaction.CommitAsync();
+            return parity;
+        }
+
+        var initialCoverage = await CoverageAsync();
+        Assert.False(initialCoverage.All);
+        Assert.Equal(initialCoverage.From, initialCoverage.CoveredThrough);
+        Assert.Equal(0L, initialCoverage.Verified);
+        DateTimeOffset firstDay = initialCoverage.From!.Value;
+        DateTimeOffset endDay = initialCoverage.To!.Value;
+        await using (NpgsqlTransaction automaticSweep = await admin.BeginTransactionAsync())
+        {
+            await using (var context = new NpgsqlCommand("""
+                SET LOCAL ROLE sqlobserver_migrator;
+                SELECT set_config('sqlobserver.target_scope',@target::text,true);
+                """, admin, automaticSweep))
+            {
+                context.Parameters.AddWithValue("target", target);
+                await context.ExecuteNonQueryAsync();
+            }
+            DateTimeOffset cursor = firstDay;
+            int windows = 0;
+            bool complete = false;
+            while (!complete && windows < 8)
+            {
+                await using (var next = new NpgsqlCommand("""
+                    SELECT * FROM control.record_next_query_observation_v3_parity_window(
+                      @target,1);
+                    """, admin, automaticSweep))
+                {
+                    next.Parameters.AddWithValue("target", target);
+                    await using NpgsqlDataReader reader = await next.ExecuteReaderAsync();
+                    Assert.True(await reader.ReadAsync());
+                    Assert.Equal(cursor, reader.GetFieldValue<DateTimeOffset>(0));
+                    cursor = reader.GetFieldValue<DateTimeOffset>(1);
+                    Assert.InRange(reader.GetInt64(2), 0, 1);
+                    Assert.Equal(reader.GetInt64(2), reader.GetInt64(3));
+                    Assert.True(reader.GetBoolean(4));
+                    Assert.False(await reader.ReadAsync());
+                }
+                windows++;
+                await using var coverage = new NpgsqlCommand("""
+                    SELECT all_covered FROM control.query_observation_v3_parity_coverage(
+                      @target);
+                    """, admin, automaticSweep);
+                coverage.Parameters.AddWithValue("target", target);
+                complete = (bool)(await coverage.ExecuteScalarAsync())!;
+            }
+            Assert.True(complete);
+            Assert.True(windows >= 3);
+            Assert.Equal(endDay, cursor);
+            await using (var exhausted = new NpgsqlCommand("""
+                SELECT * FROM control.record_next_query_observation_v3_parity_window(
+                  @target,1);
+                """, admin, automaticSweep))
+            {
+                exhausted.Parameters.AddWithValue("target", target);
+                await using NpgsqlDataReader reader = await exhausted.ExecuteReaderAsync();
+                Assert.False(await reader.ReadAsync());
+            }
+            await automaticSweep.RollbackAsync();
+        }
+        await using (NpgsqlTransaction dense = await admin.BeginTransactionAsync())
+        {
+            DateTimeOffset denseAt = firstDay.AddMinutes(1);
+            await using (var insert = new NpgsqlCommand("""
+                INSERT INTO events.query_performance_observation
+                  (collection_run_id,database_id,query_fingerprint,
+                   observation_key,source,source_state,interval_start,
+                   interval_end,observed_at,semantics,cpu_ms)
+                VALUES
+                  (@run,5,decode(repeat('11',32),'hex'),
+                   decode(repeat('77',16),'hex'),'query_store','read_write',
+                   @dense - interval '1 minute',@dense,@dense,
+                   'query_store_interval',77),
+                  (@run,5,decode(repeat('11',32),'hex'),
+                   decode(repeat('88',16),'hex'),'query_store','read_write',
+                   @dense - interval '1 minute',@dense,@dense,
+                   'query_store_interval',88);
+                """, admin, dense))
+            {
+                insert.Parameters.AddWithValue("run", run);
+                insert.Parameters.AddWithValue("dense", denseAt);
+                Assert.Equal(2, await insert.ExecuteNonQueryAsync());
+            }
+            await using (var context = new NpgsqlCommand("""
+                SET LOCAL ROLE sqlobserver_migrator;
+                SELECT set_config('sqlobserver.target_scope',@target::text,true);
+                """, admin, dense))
+            {
+                context.Parameters.AddWithValue("target", target);
+                await context.ExecuteNonQueryAsync();
+            }
+            await using (var emptyPrefix = new NpgsqlCommand("""
+                SELECT parity FROM control.record_next_query_observation_v3_parity_window(
+                  @target,1);
+                """, admin, dense))
+            {
+                emptyPrefix.Parameters.AddWithValue("target", target);
+                Assert.True((bool)(await emptyPrefix.ExecuteScalarAsync())!);
+            }
+            await dense.SaveAsync("before_dense_failure");
+            await using (var blocked = new NpgsqlCommand("""
+                SELECT * FROM control.record_next_query_observation_v3_parity_window(
+                  @target,1);
+                """, admin, dense))
+            {
+                blocked.Parameters.AddWithValue("target", target);
+                PostgresException error = await Assert.ThrowsAsync<PostgresException>(
+                    () => blocked.ExecuteNonQueryAsync());
+                Assert.Equal("54000", error.SqlState);
+            }
+            await dense.RollbackAsync("before_dense_failure");
+
+            async Task<(long Source, long Successor, bool Complete, bool? Parity)>
+                DenseChunkAsync()
+            {
+                await using var chunk = new NpgsqlCommand("""
+                    SELECT * FROM control.record_query_observation_v3_dense_point(
+                      @target,@dense,1);
+                    """, admin, dense);
+                chunk.Parameters.AddWithValue("target", target);
+                chunk.Parameters.AddWithValue("dense", denseAt);
+                await using NpgsqlDataReader reader = await chunk.ExecuteReaderAsync();
+                Assert.True(await reader.ReadAsync());
+                return (reader.GetInt64(0), reader.GetInt64(1),
+                    reader.GetBoolean(2), reader.IsDBNull(3) ? null : reader.GetBoolean(3));
+            }
+            Assert.Equal((1L, 1L, false, (bool?)null), await DenseChunkAsync());
+            Assert.Equal((2L, 2L, true, (bool?)true), await DenseChunkAsync());
+            await using (var hashes = new NpgsqlCommand("""
+                SELECT parity_row.source_sha256,verified.source_sha256,
+                       parity_row.successor_sha256,verified.successor_sha256,
+                       parity_row.verification_method
+                FROM system.query_observation_v3_parity_window AS parity_row
+                CROSS JOIN control.verify_query_observation_v3_window(
+                  @target,@dense,@dense+interval '1 microsecond',100) AS verified
+                WHERE parity_row.instance_id=@target
+                  AND parity_row.from_utc=@dense;
+                """, admin, dense))
+            {
+                hashes.Parameters.AddWithValue("target", target);
+                hashes.Parameters.AddWithValue("dense", denseAt);
+                await using NpgsqlDataReader reader = await hashes.ExecuteReaderAsync();
+                Assert.True(await reader.ReadAsync());
+                Assert.Equal(reader.GetString(0), reader.GetString(1));
+                Assert.Equal(reader.GetString(2), reader.GetString(3));
+                Assert.Equal("key_chunks", reader.GetString(4));
+            }
+            await using (var coverage = new NpgsqlCommand("""
+                SELECT covered_through_utc
+                FROM control.query_observation_v3_parity_coverage(@target);
+                """, admin, dense))
+            {
+                coverage.Parameters.AddWithValue("target", target);
+                DateTime observed = (DateTime)(await coverage.ExecuteScalarAsync())!;
+                Assert.Equal(denseAt.AddTicks(10),
+                    new DateTimeOffset(DateTime.SpecifyKind(observed, DateTimeKind.Utc)));
+            }
+            await using (var afterDense = new NpgsqlCommand("""
+                SELECT from_utc,parity
+                FROM control.record_next_query_observation_v3_parity_window(
+                  @target,1);
+                """, admin, dense))
+            {
+                afterDense.Parameters.AddWithValue("target", target);
+                await using NpgsqlDataReader reader = await afterDense.ExecuteReaderAsync();
+                Assert.True(await reader.ReadAsync());
+                Assert.Equal(denseAt.AddTicks(10),
+                    reader.GetFieldValue<DateTimeOffset>(0));
+                Assert.True(reader.GetBoolean(1));
+            }
+            await using (var extra = new NpgsqlCommand("""
+                INSERT INTO events.query_performance_observation_v3
+                  (instance_id,collection_run_id,database_id,query_fingerprint,
+                   observation_key,source,source_state,interval_start,
+                   interval_end,observed_at,semantics,cpu_ms)
+                SELECT @target,collection_run_id,database_id,query_fingerprint,
+                  decode(repeat('99',16),'hex'),source,source_state,
+                  interval_start,interval_end,observed_at,semantics,cpu_ms
+                FROM events.query_performance_observation_v3
+                WHERE instance_id=@target AND interval_end=@dense
+                  AND observation_key=decode(repeat('77',16),'hex');
+                """, admin, dense))
+            {
+                extra.Parameters.AddWithValue("target", target);
+                extra.Parameters.AddWithValue("dense", denseAt);
+                Assert.Equal(1, await extra.ExecuteNonQueryAsync());
+            }
+            Assert.Equal((1L, 1L, false, (bool?)null), await DenseChunkAsync());
+            Assert.Equal((2L, 2L, false, (bool?)null), await DenseChunkAsync());
+            Assert.Equal((2L, 3L, true, (bool?)false), await DenseChunkAsync());
+            await dense.RollbackAsync();
+        }
+        Assert.True(await RecordAsync(firstDay.AddDays(-30), firstDay.AddDays(-29)));
+        Assert.False((await CoverageAsync()).All);
+        Assert.True(await RecordAsync(firstDay, firstDay.AddHours(12)));
+        var partialCoverage = await CoverageAsync();
+        Assert.False(partialCoverage.All);
+        Assert.Equal(firstDay.AddHours(12), partialCoverage.CoveredThrough);
+        Assert.True(await RecordAsync(firstDay.AddHours(12), firstDay.AddDays(1)));
+        for (DateTimeOffset day = firstDay.AddDays(1); day < endDay; day = day.AddDays(1))
+        {
+            Assert.True(await RecordAsync(day, day.AddDays(1)));
+        }
+        Assert.True((await CoverageAsync()).All);
+
+        await using (var live = new NpgsqlCommand("""
+            INSERT INTO events.query_performance_query
+              (collection_run_id,instance_id,database_id,query_fingerprint)
+            VALUES(@run,@target,5,decode(repeat('22',32),'hex'));
+            INSERT INTO events.query_performance_plan
+              (collection_run_id,database_id,query_fingerprint,plan_fingerprint)
+            VALUES(@run,5,decode(repeat('22',32),'hex'),decode(repeat('33',32),'hex'));
+            INSERT INTO events.query_performance_observation
+              (collection_run_id,database_id,query_fingerprint,plan_fingerprint,
+               observation_key,
+               source,source_state,interval_start,interval_end,observed_at,
+               semantics,cpu_ms)
+            VALUES(@run,5,decode(repeat('22',32),'hex'),decode(repeat('33',32),'hex'),
+               decode(repeat('55',16),'hex'),
+               'query_store','read_write',now()-interval '6 minutes',
+               now()-interval '5 minutes',now(),'query_store_interval',44);
+            """, admin))
+        {
+            live.Parameters.AddWithValue("run", run);
+            live.Parameters.AddWithValue("target", target);
+            await live.ExecuteNonQueryAsync();
+        }
+        Assert.False((await CoverageAsync()).All);
+        var expandedCoverage = await CoverageAsync();
+        for (DateTimeOffset day = expandedCoverage.From!.Value;
+             day < expandedCoverage.To!.Value; day = day.AddDays(1))
+        {
+            Assert.True(await RecordAsync(day, day.AddDays(1)));
+        }
+        Assert.True((await CoverageAsync()).All);
+        await using (NpgsqlTransaction sourceOnly = await admin.BeginTransactionAsync())
+        {
+            await using (var unmirrored = new NpgsqlCommand("""
+                ALTER TABLE events.query_performance_observation
+                  DISABLE TRIGGER query_observation_v3_mirror;
+                INSERT INTO events.query_performance_observation
+                  (collection_run_id,database_id,query_fingerprint,
+                   observation_key,source,source_state,interval_start,
+                   interval_end,observed_at,semantics,cpu_ms)
+                VALUES(@run,5,decode(repeat('11',32),'hex'),
+                  decode(repeat('aa',16),'hex'),'query_store','read_write',
+                  now()-interval '5 minutes',now()-interval '4 minutes',
+                  now(),'query_store_interval',101);
+                ALTER TABLE events.query_performance_observation
+                  ENABLE TRIGGER query_observation_v3_mirror;
+                SET LOCAL ROLE sqlobserver_migrator;
+                SELECT set_config('sqlobserver.target_scope',@target::text,true);
+                """, admin, sourceOnly))
+            {
+                unmirrored.Parameters.AddWithValue("run", run);
+                unmirrored.Parameters.AddWithValue("target", target);
+                await unmirrored.ExecuteNonQueryAsync();
+            }
+            await using (var stale = new NpgsqlCommand("""
+                SELECT all_covered FROM control.query_observation_v3_parity_coverage(
+                  @target);
+                """, admin, sourceOnly))
+            {
+                stale.Parameters.AddWithValue("target", target);
+                Assert.False((bool)(await stale.ExecuteScalarAsync())!);
+            }
+            await using (var activate = new NpgsqlCommand(
+                "SELECT control.set_query_observation_v3_read_route(true);",
+                admin, sourceOnly))
+            {
+                PostgresException mismatch = await Assert.ThrowsAsync<PostgresException>(
+                    () => activate.ExecuteScalarAsync());
+                Assert.Equal("55000", mismatch.SqlState);
+            }
+            await sourceOnly.RollbackAsync();
+        }
+
+        // A target without observations must still appear in the fleet page;
+        // its absent backfill state must keep the page visibly incomplete.
+        Guid emptyTarget = Guid.NewGuid();
+        await using (var seedEmpty = new NpgsqlCommand("""
+            INSERT INTO control.observation_target
+              (instance_id,instance_key,display_name,host_name,tcp_port,
+               connect_timeout,authentication_mode,transport_security_mode,
+               lifecycle_state,revision,created_at,updated_at,discovery_requested_at)
+            VALUES(@target,@target::text,'Empty M7 target','sql02',1433,
+              interval '5 seconds','windows_integrated_service_identity',
+              'mandatory_validated','active',1,now(),now(),now());
+            """, admin))
+        {
+            seedEmpty.Parameters.AddWithValue("target", emptyTarget);
+            await seedEmpty.ExecuteNonQueryAsync();
+        }
+        await using (NpgsqlTransaction fleet = await admin.BeginTransactionAsync())
+        {
+            await using (var context = new NpgsqlCommand("""
+                SET LOCAL ROLE sqlobserver_migrator;
+                SELECT set_config('sqlobserver.target_scope',@target::text,true);
+                """, admin, fleet))
+            {
+                context.Parameters.AddWithValue("target", target);
+                await context.ExecuteNonQueryAsync();
+            }
+            Guid first;
+            await using (var firstPage = new NpgsqlCommand("""
+                SELECT instance_id,all_covered
+                FROM control.list_query_observation_v3_parity_coverage(NULL::uuid,1);
+                """, admin, fleet))
+            await using (NpgsqlDataReader reader = await firstPage.ExecuteReaderAsync())
+            {
+                Assert.True(await reader.ReadAsync());
+                first = reader.GetGuid(0);
+                Assert.True(first == target || first == emptyTarget);
+                Assert.Equal(first == target, reader.GetBoolean(1));
+                Assert.False(await reader.ReadAsync());
+            }
+            await using (var secondPage = new NpgsqlCommand("""
+                SELECT instance_id,all_covered
+                FROM control.list_query_observation_v3_parity_coverage(@after,1);
+                """, admin, fleet))
+            {
+                secondPage.Parameters.AddWithValue("after", first);
+                await using NpgsqlDataReader reader = await secondPage.ExecuteReaderAsync();
+                Assert.True(await reader.ReadAsync());
+                Guid second = reader.GetGuid(0);
+                Assert.Equal(first == target ? emptyTarget : target, second);
+                Assert.Equal(second == target, reader.GetBoolean(1));
+                Assert.False(await reader.ReadAsync());
+            }
+            await using (var boundary = new NpgsqlCommand("""
+                SELECT current_setting('sqlobserver.target_scope',true)=@target::text,
+                       has_function_privilege('sqlobserver_server',
+                         'control.list_query_observation_v3_parity_coverage(uuid,integer)',
+                         'EXECUTE'),
+                       has_function_privilege('sqlobserver_server',
+                         'control.record_next_query_observation_v3_parity_window(uuid,integer)',
+                         'EXECUTE'),
+                       has_function_privilege('sqlobserver_server',
+                         'control.record_query_observation_v3_dense_point(uuid,timestamptz,integer)',
+                         'EXECUTE'),
+                       (SELECT index_row.indisvalid FROM pg_index AS index_row
+                        WHERE index_row.indexrelid=
+                          'events.ix_query_observation_dense_cursor'::regclass);
+                """, admin, fleet))
+            {
+                boundary.Parameters.AddWithValue("target", target);
+                await using NpgsqlDataReader reader = await boundary.ExecuteReaderAsync();
+                Assert.True(await reader.ReadAsync());
+                Assert.True(reader.GetBoolean(0));
+                Assert.False(reader.GetBoolean(1));
+                Assert.False(reader.GetBoolean(2));
+                Assert.False(reader.GetBoolean(3));
+                Assert.True(reader.GetBoolean(4));
+            }
+            await fleet.CommitAsync();
+        }
+
+        await using (NpgsqlTransaction denied = await admin.BeginTransactionAsync())
+        {
+            await using (var context = new NpgsqlCommand("""
+                SET LOCAL ROLE sqlobserver_migrator;
+                SELECT set_config('sqlobserver.target_scope',@target::text,true);
+                """, admin, denied))
+            {
+                context.Parameters.AddWithValue("target", target);
+                await context.ExecuteNonQueryAsync();
+            }
+            await using var activate = new NpgsqlCommand(
+                "SELECT control.set_query_observation_v3_read_route(true);",
+                admin, denied);
+            PostgresException incomplete = await Assert.ThrowsAsync<PostgresException>(
+                () => activate.ExecuteScalarAsync());
+            Assert.Equal("55000", incomplete.SqlState);
+            await denied.RollbackAsync();
+        }
+        await using (NpgsqlTransaction emptyCopy = await admin.BeginTransactionAsync())
+        {
+            await using (var context = new NpgsqlCommand("""
+                SET LOCAL ROLE sqlobserver_migrator;
+                SELECT set_config('sqlobserver.target_scope',@target::text,true);
+                """, admin, emptyCopy))
+            {
+                context.Parameters.AddWithValue("target", emptyTarget);
+                await context.ExecuteNonQueryAsync();
+            }
+            await using var copy = new NpgsqlCommand("""
+                SELECT complete FROM control.backfill_query_observation_v3(@target,1);
+                """, admin, emptyCopy);
+            copy.Parameters.AddWithValue("target", emptyTarget);
+            Assert.True((bool)(await copy.ExecuteScalarAsync())!);
+            await emptyCopy.CommitAsync();
+        }
+        await using (NpgsqlTransaction disabledMirror = await admin.BeginTransactionAsync())
+        {
+            await using (var disable = new NpgsqlCommand("""
+                ALTER TABLE events.query_performance_observation
+                  DISABLE TRIGGER query_observation_v3_mirror;
+                SET LOCAL ROLE sqlobserver_migrator;
+                """, admin, disabledMirror))
+            {
+                await disable.ExecuteNonQueryAsync();
+            }
+            await using var activate = new NpgsqlCommand(
+                "SELECT control.set_query_observation_v3_read_route(true);",
+                admin, disabledMirror);
+            PostgresException unsafeRoute = await Assert.ThrowsAsync<PostgresException>(
+                () => activate.ExecuteScalarAsync());
+            Assert.Equal("55000", unsafeRoute.SqlState);
+            await disabledMirror.RollbackAsync();
+        }
+        await using (NpgsqlTransaction disabledSourceGeneration =
+                     await admin.BeginTransactionAsync())
+        {
+            await using (var disable = new NpgsqlCommand("""
+                ALTER TABLE events.query_performance_observation
+                  DISABLE TRIGGER query_observation_v3_source_generation;
+                SET LOCAL ROLE sqlobserver_migrator;
+                """, admin, disabledSourceGeneration))
+            {
+                await disable.ExecuteNonQueryAsync();
+            }
+            await using var activate = new NpgsqlCommand(
+                "SELECT control.set_query_observation_v3_read_route(true);",
+                admin, disabledSourceGeneration);
+            PostgresException unsafeRoute = await Assert.ThrowsAsync<PostgresException>(
+                () => activate.ExecuteScalarAsync());
+            Assert.Equal("55000", unsafeRoute.SqlState);
+            await disabledSourceGeneration.RollbackAsync();
+        }
+
+        // Roll back the synthetic v3-only row and route flip after proving all
+        // three public projections follow the selected relation.
+        await using (NpgsqlTransaction route = await admin.BeginTransactionAsync())
+        {
+            await using (var context = new NpgsqlCommand("""
+                SET LOCAL ROLE sqlobserver_migrator;
+                SELECT set_config('sqlobserver.target_scope',@target::text,true);
+                """, admin, route))
+            {
+                context.Parameters.AddWithValue("target", target);
+                await context.ExecuteNonQueryAsync();
+            }
+            await using (var activate = new NpgsqlCommand(
+                "SELECT control.set_query_observation_v3_read_route(true);",
+                admin, route))
+            {
+                Assert.Equal(1L, (long)(await activate.ExecuteScalarAsync())!);
+            }
+            await using (var extra = new NpgsqlCommand("""
+                INSERT INTO events.query_performance_observation_v3
+                  (instance_id,collection_run_id,database_id,query_fingerprint,
+                   plan_fingerprint,observation_key,source,source_state,
+                   interval_start,interval_end,observed_at,semantics,cpu_ms)
+                VALUES(@target,@run,5,decode(repeat('22',32),'hex'),
+                  decode(repeat('33',32),'hex'),decode(repeat('66',16),'hex'),
+                  'query_store','read_write',now()-interval '2 minutes',
+                  now()-interval '1 minute',now()+interval '1 minute',
+                  'query_store_interval',999);
+                """, admin, route))
+            {
+                extra.Parameters.AddWithValue("target", target);
+                extra.Parameters.AddWithValue("run", run);
+                Assert.Equal(1, await extra.ExecuteNonQueryAsync());
+            }
+            const string routedRead = """
+                SELECT
+                  (SELECT max(cpu_ms) FROM control.get_top_queries_projection(
+                    @target,now()-interval '1 hour',now()+interval '1 hour',
+                    'cpu',1,NULL::integer,NULL::timestamptz,NULL::bytea,
+                    NULL::bytea,NULL::uuid,NULL::bigint,NULL::bytea,
+                    now()+interval '1 hour')),
+                  (SELECT count(*) FROM control.get_query_history_projection(
+                    @target,5,decode(repeat('22',32),'hex'),
+                    now()-interval '1 hour',now()+interval '1 hour',200,
+                    NULL::timestamptz,NULL::uuid,NULL::bytea,NULL::bytea,
+                    now()+interval '1 hour')),
+                  (SELECT observed_at>now() FROM control.get_query_plan_metadata(
+                    @target,5,decode(repeat('22',32),'hex'),
+                    decode(repeat('33',32),'hex'))),
+                  current_setting('sqlobserver.target_scope',true)=@target::text;
+                """;
+            async Task AssertRouteAsync(long cpu, long history, bool newerPlan)
+            {
+                await using var read = new NpgsqlCommand(routedRead, admin, route);
+                read.Parameters.AddWithValue("target", target);
+                await using NpgsqlDataReader reader = await read.ExecuteReaderAsync();
+                Assert.True(await reader.ReadAsync());
+                Assert.Equal(cpu, reader.GetInt64(0));
+                Assert.Equal(history, reader.GetInt64(1));
+                Assert.Equal(newerPlan, reader.GetBoolean(2));
+                Assert.True(reader.GetBoolean(3));
+            }
+            await AssertRouteAsync(999, 2, true);
+            await using (var asServer = new NpgsqlCommand(
+                "SET LOCAL ROLE sqlobserver_server;", admin, route))
+            {
+                await asServer.ExecuteNonQueryAsync();
+            }
+            await AssertRouteAsync(999, 2, true);
+            await using (var asMigrator = new NpgsqlCommand(
+                "SET LOCAL ROLE sqlobserver_migrator;", admin, route))
+            {
+                await asMigrator.ExecuteNonQueryAsync();
+            }
+            await using (var disable = new NpgsqlCommand(
+                "SELECT control.set_query_observation_v3_read_route(false);",
+                admin, route))
+            {
+                Assert.Equal(2L, (long)(await disable.ExecuteScalarAsync())!);
+            }
+            await AssertRouteAsync(44, 1, false);
+            await using (var grants = new NpgsqlCommand("""
+                SELECT has_function_privilege('sqlobserver_server',
+                         'control.get_top_queries_projection_legacy(uuid,timestamptz,timestamptz,text,integer,integer,timestamptz,bytea,bytea,uuid,bigint,bytea,timestamptz)',
+                         'EXECUTE'),
+                       has_function_privilege('sqlobserver_server',
+                         'control.get_top_queries_projection(uuid,timestamptz,timestamptz,text,integer,integer,timestamptz,bytea,bytea,uuid,bigint,bytea,timestamptz)',
+                         'EXECUTE'),
+                       has_function_privilege('sqlobserver_server',
+                         'control.set_query_observation_v3_read_route(boolean)',
+                         'EXECUTE');
+                """, admin, route))
+            await using (NpgsqlDataReader reader = await grants.ExecuteReaderAsync())
+            {
+                Assert.True(await reader.ReadAsync());
+                Assert.False(reader.GetBoolean(0));
+                Assert.True(reader.GetBoolean(1));
+                Assert.False(reader.GetBoolean(2));
+            }
+            await route.RollbackAsync();
+        }
+
+        await using (NpgsqlTransaction shadow = await admin.BeginTransactionAsync())
+        {
+            await using (var context = new NpgsqlCommand("""
+                SET LOCAL ROLE sqlobserver_migrator;
+                SELECT set_config('sqlobserver.target_scope',@target::text,true);
+                """, admin, shadow))
+            {
+                context.Parameters.AddWithValue("target", target);
+                await context.ExecuteNonQueryAsync();
+            }
+            await using var compare = new NpgsqlCommand("""
+                WITH old_top AS (
+                  SELECT to_jsonb(item) AS payload
+                  FROM control.get_top_queries_projection(
+                    @target,now()-interval '1 hour',now()+interval '1 hour',
+                    'cpu',1,NULL::integer,NULL::timestamptz,NULL::bytea,
+                    NULL::bytea,NULL::uuid,NULL::bigint,NULL::bytea,
+                    now()+interval '1 hour') AS item
+                ), new_top AS (
+                  SELECT to_jsonb(item) AS payload
+                  FROM control.get_top_queries_projection_v3(
+                    @target,now()-interval '1 hour',now()+interval '1 hour',
+                    'cpu',1,NULL::integer,NULL::timestamptz,NULL::bytea,
+                    NULL::bytea,NULL::uuid,NULL::bigint,NULL::bytea,
+                    now()+interval '1 hour') AS item
+                ), old_history AS (
+                  SELECT to_jsonb(item) AS payload
+                  FROM control.get_query_history_projection(
+                    @target,5,decode(repeat('11',32),'hex'),
+                    now()-interval '1 hour',now()+interval '1 hour',200,
+                    NULL::timestamptz,NULL::uuid,NULL::bytea,NULL::bytea,
+                    now()+interval '1 hour') AS item
+                ), new_history AS (
+                  SELECT to_jsonb(item) AS payload
+                  FROM control.get_query_history_projection_v3(
+                    @target,5,decode(repeat('11',32),'hex'),
+                    now()-interval '1 hour',now()+interval '1 hour',200,
+                    NULL::timestamptz,NULL::uuid,NULL::bytea,NULL::bytea,
+                    now()+interval '1 hour') AS item
+                ), old_history_page AS (
+                  SELECT to_jsonb(item) AS payload
+                  FROM control.get_query_history_projection(
+                    @target,5,decode(repeat('11',32),'hex'),
+                    now()-interval '1 hour',now()+interval '1 hour',1,
+                    (SELECT interval_end FROM events.query_performance_observation
+                     WHERE collection_run_id=@run
+                       AND observation_key=decode(repeat('11',16),'hex')),
+                    @run,NULL::bytea,decode(repeat('11',16),'hex'),
+                    now()+interval '1 hour') AS item
+                ), new_history_page AS (
+                  SELECT to_jsonb(item) AS payload
+                  FROM control.get_query_history_projection_v3(
+                    @target,5,decode(repeat('11',32),'hex'),
+                    now()-interval '1 hour',now()+interval '1 hour',1,
+                    (SELECT interval_end FROM events.query_performance_observation
+                     WHERE collection_run_id=@run
+                       AND observation_key=decode(repeat('11',16),'hex')),
+                    @run,NULL::bytea,decode(repeat('11',16),'hex'),
+                    now()+interval '1 hour') AS item
+                ), old_plan AS (
+                  SELECT to_jsonb(item) AS payload
+                  FROM control.get_query_plan_metadata(
+                    @target,5,decode(repeat('22',32),'hex'),
+                    decode(repeat('33',32),'hex')) AS item
+                ), new_plan AS (
+                  SELECT to_jsonb(item) AS payload
+                  FROM control.get_query_plan_metadata_v3(
+                    @target,5,decode(repeat('22',32),'hex'),
+                    decode(repeat('33',32),'hex')) AS item
+                )
+                SELECT (SELECT count(*) FROM (
+                  (SELECT payload FROM old_top EXCEPT ALL SELECT payload FROM new_top)
+                  UNION ALL
+                  (SELECT payload FROM new_top EXCEPT ALL SELECT payload FROM old_top)
+                ) AS differences),
+                (SELECT count(*) FROM (
+                  (SELECT payload FROM old_history EXCEPT ALL SELECT payload FROM new_history)
+                  UNION ALL
+                  (SELECT payload FROM new_history EXCEPT ALL SELECT payload FROM old_history)
+                ) AS differences),
+                (SELECT count(*) FROM new_top),
+                (SELECT count(*) FROM new_history),
+                (SELECT count(*) FROM (
+                  (SELECT payload FROM old_history_page EXCEPT ALL
+                   SELECT payload FROM new_history_page)
+                  UNION ALL
+                  (SELECT payload FROM new_history_page EXCEPT ALL
+                   SELECT payload FROM old_history_page)
+                ) AS differences),
+                (SELECT count(*) FROM new_history_page),
+                has_function_privilege('sqlobserver_server',
+                  'control.get_top_queries_projection_v3(uuid,timestamptz,timestamptz,text,integer,integer,timestamptz,bytea,bytea,uuid,bigint,bytea,timestamptz)',
+                  'EXECUTE'),
+                has_function_privilege('sqlobserver_server',
+                  'control.get_query_history_projection_v3(uuid,integer,bytea,timestamptz,timestamptz,integer,timestamptz,uuid,bytea,bytea,timestamptz)',
+                  'EXECUTE'),
+                (SELECT count(*) FROM (
+                  (SELECT payload FROM old_plan EXCEPT ALL SELECT payload FROM new_plan)
+                  UNION ALL
+                  (SELECT payload FROM new_plan EXCEPT ALL SELECT payload FROM old_plan)
+                ) AS differences),
+                (SELECT count(*) FROM new_plan),
+                has_function_privilege('sqlobserver_server',
+                  'control.get_query_plan_metadata_v3(uuid,integer,bytea,bytea)',
+                  'EXECUTE');
+                """, admin, shadow);
+            compare.Parameters.AddWithValue("target", target);
+            compare.Parameters.AddWithValue("run", run);
+            await using NpgsqlDataReader comparison = await compare.ExecuteReaderAsync();
+            Assert.True(await comparison.ReadAsync());
+            Assert.Equal(0L, comparison.GetInt64(0));
+            Assert.Equal(0L, comparison.GetInt64(1));
+            Assert.Equal(2L, comparison.GetInt64(2));
+            Assert.Equal(3L, comparison.GetInt64(3));
+            Assert.Equal(0L, comparison.GetInt64(4));
+            Assert.Equal(2L, comparison.GetInt64(5));
+            Assert.False(comparison.GetBoolean(6));
+            Assert.False(comparison.GetBoolean(7));
+            Assert.Equal(0L, comparison.GetInt64(8));
+            Assert.Equal(1L, comparison.GetInt64(9));
+            Assert.False(comparison.GetBoolean(10));
+            await comparison.DisposeAsync();
+            await shadow.CommitAsync();
+        }
+
+        await using (var extra = new NpgsqlCommand("""
+            INSERT INTO events.query_performance_observation_v3
+              (instance_id,collection_run_id,database_id,query_fingerprint,
+               observation_key,source,source_state,interval_start,
+               interval_end,observed_at,semantics,cpu_ms)
+            SELECT @target,collection_run_id,database_id,query_fingerprint,
+              decode(repeat('44',16),'hex'),source,source_state,interval_start,
+              interval_end,observed_at,semantics,cpu_ms
+            FROM events.query_performance_observation
+            WHERE collection_run_id=@run
+              AND observation_key=decode(repeat('33',16),'hex');
+            """, admin))
+        {
+            extra.Parameters.AddWithValue("target", target);
+            extra.Parameters.AddWithValue("run", run);
+            Assert.Equal(1, await extra.ExecuteNonQueryAsync());
+        }
+        var extraRowParity = await VerifyAsync();
+        Assert.Equal((4L, 5L), (extraRowParity.Source, extraRowParity.Successor));
+        Assert.NotEqual(extraRowParity.SourceHash, extraRowParity.SuccessorHash);
+        Assert.False(extraRowParity.Parity);
+        Assert.False((await CoverageAsync()).All);
+        var failedCoverage = await CoverageAsync();
+        bool sawFailure = false;
+        for (DateTimeOffset day = failedCoverage.From!.Value;
+             day < failedCoverage.To!.Value; day = day.AddDays(1))
+        {
+            sawFailure |= !await RecordAsync(day, day.AddDays(1));
+        }
+        Assert.True(sawFailure);
+        failedCoverage = await CoverageAsync();
+        Assert.False(failedCoverage.All);
+        Assert.True(failedCoverage.Failed > 0);
+        PostgresException tooDense = await Assert.ThrowsAsync<PostgresException>(
+            () => VerifyAsync(4));
+        Assert.Equal("54000", tooDense.SqlState);
+    }
+}

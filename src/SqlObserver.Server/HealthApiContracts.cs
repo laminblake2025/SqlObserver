@@ -37,7 +37,8 @@ public sealed record DatabaseHealthResponse(
     bool IsReadOnly,
     int CompatibilityLevel,
     DateTimeOffset ObservedAtUtc,
-    CollectorHealthResponse Collector);
+    CollectorHealthResponse Collector,
+    string? LogReuseWaitDescription = null);
 
 /// <summary>A bounded keyset page of logical-file health evidence.</summary>
 public sealed record DatabaseFileHealthPageResponse(
@@ -66,6 +67,8 @@ public sealed record DatabaseFileHealthResponse(
     string BytesRead,
     string BytesWritten,
     string IoStallMilliseconds,
+    string? ReadStallMilliseconds,
+    string? WriteStallMilliseconds,
     DateTimeOffset ObservedAtUtc,
     CollectorHealthResponse Collector);
 

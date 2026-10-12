@@ -47,3 +47,10 @@ export type RegisterObservationTargetRequest = TargetAddress & {
   readonly host: string;
   readonly certificateHostName?: string;
 };
+
+export type UpdateObservationTargetRequest = TargetAddress & {
+  readonly expectedRevision: number;
+  readonly displayName: string;
+  readonly host: string;
+  readonly certificateHostName?: string;
+};

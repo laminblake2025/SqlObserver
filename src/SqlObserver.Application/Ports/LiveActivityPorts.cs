@@ -71,6 +71,8 @@ public interface ILiveActivityCollector
 public interface ILiveActivityRepository
 {
     Task<IReadOnlyList<LiveActivityTarget>> TargetsAsync(CancellationToken cancellationToken);
+    Task<LeaseAcquisitionResult> ClaimAsync(LiveActivityTarget target, WorkerExecutionId owner,
+        WorkerLeaseDuration duration, CancellationToken cancellationToken);
     Task CommitAsync(LiveActivityTarget target, WorkerLeaseIdentity lease, LiveActivityCapture capture, CancellationToken cancellationToken);
     Task<bool> HasDeadlockSnapshotAsync(Guid targetId, Guid eventId, CancellationToken cancellationToken);
     Task FailedAsync(Guid targetId, WorkerLeaseIdentity lease, CancellationToken cancellationToken);

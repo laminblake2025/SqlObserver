@@ -1,0 +1,125 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sqlobserver.local/sql-agent.activity-observations.v1.schema.json",
+  "title": "Bounded SQL Agent activity observations collector",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "$schema",
+    "schemaVersion",
+    "collectorId",
+    "collectorVersion",
+    "displayName",
+    "operationalMode",
+    "dependsOn",
+    "supportedTargets",
+    "requiredCapabilities",
+    "requiredPermissionsByMajor",
+    "cadence",
+    "executionBounds",
+    "resilience",
+    "estimatedCostClass",
+    "fallback",
+    "queryResource",
+    "outputSchemaVersion",
+    "outputKind",
+    "defaultEnabled"
+  ],
+  "properties": {
+    "$schema": {
+      "const": "sql-agent.activity-observations.v1.schema.json"
+    },
+    "schemaVersion": {
+      "const": 6
+    },
+    "collectorId": {
+      "const": "sql-agent.activity-observations"
+    },
+    "collectorVersion": {
+      "const": 1
+    },
+    "displayName": {
+      "const": "SQL Agent activity observations"
+    },
+    "operationalMode": {
+      "const": "passive"
+    },
+    "dependsOn": {
+      "const": [
+        "capability.connection",
+        "engine.core"
+      ]
+    },
+    "supportedTargets": {
+      "const": {
+        "product": "Microsoft SQL Server",
+        "minimumMajorVersion": 17,
+        "maximumMajorVersion": 17,
+        "platforms": [
+          "Windows"
+        ],
+        "engineEditions": [
+          2,
+          3
+        ]
+      }
+    },
+    "requiredCapabilities": {
+      "const": [
+        "connection.tds",
+        "authentication.windows-integrated",
+        "transport.tls-validated",
+        "privilege.non-sysadmin",
+        "platform.windows"
+      ]
+    },
+    "requiredPermissionsByMajor": {
+      "const": {
+        "17": []
+      }
+    },
+    "cadence": {
+      "const": {
+        "defaultIntervalSeconds": 60,
+        "minimumIntervalSeconds": 30,
+        "nonOverlappingPerTarget": true
+      }
+    },
+    "executionBounds": {
+      "const": {
+        "connectTimeoutSeconds": 5,
+        "commandTimeoutSeconds": 10,
+        "maximumRows": 513,
+        "maximumResponseBytes": 524288
+      }
+    },
+    "resilience": {
+      "const": {
+        "maximumAttempts": 1,
+        "transientRetryDelayMilliseconds": 0,
+        "circuitFailureThreshold": 3,
+        "circuitOpenSeconds": 300
+      }
+    },
+    "estimatedCostClass": {
+      "const": "moderate"
+    },
+    "fallback": {
+      "const": {
+        "mode": "unsupported"
+      }
+    },
+    "queryResource": {
+      "const": "sql-agent.activity-observations.sqlserver17-windows.v1.sql"
+    },
+    "outputSchemaVersion": {
+      "const": 1
+    },
+    "outputKind": {
+      "const": "sql-agent-activity-observations"
+    },
+    "defaultEnabled": {
+      "const": false
+    }
+  }
+}

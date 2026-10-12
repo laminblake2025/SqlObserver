@@ -1,14 +1,144 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
-import { getQueryPerformance, getQueryPerformanceHistory, getQueryPerformanceStatus, getQueryPerformanceTop } from "../src/features/queries/queryPerformanceApi.ts";
+import { getQueryPerformance, getQueryPerformanceHistory, getQueryPerformancePlanContent, getQueryPerformancePlanWaits, getQueryPerformanceStatus, getQueryPerformanceText, getQueryPerformanceTop, getQueryStoreGroupPlanTrend } from "../src/features/queries/queryPerformanceApi.ts";
 
-test("query performance panel shows all source evidence by default", async () => {
-  const panel = await readFile(new URL("../src/features/queries/TargetQueryPerformancePanel.tsx", import.meta.url), "utf8");
-  assert.match(panel, /const \[source, setSource\] = useState\("mixed"\)/);
-  assert.match(panel, /<option value="mixed">All sources · evidence<\/option>/);
-  assert.match(panel, /queryPerformanceDatabaseOptions/);
-  assert.match(panel, /databaseName/);
+test("Query Store group trend binds plan and window and preserves coverage gaps", async () => {
+  const originalFetch = globalThis.fetch;
+  const targetId = "11111111-1111-4111-8111-111111111111";
+  const query = "a".repeat(64), plan = "b".repeat(64);
+  const from = "2026-09-25T11:30:00Z", to = "2026-09-25T14:00:00Z";
+  const baseline = {
+    bucketStartUtc: "2026-09-25T11:00:00Z", sourceRows: 1,
+    runtimeComparableRows: 0, runtimeBaselineRows: 1, runtimeResetRows: 0,
+    runtimeAmbiguousRows: 0, cpuMilliseconds: null, durationMilliseconds: null,
+    executions: null, logicalReads: null, writes: null, rows: null,
+    waitComparableRows: 0, waitBaselineRows: 1, waitResetRows: 0,
+    waitUnavailableRows: 0, waitStaleRows: 0, waitCategories: {},
+  };
+  const comparable = {
+    ...baseline, bucketStartUtc: "2026-09-25T13:00:00Z",
+    runtimeComparableRows: 1, runtimeBaselineRows: 0,
+    cpuMilliseconds: "200", durationMilliseconds: "300", executions: "2",
+    logicalReads: "12", writes: "1", rows: "4",
+    waitComparableRows: 1, waitBaselineRows: 0, waitCategories: { "3": "9007199254740993" },
+  };
+  const response = { targetId, databaseId: 5, queryFingerprint: query,
+    planFingerprint: plan, fromUtc: from, toUtc: to,
+    semantics: "query_store_group_delta", revisionScope: "current",
+    coverage: "observed_groups_only", bucketSeconds: 3600,
+    points: [baseline, comparable] };
+  const controller = new AbortController();
+  let request;
+  const reply = value => new Response(JSON.stringify(value), {
+    headers: { "content-type": "application/json" },
+  });
+  try {
+    globalThis.fetch = async (url, options) => { request = { url, options }; return reply(response); };
+    const trend = await getQueryStoreGroupPlanTrend(targetId, 5, query, plan, from, to, controller.signal);
+    assert.equal(trend.points.length, 2);
+    assert.deepEqual(trend.points[0], baseline);
+    assert.equal(trend.points[1].waitCategories[3], "9007199254740993");
+    assert.match(request.url, new RegExp(`/history/${query}/plans/${plan}/trend\\?`));
+    assert.equal(request.options.cache, "no-store");
+    assert.ok(request.options.signal instanceof AbortSignal); assert.equal(request.options.signal.aborted, controller.signal.aborted);
+    globalThis.fetch = async () => reply({ ...response, targetId: "other-target" });
+    await assert.rejects(() => getQueryStoreGroupPlanTrend(targetId, 5, query, plan, from, to, controller.signal), /target contract/);
+    globalThis.fetch = async () => reply({ ...response, planFingerprint: "c".repeat(64) });
+    await assert.rejects(() => getQueryStoreGroupPlanTrend(targetId, 5, query, plan, from, to, controller.signal), /outside its bounds/);
+    globalThis.fetch = async () => reply({ ...response, points: [{ ...baseline, runtimeBaselineRows: 0 }] });
+    await assert.rejects(() => getQueryStoreGroupPlanTrend(targetId, 5, query, plan, from, to, controller.signal), /coverage was inconsistent/);
+    globalThis.fetch = async () => reply({ ...response, points: [comparable, baseline] });
+    await assert.rejects(() => getQueryStoreGroupPlanTrend(targetId, 5, query, plan, from, to, controller.signal), /bucket was outside its window/);
+    globalThis.fetch = async () => reply({ ...response, points: [{ ...baseline,
+      bucketStartUtc: "2026-09-25T10:00:00Z" }] });
+    await assert.rejects(() => getQueryStoreGroupPlanTrend(targetId, 5, query, plan, from, to, controller.signal), /bucket was outside its window/);
+  } finally { globalThis.fetch = originalFetch; }
+});
+
+test("query text read binds the exact run, bypasses browser cache, and rejects invalid content", async () => {
+  const originalFetch = globalThis.fetch;
+  const targetId = "11111111-1111-4111-8111-111111111111";
+  const runId = "22222222-2222-4222-8222-222222222222";
+  const fingerprint = "a".repeat(64);
+  const response = { targetId, databaseId: 5, queryFingerprint: fingerprint, collectionRunId: runId, status: "available", text: "SELECT 1" };
+  let request;
+  try {
+    globalThis.fetch = async (url, options) => {
+      request = { url, options };
+      return new Response(JSON.stringify(response), { headers: { "content-type": "application/json" } });
+    };
+    const controller = new AbortController();
+    assert.deepEqual(await getQueryPerformanceText(targetId, 5, fingerprint, runId, controller.signal), { collectionRunId: runId, status: "available", text: "SELECT 1" });
+    assert.match(request.url, new RegExp(`/databases/5/history/${fingerprint}/runs/${runId}/text$`));
+    assert.equal(request.options.cache, "no-store");
+    assert.ok(request.options.signal instanceof AbortSignal); assert.equal(request.options.signal.aborted, controller.signal.aborted);
+    globalThis.fetch = async () => new Response(JSON.stringify({ ...response, collectionRunId: "33333333-3333-4333-8333-333333333333" }), { headers: { "content-type": "application/json" } });
+    await assert.rejects(() => getQueryPerformanceText(targetId, 5, fingerprint, runId, controller.signal), /outside its bounds/);
+    globalThis.fetch = async () => new Response(JSON.stringify({ ...response, status: "unavailable", text: "SELECT 1" }), { headers: { "content-type": "application/json" } });
+    await assert.rejects(() => getQueryPerformanceText(targetId, 5, fingerprint, runId, controller.signal), /outside its bounds/);
+  } finally { globalThis.fetch = originalFetch; }
+});
+
+test("plan XML read binds target, query, plan and run without caching", async () => {
+  const originalFetch = globalThis.fetch;
+  const targetId = "11111111-1111-4111-8111-111111111111";
+  const runId = "22222222-2222-4222-8222-222222222222";
+  const query = "a".repeat(64), plan = "b".repeat(64);
+  const response = { targetId, databaseId: 5, queryFingerprint: query, planFingerprint: plan,
+    collectionRunId: runId, status: "available", xml: "<ShowPlanXML />" };
+  let request;
+  try {
+    globalThis.fetch = async (url, options) => {
+      request = { url, options };
+      return new Response(JSON.stringify(response), { headers: { "content-type": "application/json" } });
+    };
+    const controller = new AbortController();
+    assert.deepEqual(await getQueryPerformancePlanContent(targetId, 5, query, plan, runId, controller.signal),
+      { collectionRunId: runId, planFingerprint: plan, status: "available", xml: "<ShowPlanXML />" });
+    assert.match(request.url, new RegExp(`/history/${query}/runs/${runId}/plans/${plan}/content$`));
+    assert.equal(request.options.cache, "no-store");
+    assert.ok(request.options.signal instanceof AbortSignal); assert.equal(request.options.signal.aborted, controller.signal.aborted);
+    globalThis.fetch = async () => new Response(JSON.stringify({ ...response, planFingerprint: "c".repeat(64) }),
+      { headers: { "content-type": "application/json" } });
+    await assert.rejects(() => getQueryPerformancePlanContent(targetId, 5, query, plan, runId, controller.signal), /outside its bounds/);
+    globalThis.fetch = async () => new Response(JSON.stringify({ ...response, status: "unavailable", xml: "<ShowPlanXML />" }),
+      { headers: { "content-type": "application/json" } });
+    await assert.rejects(() => getQueryPerformancePlanContent(targetId, 5, query, plan, runId, controller.signal), /outside its bounds/);
+  } finally { globalThis.fetch = originalFetch; }
+});
+
+test("plan wait read binds the exact history row and rejects conflicting categories", async () => {
+  const originalFetch = globalThis.fetch;
+  const targetId = "11111111-1111-4111-8111-111111111111";
+  const runId = "22222222-2222-4222-8222-222222222222";
+  const query = "a".repeat(64), plan = "b".repeat(64);
+  const response = { targetId, databaseId: 5, queryFingerprint: query, planFingerprint: plan,
+    collectionRunId: runId, status: "available", semantics: "query_store_interval_total",
+    capturedAtUtc: "2026-09-25T12:00:00Z", categories: [{ category: 3, waitMilliseconds: 3049 }] };
+  let request;
+  try {
+    globalThis.fetch = async (url, options) => {
+      request = { url, options };
+      return new Response(JSON.stringify(response), { headers: { "content-type": "application/json" } });
+    };
+    const controller = new AbortController();
+    assert.deepEqual(await getQueryPerformancePlanWaits(targetId, 5, query, plan, runId, controller.signal),
+      { collectionRunId: runId, planFingerprint: plan, status: "available",
+        capturedAtUtc: response.capturedAtUtc, categories: response.categories });
+    assert.match(request.url, new RegExp(`/history/${query}/runs/${runId}/plans/${plan}/waits$`));
+    assert.equal(request.options.cache, "no-store");
+    assert.ok(request.options.signal instanceof AbortSignal); assert.equal(request.options.signal.aborted, controller.signal.aborted);
+    globalThis.fetch = async () => new Response(JSON.stringify({ ...response, planFingerprint: "c".repeat(64) }),
+      { headers: { "content-type": "application/json" } });
+    await assert.rejects(() => getQueryPerformancePlanWaits(targetId, 5, query, plan, runId, controller.signal), /outside its bounds/);
+    globalThis.fetch = async () => new Response(JSON.stringify({ ...response, categories: [...response.categories, response.categories[0]] }),
+      { headers: { "content-type": "application/json" } });
+    await assert.rejects(() => getQueryPerformancePlanWaits(targetId, 5, query, plan, runId, controller.signal), /categories were invalid/);
+    globalThis.fetch = async () => new Response(JSON.stringify({ ...response, status: "unavailable", capturedAtUtc: null, categories: null }),
+      { headers: { "content-type": "application/json" } });
+    assert.deepEqual(await getQueryPerformancePlanWaits(targetId, 5, query, plan, runId, controller.signal),
+      { collectionRunId: runId, planFingerprint: plan, status: "unavailable", capturedAtUtc: null, categories: null });
+  } finally { globalThis.fetch = originalFetch; }
 });
 
 test("production endpoint response shape is flat, bounded, and content-unavailable", () => {

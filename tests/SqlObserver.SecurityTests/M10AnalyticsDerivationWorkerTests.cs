@@ -117,6 +117,23 @@ public sealed class M10AnalyticsDerivationWorkerTests
         Assert.True(store.ClaimCount > 0);
     }
 
+    [Theory]
+    [InlineData(null, 30)]
+    [InlineData(1, 1)]
+    [InlineData(7, 7)]
+    [InlineData(30, 30)]
+    public async Task WorkerUsesThirtyDayHorizonForLegacyJobsAndPreservesExplicitHorizons(int? requestedDays, int expectedDays)
+    {
+        (FakeStore store, FakeAnalyticsRepository repository) = await RunAsync(
+            "forecast", "host.volume.free_bytes", forecastHorizonDays: requestedDays);
+
+        Assert.Equal(AnalyticsDerivationCompletion.Succeeded, store.Completion);
+        ForecastResult forecast = Assert.IsType<ForecastResult>(repository.Forecast);
+        Assert.True(forecast.Available);
+        Assert.Equal(new DateTimeOffset(2026, 8, 1, 1, 0, 0, TimeSpan.Zero), forecast.HorizonStartUtc);
+        Assert.Equal(TimeSpan.FromDays(expectedDays), forecast.HorizonEndUtc - forecast.HorizonStartUtc);
+    }
+
     [Fact]
     public async Task WorkerPersistsEvidenceAndIncidentGenerations()
     {
@@ -140,11 +157,11 @@ public sealed class M10AnalyticsDerivationWorkerTests
         Assert.True(store.CompletionTokenObserved);
     }
 
-    private static async Task<(FakeStore Store, FakeAnalyticsRepository Repository)> RunAsync(string kind, string metric, bool delayInput = false, TimeSpan? jobDuration = null)
+    private static async Task<(FakeStore Store, FakeAnalyticsRepository Repository)> RunAsync(string kind, string metric, bool delayInput = false, TimeSpan? jobDuration = null, int? forecastHorizonDays = 1)
     {
         var target = new MonitoredInstanceId(Guid.NewGuid());
         DateTimeOffset from = new(2026, 7, 1, 0, 0, 0, TimeSpan.Zero), to = new(2026, 8, 1, 0, 0, 0, TimeSpan.Zero);
-        var job = new AnalyticsDerivationJob(Guid.NewGuid(), target, new ObservationTargetRevision(1), kind, from, to, to.AddHours(1), MetricKey: metric, ForecastHorizon: TimeSpan.FromDays(1));
+        var job = new AnalyticsDerivationJob(Guid.NewGuid(), target, new ObservationTargetRevision(1), kind, from, to, to.AddHours(1), MetricKey: metric, ForecastHorizon: forecastHorizonDays is { } days ? TimeSpan.FromDays(days) : null);
         var store = new FakeStore(job) { DelayInput = delayInput };
         var repository = new FakeAnalyticsRepository();
         using var worker = new AnalyticsDerivationWorker(store, new FakeLeases(), new WorkerExecutionId(Guid.NewGuid()), repository, NullLogger<AnalyticsDerivationWorker>.Instance, jobDuration);
@@ -200,6 +217,7 @@ public sealed class M10AnalyticsDerivationWorkerTests
     {
         public bool BaselineStored { get; private set; }
         public bool ForecastStored { get; private set; }
+        public ForecastResult? Forecast { get; private set; }
         public bool EvidenceStored { get; private set; }
         public bool IncidentStored { get; private set; }
         public bool GenerationStored { get; private set; }
@@ -211,7 +229,7 @@ public sealed class M10AnalyticsDerivationWorkerTests
         public ValueTask<IReadOnlyList<IncidentThread>> ReadIncidentsAsync(AnalyticsQueryRequest request, CancellationToken cancellationToken) => throw new NotSupportedException();
         public ValueTask StoreRollupsAsync(AnalyticsJobRequest request, IReadOnlyList<RollupResult> rollups, CancellationToken cancellationToken) => throw new NotSupportedException();
         public ValueTask StoreBaselineAsync(AnalyticsJobRequest request, IReadOnlyList<BaselineResult> baselines, CancellationToken cancellationToken) { BaselineStored = true; return ValueTask.CompletedTask; }
-        public ValueTask StoreForecastAsync(AnalyticsJobRequest request, ForecastResult forecast, CancellationToken cancellationToken) { ForecastStored = true; return ValueTask.CompletedTask; }
+        public ValueTask StoreForecastAsync(AnalyticsJobRequest request, ForecastResult forecast, CancellationToken cancellationToken) { ForecastStored = true; Forecast = forecast; return ValueTask.CompletedTask; }
         public ValueTask StoreEvidenceAsync(AnalyticsJobRequest request, EvidencePacket packet, CancellationToken cancellationToken) { EvidenceStored = true; return ValueTask.CompletedTask; }
         public ValueTask StoreIncidentAsync(AnalyticsJobRequest request, IncidentThread thread, CancellationToken cancellationToken) { IncidentStored = true; return ValueTask.CompletedTask; }
         public ValueTask StoreIncidentGenerationAsync(AnalyticsJobRequest request, IncidentGeneration generation, CancellationToken cancellationToken) { GenerationStored = true; return ValueTask.CompletedTask; }

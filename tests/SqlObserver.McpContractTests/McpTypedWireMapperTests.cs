@@ -59,7 +59,7 @@ public sealed class McpTypedWireMapperTests
         Assert.Equal(2, items.GetArrayLength());
         foreach (JsonElement item in items.EnumerateArray())
         {
-            foreach (string field in new[] { "availabilityGroup", "role", "synchronizationState", "state", "reason" })
+            foreach (string field in new[] { "kind", "groupFingerprint", "visibilityScope", "stateAvailable" })
                 Assert.True(item.TryGetProperty(field, out _), $"Availability item is missing required field '{field}'.");
         }
 
@@ -68,6 +68,31 @@ public sealed class McpTypedWireMapperTests
             .GetProperty("properties").GetProperty("items").GetProperty("items");
         AssertSchema(items[0], itemSchema, "get_availability_health");
         AssertSchema(items[1], itemSchema, "get_availability_health");
+    }
+
+    [Theory]
+    [InlineData("LOG_BACKUP")]
+    [InlineData(null)]
+    public void DatabaseHealthRetainsNullableLogReuseEvidence(string? logReuseWaitDescription)
+    {
+        DatabaseObservation observation = new(TargetId, new ObservationTargetRevision(3), 5,
+            new SqlServerObjectName("db"), DatabaseOperationalState.Online,
+            DatabaseRecoveryModel.Simple, DatabaseUserAccess.MultiUser, false, 160, Now,
+            logReuseWaitDescription);
+        CollectorHealthProjection collector = Collector();
+        DatabaseHealthPage page = new(TargetId, new CollectorRunId(Guid.NewGuid()),
+            new ObservationTargetRevision(3), collector,
+            [new DatabaseHealthItem(observation, collector)], null, Now);
+
+        CallToolResult result = McpResults.Json(page, Options, "get_database_health",
+            new Dictionary<string, JsonElement>(), Signer);
+        JsonElement data = result.StructuredContent!.Value.GetProperty("data");
+        bool present = data.GetProperty("items")[0].GetProperty("observation")
+            .TryGetProperty("logReuseWaitDescription", out JsonElement token);
+        Assert.Equal(logReuseWaitDescription is not null, present);
+        if (present) Assert.Equal(logReuseWaitDescription, token.GetString());
+        AssertSchema(data, McpCatalog.OutputSchema("get_database_health")
+            .GetProperty("properties").GetProperty("data"), "get_database_health");
     }
 
     [Fact]
@@ -243,8 +268,8 @@ public sealed class McpTypedWireMapperTests
         yield return ("get_tempdb_health", new TempDbSnapshot(TargetId, new ObservationTargetRevision(3), null, Now, OperationalObservationState.Complete, 10, 5, 2, 1, [new TempDbFileObservation(TargetId, new ObservationTargetRevision(3), 1, 10, 5, 5, TempDbComponentState.Healthy)], false), "fileId");
         yield return ("get_storage_forecast", new StorageForecastPage(TargetId, "growth", TimeSpan.FromDays(30), [new StorageForecastItem(Guid.Parse("55555555-5555-4555-8555-555555555555"), "growth", Now, Now.AddDays(1), 2, 1, 3, 1, .9, .1, "forecast-v1", 1, "complete", new Dictionary<string, string>(), new string('d', 64))], "complete", new ObservationTargetRevision(3), Now), "forecast-v1");
         yield return ("get_backup_status", new BackupStatusSnapshot(TargetId, new ObservationTargetRevision(3), null, Now, OperationalObservationState.Complete, [new BackupStatusObservation(TargetId, new ObservationTargetRevision(3), new string('e', 64), BackupKind.Full, Now, null, false, 10, false, true, false, BackupCoverage.Complete)], 1, false), "backupType");
-        yield return ("get_job_failures", new SqlAgentFailureSnapshot(TargetId, new ObservationTargetRevision(3), null, Now, OperationalObservationState.Complete, [new SqlAgentFailureObservation(TargetId, new ObservationTargetRevision(3), Guid.Parse("66666666-6666-4666-8666-666666666666"), 1, 1, 1, AgentFailureKind.Failed, null, null, 0, 1, Now, new string('f', 64))], 1, false, Now.AddHours(-1), Now), "failureAtUtc");
-        yield return ("get_availability_health", new AvailabilityGroupsSnapshot(TargetId, new ObservationTargetRevision(3), null, Now, OperationalObservationState.Complete, AvailabilityVisibilityScope.PrimaryAllKnown, [new AvailabilityReplicaObservation(TargetId, new ObservationTargetRevision(3), new string('1', 64), new string('2', 64), "primary", "online", "connected", AvailabilityVisibilityScope.PrimaryAllKnown, true)], [], false), "availabilityGroup");
+        yield return ("get_job_failures", new SqlAgentFailureSnapshot(TargetId, new ObservationTargetRevision(3), null, Now, OperationalObservationState.Complete, [new SqlAgentFailureObservation(TargetId, new ObservationTargetRevision(3), Guid.Parse("66666666-6666-4666-8666-666666666666"), 1, 1, 1, AgentFailureKind.Failed, null, null, 0, 1, Now, new string('f', 64))], 1, false, Now.AddHours(-1), Now), "firstObservedAtUtc");
+        yield return ("get_availability_health", new AvailabilityGroupsSnapshot(TargetId, new ObservationTargetRevision(3), null, Now, OperationalObservationState.Complete, AvailabilityVisibilityScope.PrimaryAllKnown, [new AvailabilityReplicaObservation(TargetId, new ObservationTargetRevision(3), new string('1', 64), new string('2', 64), "primary", "online", "connected", AvailabilityVisibilityScope.PrimaryAllKnown, true)], [], false), "groupFingerprint");
         yield return ("get_incident_evidence", new IncidentEvidencePage(TargetId, Guid.Parse("77777777-7777-4777-8777-777777777777"), [new IncidentEvidenceItem(Now, Guid.NewGuid(), "metric", null, new string('1', 64), new string('2', 64), new string('3', 64), Now, .9, "complete")], [new IncidentGenerationItem(Guid.NewGuid(), 1, Now, new string('4', 64), false, null)], new ObservationTargetRevision(3), Now), "evidenceKind");
         yield return ("search_diagnostic_events", new DiagnosticEventSearchPage(TargetId, Now, Now.AddHours(1), [new DiagnosticEventItem(Now, Guid.NewGuid(), "deadlock", 2, new DiagnosticEventSafeMetadata("cpu", 1, 2, false), Now, new ObservationTargetRevision(3))], false, null, new ObservationTargetRevision(3), Now), "eventKind");
     }
@@ -252,33 +277,6 @@ public sealed class McpTypedWireMapperTests
     private static ObservationTarget Target() => new(TargetId, new ObservationTargetKey("target"), new ObservationTargetDisplayName("target-name"), new SqlServerConnectionPolicy(new SqlServerEndpoint(new SqlServerHostName("sql"), tcpPort: 1433), new SqlServerConnectTimeout(TimeSpan.FromSeconds(5))), ObservationTargetLifecycle.Active, new ObservationTargetRevision(3), Now, Now, Now);
     private static CollectorHealthProjection Collector() => new(TargetId, new CollectorId("core"), 1, 1, CollectorHealthState.Current, CollectorHealthReason.None, CollectorCircuitSnapshot.Closed(Now), null, 1, 0, 0, 1, Now, Now, Now, Now.AddHours(1), Now);
 
-    private static void AssertSchema(JsonElement value, JsonElement schema, string tool)
-    {
-        if (value.ValueKind == JsonValueKind.Object && schema.TryGetProperty("required", out JsonElement required))
-            foreach (JsonElement requiredField in required.EnumerateArray())
-                Assert.True(value.TryGetProperty(requiredField.GetString()!, out _), $"{tool}: required field {requiredField.GetString()} is missing.");
-        string? type = schema.TryGetProperty("type", out JsonElement t) && t.ValueKind == JsonValueKind.String ? t.GetString() : null;
-        if (schema.TryGetProperty("type", out JsonElement declared) && declared.ValueKind == JsonValueKind.Array)
-        {
-            string actual = PrimitiveType(value);
-            string[] allowed = declared.EnumerateArray().Select(x => x.GetString()!).ToArray();
-            Assert.True(allowed.Contains(actual) || actual == "integer" && allowed.Contains("number"), $"{tool}: expected one of {string.Join(',', allowed)}, got {actual}");
-        }
-        else if (type is not null)
-        {
-            string actual = PrimitiveType(value);
-            Assert.True(type == actual || type == "number" && actual == "integer", $"{tool}: expected {type}, got {actual}");
-        }
-        if (value.ValueKind == JsonValueKind.Object && schema.TryGetProperty("properties", out JsonElement properties))
-            foreach (JsonProperty p in value.EnumerateObject()) if (properties.TryGetProperty(p.Name, out JsonElement child))
-                try { AssertSchema(p.Value, child, tool); } catch (Xunit.Sdk.XunitException ex) { throw new Xunit.Sdk.XunitException($"{tool} field {p.Name}: {ex.Message}"); }
-        if (value.ValueKind == JsonValueKind.Array && schema.TryGetProperty("items", out JsonElement item)) foreach (JsonElement child in value.EnumerateArray()) AssertSchema(child, item, tool);
-    }
-
-    private static string PrimitiveType(JsonElement value) => value.ValueKind switch
-    {
-        JsonValueKind.Object => "object", JsonValueKind.Array => "array", JsonValueKind.String => "string",
-        JsonValueKind.Number => value.TryGetInt64(out _) ? "integer" : "number",
-        JsonValueKind.True or JsonValueKind.False => "boolean", _ => "null"
-    };
+    private static void AssertSchema(JsonElement value, JsonElement schema, string tool) =>
+        JsonSchemaAssertions.AssertValid(value, schema, tool);
 }

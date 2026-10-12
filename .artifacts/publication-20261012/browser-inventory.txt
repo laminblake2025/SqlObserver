@@ -1,0 +1,768 @@
+Listing tests:
+  [chromium-4358] › activity-redesign.spec.mjs:36:112 › prioritized all-session layout, chain and keyboard inspection at 1600x1000
+  [chromium-4358] › activity-redesign.spec.mjs:36:112 › prioritized all-session layout, chain and keyboard inspection at 1440x900
+  [chromium-4358] › activity-redesign.spec.mjs:36:112 › prioritized all-session layout, chain and keyboard inspection at 390x844
+  [chromium-4358] › activity-redesign.spec.mjs:56:1 › local filters, session grouping, exact secondary requests and manual sort preserve one capture
+  [chromium-4358] › activity-redesign.spec.mjs:65:1 › threshold settings persist per server and reset; SQL denial clears text and retains metadata
+  [chromium-4358] › activity-redesign.spec.mjs:70:1 › database presentation changes retain the same capture and label graph context outside that database
+  [chromium-4358] › activity-redesign.spec.mjs:81:1 › long native application names keep every column and inspection action visible beside details
+  [chromium-4358] › activity-redesign.spec.mjs:91:1 › paging failure stays partial instead of reporting an all-clear, and refresh is deferred during list interaction
+  [chromium-4358] › redesign.spec.mjs:27:3 › three redesign screens and accessible layout at 1600×1000
+  [chromium-4358] › redesign.spec.mjs:27:3 › three redesign screens and accessible layout at 1440×900
+  [chromium-4358] › redesign.spec.mjs:27:3 › three redesign screens and accessible layout at 390×844
+  [chromium-4358] › redesign.spec.mjs:50:1 › detail navigation avoids fleet reads, saves an exact frozen investigation, and restores deep links
+  [chromium-4358] › redesign.spec.mjs:66:1 › custom editor follows display timezone and untouched UTC bounds retain microseconds
+  [chromium-4358] › redesign.spec.mjs:78:1 › viewer cannot save investigations and narrow navigation is keyboard accessible
+  [chromium-4358] › redesign.spec.mjs:86:1 › chart inspection survives refresh and resets on explicit metric change
+  [chromium-4358] › redesign.spec.mjs:99:1 › existing diagnostic and administration bookmarks load inside the shared shell
+  [chromium-4322] › analytics-workflow.spec.mjs:29:31 › Analytics URL category, database and exact Rewind window restore at 320
+  [chromium-4322] › analytics-workflow.spec.mjs:29:31 › Analytics URL category, database and exact Rewind window restore at 1440
+  [chromium-4322] › analytics-workflow.spec.mjs:45:1 › Analytics malformed and duplicate category URLs refuse reads until an explicit choice
+  [chromium-4322] › analytics-workflow.spec.mjs:56:1 › Analytics inventory remains usable outside the time-filtered surface range
+  [chromium-4322] › analytics-workflow.spec.mjs:65:52 › Analytics diagnostics/search held continuation survives a moving Live workspace tick
+  [chromium-4322] › analytics-workflow.spec.mjs:65:52 › Analytics jobs held continuation survives a moving Live workspace tick
+  [chromium-4322] › analytics-workflow.spec.mjs:91:1 › Analytics categories restore their own visited receipts without a new read
+  [chromium-4322] › analytics-workflow.spec.mjs:101:31 › Analytics HTTP 401 latest read removes previously retained protected receipt
+  [chromium-4322] › analytics-workflow.spec.mjs:101:31 › Analytics HTTP 403 latest read removes previously retained protected receipt
+  [chromium-4322] › analytics-workflow.spec.mjs:110:31 › Analytics retained native diagnostic metadata stays readable and bounded at 320
+  [chromium-4322] › analytics-workflow.spec.mjs:110:31 › Analytics retained native diagnostic metadata stays readable and bounded at 1440
+  [chromium-4322] › dashboard-access-navigation.spec.mjs:55:34 › same-cursor catalog HTTP 401 clears labels and requires explicit recovery
+  [chromium-4322] › dashboard-access-navigation.spec.mjs:55:34 › same-cursor catalog HTTP 403 clears labels and requires explicit recovery
+  [chromium-4322] › dashboard-access-navigation.spec.mjs:69:69 › catalog HTTP 503 retains received servers evidence with a disclosure
+  [chromium-4322] › dashboard-access-navigation.spec.mjs:69:69 › catalog HTTP 503 retains received reports evidence with a disclosure
+  [chromium-4322] › dashboard-access-navigation.spec.mjs:69:69 › catalog HTTP 503 retains received overview evidence with a disclosure
+  [chromium-4322] › dashboard-access-navigation.spec.mjs:69:69 › catalog HTTP 503 retains received alerts evidence with a disclosure
+  [chromium-4322] › dashboard-access-navigation.spec.mjs:82:1 › catalog denial fences a held direct lookup and retains the exact route
+  [chromium-4322] › dashboard-access-navigation.spec.mjs:94:1 › identity denial fences a held successful catalog refresh
+  [chromium-4322] › dashboard-access-navigation.spec.mjs:103:1 › catalog denial removes a pending registration and fences its later native receipt
+  [chromium-4322] › dashboard-access-navigation.spec.mjs:126:1 › built Health Back/Forward and reload restore the bare route default
+  [chromium-4322] › dashboard-access-navigation.spec.mjs:138:1 › built bare Health retains Dashboard when the shared database filter is cleared or restored
+  [chromium-4322] › dashboard-access-navigation.spec.mjs:151:1 › built Waits chart ignores secondary mouse input but commits a primary drag to the shared URL
+  [chromium-4322] › dashboard-access-navigation.spec.mjs:168:34 › built Waits HTTP 401 clears charts and recovers only the explicitly retried source
+  [chromium-4322] › dashboard-access-navigation.spec.mjs:168:34 › built Waits HTTP 403 clears charts and recovers only the explicitly retried source
+  [chromium-4322] › dashboard-access-navigation.spec.mjs:183:44 › denied workspace is dark, responsive and keyboard accessible at 320px
+  [chromium-4322] › dashboard-access-navigation.spec.mjs:183:44 › denied workspace is dark, responsive and keyboard accessible at 390px
+  [chromium-4322] › dashboard-access-navigation.spec.mjs:183:44 › denied workspace is dark, responsive and keyboard accessible at 768px
+  [chromium-4322] › dashboard-access-navigation.spec.mjs:183:44 › denied workspace is dark, responsive and keyboard accessible at 1440px
+  [chromium-4322] › dashboard-accessibility.spec.mjs:52:5 › fleet: dark, accessible and responsive at 320px
+  [chromium-4322] › dashboard-accessibility.spec.mjs:52:5 › server: dark, accessible and responsive at 320px
+  [chromium-4322] › dashboard-accessibility.spec.mjs:52:5 › activity: dark, accessible and responsive at 320px
+  [chromium-4322] › dashboard-accessibility.spec.mjs:52:5 › queries: dark, accessible and responsive at 320px
+  [chromium-4322] › dashboard-accessibility.spec.mjs:52:5 › deadlocks: dark, accessible and responsive at 320px
+  [chromium-4322] › dashboard-accessibility.spec.mjs:52:5 › health-checks: dark, accessible and responsive at 320px
+  [chromium-4322] › dashboard-accessibility.spec.mjs:52:5 › alerts: dark, accessible and responsive at 320px
+  [chromium-4322] › dashboard-accessibility.spec.mjs:52:5 › resources: dark, accessible and responsive at 320px
+  [chromium-4322] › dashboard-accessibility.spec.mjs:52:5 › waits: dark, accessible and responsive at 320px
+  [chromium-4322] › dashboard-accessibility.spec.mjs:52:5 › fleet: dark, accessible and responsive at 390px
+  [chromium-4322] › dashboard-accessibility.spec.mjs:52:5 › server: dark, accessible and responsive at 390px
+  [chromium-4322] › dashboard-accessibility.spec.mjs:52:5 › activity: dark, accessible and responsive at 390px
+  [chromium-4322] › dashboard-accessibility.spec.mjs:52:5 › queries: dark, accessible and responsive at 390px
+  [chromium-4322] › dashboard-accessibility.spec.mjs:52:5 › deadlocks: dark, accessible and responsive at 390px
+  [chromium-4322] › dashboard-accessibility.spec.mjs:52:5 › health-checks: dark, accessible and responsive at 390px
+  [chromium-4322] › dashboard-accessibility.spec.mjs:52:5 › alerts: dark, accessible and responsive at 390px
+  [chromium-4322] › dashboard-accessibility.spec.mjs:52:5 › resources: dark, accessible and responsive at 390px
+  [chromium-4322] › dashboard-accessibility.spec.mjs:52:5 › waits: dark, accessible and responsive at 390px
+  [chromium-4322] › dashboard-accessibility.spec.mjs:52:5 › fleet: dark, accessible and responsive at 768px
+  [chromium-4322] › dashboard-accessibility.spec.mjs:52:5 › server: dark, accessible and responsive at 768px
+  [chromium-4322] › dashboard-accessibility.spec.mjs:52:5 › activity: dark, accessible and responsive at 768px
+  [chromium-4322] › dashboard-accessibility.spec.mjs:52:5 › queries: dark, accessible and responsive at 768px
+  [chromium-4322] › dashboard-accessibility.spec.mjs:52:5 › deadlocks: dark, accessible and responsive at 768px
+  [chromium-4322] › dashboard-accessibility.spec.mjs:52:5 › health-checks: dark, accessible and responsive at 768px
+  [chromium-4322] › dashboard-accessibility.spec.mjs:52:5 › alerts: dark, accessible and responsive at 768px
+  [chromium-4322] › dashboard-accessibility.spec.mjs:52:5 › resources: dark, accessible and responsive at 768px
+  [chromium-4322] › dashboard-accessibility.spec.mjs:52:5 › waits: dark, accessible and responsive at 768px
+  [chromium-4322] › dashboard-accessibility.spec.mjs:52:5 › fleet: dark, accessible and responsive at 1440px
+  [chromium-4322] › dashboard-accessibility.spec.mjs:52:5 › server: dark, accessible and responsive at 1440px
+  [chromium-4322] › dashboard-accessibility.spec.mjs:52:5 › activity: dark, accessible and responsive at 1440px
+  [chromium-4322] › dashboard-accessibility.spec.mjs:52:5 › queries: dark, accessible and responsive at 1440px
+  [chromium-4322] › dashboard-accessibility.spec.mjs:52:5 › deadlocks: dark, accessible and responsive at 1440px
+  [chromium-4322] › dashboard-accessibility.spec.mjs:52:5 › health-checks: dark, accessible and responsive at 1440px
+  [chromium-4322] › dashboard-accessibility.spec.mjs:52:5 › alerts: dark, accessible and responsive at 1440px
+  [chromium-4322] › dashboard-accessibility.spec.mjs:52:5 › resources: dark, accessible and responsive at 1440px
+  [chromium-4322] › dashboard-accessibility.spec.mjs:52:5 › waits: dark, accessible and responsive at 1440px
+  [chromium-4322] › dashboard-accessibility.spec.mjs:96:1 › keyboard skip link, chart evidence, time editor and palette remain accessible
+  [chromium-4322] › dashboard-accessibility.spec.mjs:119:1 › narrow alert evidence preserves readable columns and scrolls with the keyboard
+  [chromium-4322] › dashboard-accessibility.spec.mjs:130:3 › selected blocking chain keeps keyboard controls and responsive evidence at 320px
+  [chromium-4322] › dashboard-accessibility.spec.mjs:130:3 › selected blocking chain keeps keyboard controls and responsive evidence at 390px
+  [chromium-4322] › dashboard-accessibility.spec.mjs:130:3 › selected blocking chain keeps keyboard controls and responsive evidence at 768px
+  [chromium-4322] › dashboard-accessibility.spec.mjs:130:3 › selected blocking chain keeps keyboard controls and responsive evidence at 1440px
+  [chromium-4322] › dashboard-accessibility.spec.mjs:162:5 › database context on activity supports keyboard use and responsive evidence at 320px
+  [chromium-4322] › dashboard-accessibility.spec.mjs:162:5 › database context on resources supports keyboard use and responsive evidence at 320px
+  [chromium-4322] › dashboard-accessibility.spec.mjs:162:5 › database context on activity supports keyboard use and responsive evidence at 390px
+  [chromium-4322] › dashboard-accessibility.spec.mjs:162:5 › database context on resources supports keyboard use and responsive evidence at 390px
+  [chromium-4322] › dashboard-accessibility.spec.mjs:162:5 › database context on activity supports keyboard use and responsive evidence at 768px
+  [chromium-4322] › dashboard-accessibility.spec.mjs:162:5 › database context on resources supports keyboard use and responsive evidence at 768px
+  [chromium-4322] › dashboard-accessibility.spec.mjs:162:5 › database context on activity supports keyboard use and responsive evidence at 1440px
+  [chromium-4322] › dashboard-accessibility.spec.mjs:162:5 › database context on resources supports keyboard use and responsive evidence at 1440px
+  [chromium-4322] › dashboard-accessibility.spec.mjs:208:3 › investigation timeline supports keyboard alignment and responsive evidence at 320px
+  [chromium-4322] › dashboard-accessibility.spec.mjs:208:3 › investigation timeline supports keyboard alignment and responsive evidence at 390px
+  [chromium-4322] › dashboard-accessibility.spec.mjs:208:3 › investigation timeline supports keyboard alignment and responsive evidence at 768px
+  [chromium-4322] › dashboard-accessibility.spec.mjs:208:3 › investigation timeline supports keyboard alignment and responsive evidence at 1440px
+  [chromium-4322] › dashboard-accessibility.spec.mjs:279:3 › shared resource keyboard inspection is accessible and responsive at 320px
+  [chromium-4322] › dashboard-accessibility.spec.mjs:279:3 › shared resource keyboard inspection is accessible and responsive at 390px
+  [chromium-4322] › dashboard-accessibility.spec.mjs:279:3 › shared resource keyboard inspection is accessible and responsive at 768px
+  [chromium-4322] › dashboard-accessibility.spec.mjs:279:3 › shared resource keyboard inspection is accessible and responsive at 1440px
+  [chromium-4322] › dashboard-accessibility.spec.mjs:329:3 › restored missing resource selections stay explicit and accessible at 320px
+  [chromium-4322] › dashboard-accessibility.spec.mjs:350:3 › restored activity metadata and missing request remain accessible without protected SQL at 320px
+  [chromium-4322] › dashboard-accessibility.spec.mjs:329:3 › restored missing resource selections stay explicit and accessible at 390px
+  [chromium-4322] › dashboard-accessibility.spec.mjs:350:3 › restored activity metadata and missing request remain accessible without protected SQL at 390px
+  [chromium-4322] › dashboard-accessibility.spec.mjs:329:3 › restored missing resource selections stay explicit and accessible at 768px
+  [chromium-4322] › dashboard-accessibility.spec.mjs:350:3 › restored activity metadata and missing request remain accessible without protected SQL at 768px
+  [chromium-4322] › dashboard-accessibility.spec.mjs:329:3 › restored missing resource selections stay explicit and accessible at 1440px
+  [chromium-4322] › dashboard-accessibility.spec.mjs:350:3 › restored activity metadata and missing request remain accessible without protected SQL at 1440px
+  [chromium-4322] › dashboard-accessibility.spec.mjs:385:3 › common incident workspace draft saved and unavailable states remain accessible at 320px
+  [chromium-4322] › dashboard-accessibility.spec.mjs:385:3 › common incident workspace draft saved and unavailable states remain accessible at 390px
+  [chromium-4322] › dashboard-accessibility.spec.mjs:385:3 › common incident workspace draft saved and unavailable states remain accessible at 768px
+  [chromium-4322] › dashboard-accessibility.spec.mjs:385:3 › common incident workspace draft saved and unavailable states remain accessible at 1440px
+  [chromium-4322] › dashboard-accessibility.spec.mjs:422:3 › persistent fleet navigation keeps keyboard focus and responsive evidence at 320px
+  [chromium-4322] › dashboard-accessibility.spec.mjs:422:3 › persistent fleet navigation keeps keyboard focus and responsive evidence at 390px
+  [chromium-4322] › dashboard-accessibility.spec.mjs:422:3 › persistent fleet navigation keeps keyboard focus and responsive evidence at 768px
+  [chromium-4322] › dashboard-accessibility.spec.mjs:422:3 › persistent fleet navigation keeps keyboard focus and responsive evidence at 1440px
+  [chromium-4322] › dashboard-accessibility.spec.mjs:485:3 › current alert URL selection preserves accessible target and fleet detail at 320px
+  [chromium-4322] › dashboard-accessibility.spec.mjs:513:3 › query palette context and unavailable database remain accessible at 320px
+  [chromium-4322] › dashboard-accessibility.spec.mjs:552:3 › fleet signal evidence links support keyboard investigation at 320px
+  [chromium-4322] › dashboard-accessibility.spec.mjs:485:3 › current alert URL selection preserves accessible target and fleet detail at 390px
+  [chromium-4322] › dashboard-accessibility.spec.mjs:513:3 › query palette context and unavailable database remain accessible at 390px
+  [chromium-4322] › dashboard-accessibility.spec.mjs:552:3 › fleet signal evidence links support keyboard investigation at 390px
+  [chromium-4322] › dashboard-accessibility.spec.mjs:485:3 › current alert URL selection preserves accessible target and fleet detail at 768px
+  [chromium-4322] › dashboard-accessibility.spec.mjs:513:3 › query palette context and unavailable database remain accessible at 768px
+  [chromium-4322] › dashboard-accessibility.spec.mjs:552:3 › fleet signal evidence links support keyboard investigation at 768px
+  [chromium-4322] › dashboard-accessibility.spec.mjs:485:3 › current alert URL selection preserves accessible target and fleet detail at 1440px
+  [chromium-4322] › dashboard-accessibility.spec.mjs:513:3 › query palette context and unavailable database remain accessible at 1440px
+  [chromium-4322] › dashboard-accessibility.spec.mjs:552:3 › fleet signal evidence links support keyboard investigation at 1440px
+  [chromium-4322] › dashboard-accessibility.spec.mjs:580:3 › dashboard summaries disclose partial baseline and temporal context accessibly at 320px
+  [chromium-4322] › dashboard-accessibility.spec.mjs:580:3 › dashboard summaries disclose partial baseline and temporal context accessibly at 390px
+  [chromium-4322] › dashboard-accessibility.spec.mjs:580:3 › dashboard summaries disclose partial baseline and temporal context accessibly at 768px
+  [chromium-4322] › dashboard-accessibility.spec.mjs:580:3 › dashboard summaries disclose partial baseline and temporal context accessibly at 1440px
+  [chromium-4322] › dashboard-accessibility.spec.mjs:630:3 › invalid Health response keeps a readable accessible error and independent dashboard at 320px
+  [chromium-4322] › dashboard-accessibility.spec.mjs:630:3 › invalid Health response keeps a readable accessible error and independent dashboard at 390px
+  [chromium-4322] › dashboard-accessibility.spec.mjs:630:3 › invalid Health response keeps a readable accessible error and independent dashboard at 768px
+  [chromium-4322] › dashboard-accessibility.spec.mjs:630:3 › invalid Health response keeps a readable accessible error and independent dashboard at 1440px
+  [chromium-4322] › dashboard-accessibility.spec.mjs:651:3 › query row trends expose gaps and coverage accessibly at 320px
+  [chromium-4322] › dashboard-accessibility.spec.mjs:651:3 › query row trends expose gaps and coverage accessibly at 390px
+  [chromium-4322] › dashboard-accessibility.spec.mjs:651:3 › query row trends expose gaps and coverage accessibly at 768px
+  [chromium-4322] › dashboard-accessibility.spec.mjs:651:3 › query row trends expose gaps and coverage accessibly at 1440px
+  [chromium-4322] › dashboard-accessibility.spec.mjs:693:3 › retained deadlock selection and unavailable identity remain accessible at 320px
+  [chromium-4322] › dashboard-accessibility.spec.mjs:715:3 › administration retained IDs and unavailable detail remain accessible at 320px
+  [chromium-4322] › dashboard-accessibility.spec.mjs:737:3 › quiet evidence disclosures stay available on dashboard and Resources at 320px
+  [chromium-4322] › dashboard-accessibility.spec.mjs:693:3 › retained deadlock selection and unavailable identity remain accessible at 390px
+  [chromium-4322] › dashboard-accessibility.spec.mjs:715:3 › administration retained IDs and unavailable detail remain accessible at 390px
+  [chromium-4322] › dashboard-accessibility.spec.mjs:737:3 › quiet evidence disclosures stay available on dashboard and Resources at 390px
+  [chromium-4322] › dashboard-accessibility.spec.mjs:693:3 › retained deadlock selection and unavailable identity remain accessible at 768px
+  [chromium-4322] › dashboard-accessibility.spec.mjs:715:3 › administration retained IDs and unavailable detail remain accessible at 768px
+  [chromium-4322] › dashboard-accessibility.spec.mjs:737:3 › quiet evidence disclosures stay available on dashboard and Resources at 768px
+  [chromium-4322] › dashboard-accessibility.spec.mjs:693:3 › retained deadlock selection and unavailable identity remain accessible at 1440px
+  [chromium-4322] › dashboard-accessibility.spec.mjs:715:3 › administration retained IDs and unavailable detail remain accessible at 1440px
+  [chromium-4322] › dashboard-accessibility.spec.mjs:737:3 › quiet evidence disclosures stay available on dashboard and Resources at 1440px
+  [chromium-4322] › dashboard-agent-activity-history.spec.mjs:15:1 › actual Operations exact off-page pin survives reload and local pages without changing selection
+  [chromium-4322] › dashboard-agent-activity-history.spec.mjs:18:1 › built App receipt selection restores through Back/Forward and reload
+  [chromium-4322] › dashboard-agent-activity-history.spec.mjs:21:1 › invalid pin remains visible across a database edit until explicit Clear without default detail
+  [chromium-4322] › dashboard-agent-activity-history.spec.mjs:24:1 › retired DOM receipt callback cannot overwrite a synchronous new route
+  [chromium-4322] › dashboard-agent-activity-history.spec.mjs:27:1 › retired Operations tab callback cannot overwrite a synchronous new target route
+  [chromium-4322] › dashboard-agent-activity-history.spec.mjs:30:1 › built 31-day activity window preserves the separate 7-day failure history limit
+  [chromium-4322] › dashboard-agent-activity-history.spec.mjs:33:31 › built denial 401 purges jobs and the held list and requires explicit access retry
+  [chromium-4322] › dashboard-agent-activity-history.spec.mjs:33:31 › built denial 403 purges jobs and the held list and requires explicit access retry
+  [chromium-4322] › dashboard-agent-activity-history.spec.mjs:36:1 › built target ABA rejects a held old denial while resetting exact identity
+  [chromium-4322] › dashboard-agent-activity-history.spec.mjs:39:31 › built Agent local tables, keyboard access, axe and exact source disclosure fit 320
+  [chromium-4322] › dashboard-agent-activity-history.spec.mjs:39:31 › built Agent local tables, keyboard access, axe and exact source disclosure fit 1440
+  [chromium-4322] › dashboard-alert-assignment.spec.mjs:87:44 › Built dashboard assignment, reassignment and unassignment preserve alert evidence at 320
+  [chromium-4322] › dashboard-alert-assignment.spec.mjs:87:44 › Built dashboard assignment, reassignment and unassignment preserve alert evidence at 390
+  [chromium-4322] › dashboard-alert-assignment.spec.mjs:87:44 › Built dashboard assignment, reassignment and unassignment preserve alert evidence at 768
+  [chromium-4322] › dashboard-alert-assignment.spec.mjs:87:44 › Built dashboard assignment, reassignment and unassignment preserve alert evidence at 1440
+  [chromium-4322] › dashboard-alert-assignment.spec.mjs:127:1 › Built server assignment confirmed readback retries GET without replaying POST
+  [chromium-4322] › dashboard-alert-assignment.spec.mjs:141:1 › Built dashboard uncertain assignment retains its exact command through workspace ticks and roster revocation
+  [chromium-4322] › dashboard-alert-assignment.spec.mjs:156:1 › Built dashboard viewer sees ownership without recipient enumeration or mutation controls
+  [chromium-4322] › dashboard-alert-assignment.spec.mjs:167:1 › Built assignment history follows its opaque native anchor across equal timestamps without missing changes
+  [chromium-4322] › dashboard-alert-snooze.spec.mjs:59:44 › Built dashboard snooze and unsnooze preserves visible firing evidence at 320
+  [chromium-4322] › dashboard-alert-snooze.spec.mjs:59:44 › Built dashboard snooze and unsnooze preserves visible firing evidence at 390
+  [chromium-4322] › dashboard-alert-snooze.spec.mjs:59:44 › Built dashboard snooze and unsnooze preserves visible firing evidence at 768
+  [chromium-4322] › dashboard-alert-snooze.spec.mjs:59:44 › Built dashboard snooze and unsnooze preserves visible firing evidence at 1440
+  [chromium-4322] › dashboard-alert-snooze.spec.mjs:91:1 › Built server alerts retry confirmed readback using GET without replaying POST
+  [chromium-4322] › dashboard-alert-snooze.spec.mjs:105:1 › Built dashboard uncertain mutation keeps its original command after time advances
+  [chromium-4322] › dashboard-alert-snooze.spec.mjs:118:1 › Built dashboard viewer can read retained alert evidence and has no notification mutation controls
+  [chromium-4322] › dashboard-availability-access.spec.mjs:19:31 › built primary AG 401 revokes sibling pages and late200 until explicit shared access recovery
+  [chromium-4322] › dashboard-availability-access.spec.mjs:19:31 › built primary AG 403 revokes sibling pages and late200 until explicit shared access recovery
+  [chromium-4322] › dashboard-availability-access.spec.mjs:21:1 › built same-authority category away and back preserves denial instead of reopening AG reads
+  [chromium-4322] › dashboard-availability-access.spec.mjs:23:1 › built ordinary503 retry keeps the original cutoff and cursor under unrelated database context edits
+  [chromium-4322] › dashboard-availability-access.spec.mjs:25:1 › built target ABA aborts original work and cannot revive a late first-A denial
+  [chromium-4322] › dashboard-availability-access.spec.mjs:27:45 › built raw target hash revocation refuses an old callback and200 before React receives navigation
+  [chromium-4322] › dashboard-availability-access.spec.mjs:27:45 › built raw empty hash revocation refuses an old callback and200 before React receives navigation
+  [chromium-4322] › dashboard-availability-access.spec.mjs:37:1 › built shared keyboard access recovery cancels owned streams and retries only the original failed reads
+  [chromium-4322] › dashboard-availability-access.spec.mjs:39:67 › built primary AG 320px dark keeps expanded opaque evidence inside local scrollports
+  [chromium-4322] › dashboard-availability-access.spec.mjs:39:67 › built primary AG 320px forced keeps expanded opaque evidence inside local scrollports
+  [chromium-4322] › dashboard-availability-access.spec.mjs:39:67 › built primary AG 1440px dark keeps expanded opaque evidence inside local scrollports
+  [chromium-4322] › dashboard-availability-access.spec.mjs:39:67 › built primary AG 1440px forced keeps expanded opaque evidence inside local scrollports
+  [chromium-4322] › dashboard-availability-access.spec.mjs:41:1 › built primary AG 320px at200percent zoom contains evidence and keyboard access recovery
+  [chromium-4322] › dashboard-backup-availability-history.spec.mjs:21:67 › built backup newest failedLatest is inspected without an older-success replacement
+  [chromium-4322] › dashboard-backup-availability-history.spec.mjs:21:67 › built backup newest missingLatest is inspected without an older-success replacement
+  [chromium-4322] › dashboard-backup-availability-history.spec.mjs:21:67 › built backup newest emptyLatest is inspected without an older-success replacement
+  [chromium-4322] › dashboard-backup-availability-history.spec.mjs:22:2 › built backup off-list sample revision restores exact receipt across reload and Back/Forward
+  [chromium-4322] › dashboard-backup-availability-history.spec.mjs:23:2 › built backup invalid repeated pin stays visible across database edits until Clear
+  [chromium-4322] › dashboard-backup-availability-history.spec.mjs:24:2 › built backup Live opening and paging atomically fix the shared received window and exact pin
+  [chromium-4322] › dashboard-backup-availability-history.spec.mjs:25:2 › built backup actual database edit preserves exact source while true time picker change clears it
+  [chromium-4322] › dashboard-backup-availability-history.spec.mjs:26:2 › built backup exact refresh failure preserves facts, original retry and explicit out-of-window absence
+  [chromium-4322] › dashboard-backup-availability-history.spec.mjs:27:2 › built backup Return-to-latest retries 503 and cancellation without promoting the old default into a pin
+  [chromium-4322] › dashboard-backup-availability-history.spec.mjs:28:32 › built backup 401 purges protected observations and cancels sibling read before explicit access retry
+  [chromium-4322] › dashboard-backup-availability-history.spec.mjs:28:32 › built backup 403 purges protected observations and cancels sibling read before explicit access retry
+  [chromium-4322] › dashboard-backup-availability-history.spec.mjs:29:2 › built backup target change cancels old denial without cross-target facts
+  [chromium-4322] › dashboard-backup-availability-history.spec.mjs:30:40 › built backup dark supporting evidence fits actual local bounds with keyboard WCAG at 320px
+  [chromium-4322] › dashboard-backup-availability-history.spec.mjs:30:40 › built backup dark supporting evidence fits actual local bounds with keyboard WCAG at 390px
+  [chromium-4322] › dashboard-backup-availability-history.spec.mjs:30:40 › built backup dark supporting evidence fits actual local bounds with keyboard WCAG at 768px
+  [chromium-4322] › dashboard-backup-availability-history.spec.mjs:30:40 › built backup dark supporting evidence fits actual local bounds with keyboard WCAG at 1440px
+  [chromium-4322] › dashboard-backup-availability-history.spec.mjs:31:68 › built backup forced supporting source preserves local scrolling and focus at 320px
+  [chromium-4322] › dashboard-backup-availability-history.spec.mjs:31:68 › built backup zoom supporting source preserves local scrolling and focus at 320px
+  [chromium-4322] › dashboard-backup-availability-history.spec.mjs:31:68 › built backup forced supporting source preserves local scrolling and focus at 1440px
+  [chromium-4322] › dashboard-backup-availability-history.spec.mjs:31:68 › built backup zoom supporting source preserves local scrolling and focus at 1440px
+  [chromium-4322] › dashboard-backup-availability-history.spec.mjs:21:67 › built availability newest failedLatest is inspected without an older-success replacement
+  [chromium-4322] › dashboard-backup-availability-history.spec.mjs:21:67 › built availability newest missingLatest is inspected without an older-success replacement
+  [chromium-4322] › dashboard-backup-availability-history.spec.mjs:21:67 › built availability newest emptyLatest is inspected without an older-success replacement
+  [chromium-4322] › dashboard-backup-availability-history.spec.mjs:22:2 › built availability off-list sample revision restores exact receipt across reload and Back/Forward
+  [chromium-4322] › dashboard-backup-availability-history.spec.mjs:23:2 › built availability invalid repeated pin stays visible across database edits until Clear
+  [chromium-4322] › dashboard-backup-availability-history.spec.mjs:24:2 › built availability Live opening and paging atomically fix the shared received window and exact pin
+  [chromium-4322] › dashboard-backup-availability-history.spec.mjs:25:2 › built availability actual database edit preserves exact source while true time picker change clears it
+  [chromium-4322] › dashboard-backup-availability-history.spec.mjs:26:2 › built availability exact refresh failure preserves facts, original retry and explicit out-of-window absence
+  [chromium-4322] › dashboard-backup-availability-history.spec.mjs:27:2 › built availability Return-to-latest retries 503 and cancellation without promoting the old default into a pin
+  [chromium-4322] › dashboard-backup-availability-history.spec.mjs:28:32 › built availability 401 purges protected observations and cancels sibling read before explicit access retry
+  [chromium-4322] › dashboard-backup-availability-history.spec.mjs:28:32 › built availability 403 purges protected observations and cancels sibling read before explicit access retry
+  [chromium-4322] › dashboard-backup-availability-history.spec.mjs:29:2 › built availability target change cancels old denial without cross-target facts
+  [chromium-4322] › dashboard-backup-availability-history.spec.mjs:30:40 › built availability dark supporting evidence fits actual local bounds with keyboard WCAG at 320px
+  [chromium-4322] › dashboard-backup-availability-history.spec.mjs:30:40 › built availability dark supporting evidence fits actual local bounds with keyboard WCAG at 390px
+  [chromium-4322] › dashboard-backup-availability-history.spec.mjs:30:40 › built availability dark supporting evidence fits actual local bounds with keyboard WCAG at 768px
+  [chromium-4322] › dashboard-backup-availability-history.spec.mjs:30:40 › built availability dark supporting evidence fits actual local bounds with keyboard WCAG at 1440px
+  [chromium-4322] › dashboard-backup-availability-history.spec.mjs:31:68 › built availability forced supporting source preserves local scrolling and focus at 320px
+  [chromium-4322] › dashboard-backup-availability-history.spec.mjs:31:68 › built availability zoom supporting source preserves local scrolling and focus at 320px
+  [chromium-4322] › dashboard-backup-availability-history.spec.mjs:31:68 › built availability forced supporting source preserves local scrolling and focus at 1440px
+  [chromium-4322] › dashboard-backup-availability-history.spec.mjs:31:68 › built availability zoom supporting source preserves local scrolling and focus at 1440px
+  [chromium-4322] › dashboard-backup-availability-history.spec.mjs:33:1 › built availability streams share immutable receipt while their pagers and ordinary failures stay independent
+  [chromium-4322] › dashboard-bounded-acceptance.spec.mjs:38:44 › bounded Health screenshot and keyboard context at 320px
+  [chromium-4322] › dashboard-bounded-acceptance.spec.mjs:38:44 › bounded Health screenshot and keyboard context at 390px
+  [chromium-4322] › dashboard-bounded-acceptance.spec.mjs:38:44 › bounded Health screenshot and keyboard context at 768px
+  [chromium-4322] › dashboard-bounded-acceptance.spec.mjs:38:44 › bounded Health screenshot and keyboard context at 1440px
+  [chromium-4322] › dashboard-bounded-acceptance.spec.mjs:55:1 › bounded CPU unavailable component stays a source gap with fresh screenshot
+  [chromium-4322] › dashboard-bounded-acceptance.spec.mjs:71:1 › bounded Agent Unknown preserves local source clocks and absent qualification with fresh screenshot
+  [chromium-4322] › dashboard-bounded-acceptance.spec.mjs:88:1 › bounded AG Unknown preserves observer visibility and nullable metrics with fresh screenshot
+  [chromium-4322] › dashboard-bounded-acceptance.spec.mjs:103:1 › bounded independent Health outage preserves configuration Rewind and fresh screenshot
+  [chromium-4322] › dashboard-chart-access.spec.mjs:51:47 › Dashboard exact keyboard alignment preserves scope and performs no chartAt read; reload, Back and clear restore it
+  [chromium-4322] › dashboard-chart-access.spec.mjs:51:47 › Fleet exact keyboard alignment preserves scope and performs no chartAt read; reload, Back and clear restore it
+  [chromium-4322] › dashboard-chart-access.spec.mjs:65:47 › Dashboard invalid, repeated and end-boundary chart inspection never substitutes a marker
+  [chromium-4322] › dashboard-chart-access.spec.mjs:65:47 › Fleet invalid, repeated and end-boundary chart inspection never substitutes a marker
+  [chromium-4322] › dashboard-chart-access.spec.mjs:102:90 › Dashboard alignment and full-window touch browsing fit dark layout at 320px
+  [chromium-4322] › dashboard-chart-access.spec.mjs:102:90 › Dashboard alignment and full-window touch browsing fit dark layout at 390px
+  [chromium-4322] › dashboard-chart-access.spec.mjs:102:90 › Dashboard alignment and full-window touch browsing fit dark layout at 768px
+  [chromium-4322] › dashboard-chart-access.spec.mjs:102:90 › Dashboard alignment and full-window touch browsing fit dark layout at 1440px
+  [chromium-4322] › dashboard-chart-access.spec.mjs:102:90 › Fleet alignment and full-window touch browsing fit dark layout at 320px
+  [chromium-4322] › dashboard-chart-access.spec.mjs:102:90 › Fleet alignment and full-window touch browsing fit dark layout at 390px
+  [chromium-4322] › dashboard-chart-access.spec.mjs:102:90 › Fleet alignment and full-window touch browsing fit dark layout at 768px
+  [chromium-4322] › dashboard-chart-access.spec.mjs:102:90 › Fleet alignment and full-window touch browsing fit dark layout at 1440px
+  [chromium-4322] › dashboard-context-frame.spec.mjs:42:44 › the compact context frame keeps dashboard answers and optional tools accessible at 320px
+  [chromium-4322] › dashboard-context-frame.spec.mjs:42:44 › the compact context frame keeps dashboard answers and optional tools accessible at 390px
+  [chromium-4322] › dashboard-context-frame.spec.mjs:42:44 › the compact context frame keeps dashboard answers and optional tools accessible at 768px
+  [chromium-4322] › dashboard-context-frame.spec.mjs:42:44 › the compact context frame keeps dashboard answers and optional tools accessible at 1440px
+  [chromium-4322] › dashboard-context-frame.spec.mjs:79:34 › database inventory HTTP 401 remains visible while the filter requires explicit clearing
+  [chromium-4322] › dashboard-context-frame.spec.mjs:79:34 › database inventory HTTP 403 remains visible while the filter requires explicit clearing
+  [chromium-4322] › dashboard-context-frame.spec.mjs:99:1 › a missing database warning stays outside routine details and an explicit section survives reload and history
+  [chromium-4322] › dashboard-context-frame.spec.mjs:113:61 › changing Health section cancels a held timeline rail gesture and preserves the mounted evidence
+  [chromium-4322] › dashboard-context-frame.spec.mjs:113:61 › changing Health section cancels a held SQL workload chart gesture and preserves the mounted evidence
+  [chromium-4322] › dashboard-context-search.spec.mjs:21:3 › built Overview rejects malformed resource server before rendering
+  [chromium-4322] › dashboard-context-search.spec.mjs:21:3 › built Overview rejects malformed resource unit before rendering
+  [chromium-4322] › dashboard-context-search.spec.mjs:21:3 › built Overview rejects malformed issue server before rendering
+  [chromium-4322] › dashboard-context-search.spec.mjs:21:3 › built Overview rejects malformed issue observedAtUtc before rendering
+  [chromium-4322] › dashboard-context-search.spec.mjs:36:1 › built database search follows a server change and navigates using the new native context
+  [chromium-4322] › dashboard-context-search.spec.mjs:50:1 › built configuration recovery requires explicit current-state readback in Rewind
+  [chromium-4322] › dashboard-context-search.spec.mjs:79:34 › built database search remains dark and keyboard usable at 320px
+  [chromium-4322] › dashboard-context-search.spec.mjs:79:34 › built database search remains dark and keyboard usable at 1440px
+  [chromium-4322] › dashboard-cpu-capture-history.spec.mjs:27:39 › full Resources exact CPU receipt remains dark accessible and unqualified at 320
+  [chromium-4322] › dashboard-cpu-capture-history.spec.mjs:27:39 › full Resources exact CPU receipt remains dark accessible and unqualified at 390
+  [chromium-4322] › dashboard-cpu-capture-history.spec.mjs:27:39 › full Resources exact CPU receipt remains dark accessible and unqualified at 768
+  [chromium-4322] › dashboard-cpu-capture-history.spec.mjs:27:39 › full Resources exact CPU receipt remains dark accessible and unqualified at 1440
+  [chromium-4322] › dashboard-cpu-capture-history.spec.mjs:34:1 › Live receipt browsing and paging freeze one global window; local pages, poll and manual refresh preserve exact pin
+  [chromium-4322] › dashboard-cpu-capture-history.spec.mjs:39:1 › Live Next without opening rows retains native continuation and default exact run during promotion
+  [chromium-4322] › dashboard-cpu-capture-history.spec.mjs:42:1 › exact pin omitted from page one reloads and Back/Forward restores each immutable run identity
+  [chromium-4322] › dashboard-cpu-capture-history.spec.mjs:45:1 › invalid CPU pin survives unrelated file, database and shared-time changes until explicit clear
+  [chromium-4322] › dashboard-cpu-capture-history.spec.mjs:50:52 › failedLatest visibly preserves failed exact evidence instead of successful history
+  [chromium-4322] › dashboard-cpu-capture-history.spec.mjs:50:52 › missingLatest visibly preserves failed exact evidence instead of successful history
+  [chromium-4322] › dashboard-cpu-capture-history.spec.mjs:53:1 › list overflow leaves independently pinned exact capture visible with no fallback
+  [chromium-4322] › dashboard-cpu-capture-history.spec.mjs:56:1 › actual access refusal purges both sources, prevents poll recovery and exact access retry preserves URL
+  [chromium-4322] › dashboard-cpu-capture-history.spec.mjs:59:1 › held prior-target refusal cannot purge a newer target or returned ABA visit
+  [chromium-4322] › dashboard-cpu-observations.spec.mjs:12:31 › Resources composes independent CPU observations with preserved raw capture history at 320
+  [chromium-4322] › dashboard-cpu-observations.spec.mjs:12:31 › Resources composes independent CPU observations with preserved raw capture history at 1440
+  [chromium-4322] › dashboard-cpu-observations.spec.mjs:19:1 › Live CPU browsing freezes the received shared window and exact run without resetting legacy pins
+  [chromium-4322] › dashboard-cpu-observations.spec.mjs:25:1 › responsive component chart drag changes the shared window and retains exact observation intent
+  [chromium-4322] › dashboard-diagnostic-alignment.spec.mjs:111:45 › Queries keyboard alignment restores exact microseconds and preserves window and native selections
+  [chromium-4322] › dashboard-diagnostic-alignment.spec.mjs:111:45 › Waits keyboard alignment restores exact microseconds and preserves window and native selections
+  [chromium-4322] › dashboard-diagnostic-alignment.spec.mjs:124:45 › Queries invalid, repeated and exclusive-end selections stay explicit until repaired
+  [chromium-4322] › dashboard-diagnostic-alignment.spec.mjs:124:45 › Waits invalid, repeated and exclusive-end selections stay explicit until repaired
+  [chromium-4322] › dashboard-diagnostic-alignment.spec.mjs:142:45 › Queries pointer inspection aligns owning charts temporarily and target changes cancel it
+  [chromium-4322] › dashboard-diagnostic-alignment.spec.mjs:142:45 › Waits pointer inspection aligns owning charts temporarily and target changes cancel it
+  [chromium-4322] › dashboard-diagnostic-alignment.spec.mjs:158:45 › Queries same-window query or wait filters retain alignment while a new window drops it
+  [chromium-4322] › dashboard-diagnostic-alignment.spec.mjs:158:45 › Waits same-window query or wait filters retain alignment while a new window drops it
+  [chromium-4322] › dashboard-diagnostic-alignment.spec.mjs:176:1 › Same-window navigation carries exact inspection across Queries, Waits, Fleet and Dashboard tabs
+  [chromium-4322] › dashboard-diagnostic-alignment.spec.mjs:201:1 › Queries shared alignment takes precedence without erasing an independent plan-only inspection
+  [chromium-4322] › dashboard-diagnostic-alignment.spec.mjs:216:1 › Queries ranking previews use the shared exact inspection and clear it without additional source reads
+  [chromium-4322] › dashboard-diagnostic-alignment.spec.mjs:229:45 › Queries a cancelled previous-target denial cannot purge a newly aligned target
+  [chromium-4322] › dashboard-diagnostic-alignment.spec.mjs:229:45 › Waits a cancelled previous-target denial cannot purge a newly aligned target
+  [chromium-4322] › dashboard-diagnostic-alignment.spec.mjs:250:69 › Queries 403 clears alignment evidence until explicit native access retry
+  [chromium-4322] › dashboard-diagnostic-alignment.spec.mjs:250:69 › Waits 401 clears alignment evidence until explicit native access retry
+  [chromium-4322] › dashboard-diagnostic-alignment.spec.mjs:262:3 › Queries alignment remains accessible under dark preference at mobile and desktop widths
+  [chromium-4322] › dashboard-diagnostic-alignment.spec.mjs:262:3 › Queries alignment remains accessible under light-preference preference at mobile and desktop widths
+  [chromium-4322] › dashboard-diagnostic-alignment.spec.mjs:262:3 › Queries alignment remains accessible under forced preference at mobile and desktop widths
+  [chromium-4322] › dashboard-diagnostic-alignment.spec.mjs:262:3 › Waits alignment remains accessible under dark preference at mobile and desktop widths
+  [chromium-4322] › dashboard-diagnostic-alignment.spec.mjs:262:3 › Waits alignment remains accessible under light-preference preference at mobile and desktop widths
+  [chromium-4322] › dashboard-diagnostic-alignment.spec.mjs:262:3 › Waits alignment remains accessible under forced preference at mobile and desktop widths
+  [chromium-4322] › dashboard-diagnostic-focus.spec.mjs:78:3 › diagnostic navigation, query controls and Waits insets preserve dark focus at 320px
+  [chromium-4322] › dashboard-diagnostic-focus.spec.mjs:78:3 › diagnostic navigation, query controls and Waits insets preserve forced-color focus at 320px
+  [chromium-4322] › dashboard-diagnostic-focus.spec.mjs:78:3 › diagnostic navigation, query controls and Waits insets preserve dark focus at 390px
+  [chromium-4322] › dashboard-diagnostic-focus.spec.mjs:78:3 › diagnostic navigation, query controls and Waits insets preserve forced-color focus at 390px
+  [chromium-4322] › dashboard-diagnostic-focus.spec.mjs:78:3 › diagnostic navigation, query controls and Waits insets preserve dark focus at 768px
+  [chromium-4322] › dashboard-diagnostic-focus.spec.mjs:78:3 › diagnostic navigation, query controls and Waits insets preserve forced-color focus at 768px
+  [chromium-4322] › dashboard-diagnostic-focus.spec.mjs:78:3 › diagnostic navigation, query controls and Waits insets preserve dark focus at 1440px
+  [chromium-4322] › dashboard-diagnostic-focus.spec.mjs:78:3 › diagnostic navigation, query controls and Waits insets preserve forced-color focus at 1440px
+  [chromium-4322] › dashboard-evidence-workflow.spec.mjs:28:44 › dashboard answers precede folded raw evidence with keyboard access at 320px
+  [chromium-4322] › dashboard-evidence-workflow.spec.mjs:28:44 › dashboard answers precede folded raw evidence with keyboard access at 390px
+  [chromium-4322] › dashboard-evidence-workflow.spec.mjs:28:44 › dashboard answers precede folded raw evidence with keyboard access at 768px
+  [chromium-4322] › dashboard-evidence-workflow.spec.mjs:28:44 › dashboard answers precede folded raw evidence with keyboard access at 1440px
+  [chromium-4322] › dashboard-file-window-history.spec.mjs:36:39 › exact historical file settings are dark, keyboard operable and accessible at 320px
+  [chromium-4322] › dashboard-file-window-history.spec.mjs:36:39 › exact historical file settings are dark, keyboard operable and accessible at 390px
+  [chromium-4322] › dashboard-file-window-history.spec.mjs:36:39 › exact historical file settings are dark, keyboard operable and accessible at 768px
+  [chromium-4322] › dashboard-file-window-history.spec.mjs:36:39 › exact historical file settings are dark, keyboard operable and accessible at 1440px
+  [chromium-4322] › dashboard-file-window-history.spec.mjs:54:31 › partial receipt details and a long inert file name remain accessible at 320px
+  [chromium-4322] › dashboard-file-window-history.spec.mjs:54:31 › partial receipt details and a long inert file name remain accessible at 1440px
+  [chromium-4322] › dashboard-file-window-history.spec.mjs:71:1 › selecting a received receipt in Live freezes the global window and exact run together
+  [chromium-4322] › dashboard-file-window-history.spec.mjs:87:45 › Live receipts paging freezes the shared window without losing the requested continuation
+  [chromium-4322] › dashboard-file-window-history.spec.mjs:87:45 › Live snapshot paging freezes the shared window without losing the requested continuation
+  [chromium-4322] › dashboard-file-window-history.spec.mjs:98:156 › failedLatest: the most recent attempt is retained without substituting an older successful receipt
+  [chromium-4322] › dashboard-file-window-history.spec.mjs:98:156 › missingLatest: the most recent attempt is retained without substituting an older successful receipt
+  [chromium-4322] › dashboard-file-window-history.spec.mjs:98:156 › emptyLatest: the most recent attempt is retained without substituting an older successful receipt
+  [chromium-4322] › dashboard-file-window-history.spec.mjs:103:1 › receipt and file continuations keep their exact identity; a changed epoch preserves received evidence until refresh
+  [chromium-4322] › dashboard-file-window-history.spec.mjs:112:1 › an out-of-window exact pin survives shared window changes and never falls back to the newest run
+  [chromium-4322] › dashboard-file-window-history.spec.mjs:118:1 › invalid duplicated snapshot identity remains explicit after a shared time change
+  [chromium-4322] › dashboard-file-window-history.spec.mjs:123:1 › denied refresh clears all received facts and retry restores the same pinned source
+  [chromium-4322] › dashboard-file-window-history.spec.mjs:129:1 › a bounded response refusal offers smaller pages of the same exact source
+  [chromium-4322] › dashboard-file-window-history.spec.mjs:137:1 › a held previous-target file response is fenced after server navigation
+  [chromium-4322] › dashboard-forced-colors.spec.mjs:128:65 › fleet: forced colors preserve accessible evidence and keyboard focus at 320px
+  [chromium-4322] › dashboard-forced-colors.spec.mjs:128:65 › server: forced colors preserve accessible evidence and keyboard focus at 320px
+  [chromium-4322] › dashboard-forced-colors.spec.mjs:128:65 › activity: forced colors preserve accessible evidence and keyboard focus at 320px
+  [chromium-4322] › dashboard-forced-colors.spec.mjs:128:65 › queries: forced colors preserve accessible evidence and keyboard focus at 320px
+  [chromium-4322] › dashboard-forced-colors.spec.mjs:128:65 › deadlocks: forced colors preserve accessible evidence and keyboard focus at 320px
+  [chromium-4322] › dashboard-forced-colors.spec.mjs:128:65 › health-checks: forced colors preserve accessible evidence and keyboard focus at 320px
+  [chromium-4322] › dashboard-forced-colors.spec.mjs:128:65 › alerts: forced colors preserve accessible evidence and keyboard focus at 320px
+  [chromium-4322] › dashboard-forced-colors.spec.mjs:128:65 › resources: forced colors preserve accessible evidence and keyboard focus at 320px
+  [chromium-4322] › dashboard-forced-colors.spec.mjs:128:65 › waits: forced colors preserve accessible evidence and keyboard focus at 320px
+  [chromium-4322] › dashboard-forced-colors.spec.mjs:128:65 › fleet: forced colors preserve accessible evidence and keyboard focus at 1440px
+  [chromium-4322] › dashboard-forced-colors.spec.mjs:128:65 › server: forced colors preserve accessible evidence and keyboard focus at 1440px
+  [chromium-4322] › dashboard-forced-colors.spec.mjs:128:65 › activity: forced colors preserve accessible evidence and keyboard focus at 1440px
+  [chromium-4322] › dashboard-forced-colors.spec.mjs:128:65 › queries: forced colors preserve accessible evidence and keyboard focus at 1440px
+  [chromium-4322] › dashboard-forced-colors.spec.mjs:128:65 › deadlocks: forced colors preserve accessible evidence and keyboard focus at 1440px
+  [chromium-4322] › dashboard-forced-colors.spec.mjs:128:65 › health-checks: forced colors preserve accessible evidence and keyboard focus at 1440px
+  [chromium-4322] › dashboard-forced-colors.spec.mjs:128:65 › alerts: forced colors preserve accessible evidence and keyboard focus at 1440px
+  [chromium-4322] › dashboard-forced-colors.spec.mjs:128:65 › resources: forced colors preserve accessible evidence and keyboard focus at 1440px
+  [chromium-4322] › dashboard-forced-colors.spec.mjs:128:65 › waits: forced colors preserve accessible evidence and keyboard focus at 1440px
+  [chromium-4322] › dashboard-independent-health.spec.mjs:64:34 › file and analytics outages preserve selected configuration history and exact Rewind context at 320px
+  [chromium-4322] › dashboard-independent-health.spec.mjs:64:34 › file and analytics outages preserve selected configuration history and exact Rewind context at 1440px
+  [chromium-4322] › dashboard-independent-health.spec.mjs:88:34 › core outage preserves database inventory and independently scoped option history at 320px
+  [chromium-4322] › dashboard-independent-health.spec.mjs:88:34 › core outage preserves database inventory and independently scoped option history at 1440px
+  [chromium-4322] › dashboard-legacy-inventory.spec.mjs:26:33 › legacy inventory loads on Deadlocks, survives reload, and reports uncollected log wait at 390px
+  [chromium-4322] › dashboard-legacy-inventory.spec.mjs:26:33 › legacy inventory loads on Deadlocks, survives reload, and reports uncollected log wait at 1440px
+  [chromium-4322] › dashboard-legacy-inventory.spec.mjs:51:1 › an explicit malformed log reuse wait still rejects inventory safely
+  [chromium-4322] › dashboard-lifecycle-collection.spec.mjs:5:31 › dashboard reader sees default-off lifecycle control without management authority at 320
+  [chromium-4322] › dashboard-lifecycle-collection.spec.mjs:5:31 › dashboard reader sees default-off lifecycle control without management authority at 1440
+  [chromium-4322] › dashboard-lifecycle-collection.spec.mjs:12:1 › dashboard administrator toggles lifecycle configuration independently of retained history
+  [chromium-4322] › dashboard-line-graphs.spec.mjs:14:48 › overview renders connected lines without persistent dots for 1h
+  [chromium-4322] › dashboard-line-graphs.spec.mjs:14:48 › overview renders connected lines without persistent dots for 6h
+  [chromium-4322] › dashboard-line-graphs.spec.mjs:14:48 › overview renders connected lines without persistent dots for 24h
+  [chromium-4322] › dashboard-line-graphs.spec.mjs:14:48 › overview renders connected lines without persistent dots for 7d
+  [chromium-4322] › dashboard-line-graphs.spec.mjs:36:1 › overview keeps missing samples as gaps and an isolated observation visible
+  [chromium-4322] › dashboard-line-graphs.spec.mjs:54:1 › previous overview comparison stays dashed and has no persistent dots
+  [chromium-4322] › dashboard-line-graphs.spec.mjs:64:34 › CPU lines preserve independent component gaps and quality: gap=false
+  [chromium-4322] › dashboard-line-graphs.spec.mjs:64:34 › CPU lines preserve independent component gaps and quality: gap=true
+  [chromium-4322] › dashboard-maintenance-series.spec.mjs:146:41 › Built recurring maintenance preview/create/future-edit/cancel remains accessible at 320
+  [chromium-4322] › dashboard-maintenance-series.spec.mjs:146:41 › Built recurring maintenance preview/create/future-edit/cancel remains accessible at 390
+  [chromium-4322] › dashboard-maintenance-series.spec.mjs:146:41 › Built recurring maintenance preview/create/future-edit/cancel remains accessible at 768
+  [chromium-4322] › dashboard-maintenance-series.spec.mjs:146:41 › Built recurring maintenance preview/create/future-edit/cancel remains accessible at 1440
+  [chromium-4322] › dashboard-maintenance-series.spec.mjs:178:1 › Built recurring series confirmed write retries only failed current read and restores URL on reload
+  [chromium-4322] › dashboard-maintenance-series.spec.mjs:189:1 › Built recurring series uncertain create replays the complete original command once
+  [chromium-4322] › dashboard-maintenance-series.spec.mjs:196:1 › Built monthly preview discloses skipped dates and Viewer cannot invoke recurring administration
+  [chromium-4322] › dashboard-maintenance-series.spec.mjs:203:1 › Built series occurrence opens exact legacy editor and preserves an individual exception through a future change
+  [chromium-4322] › dashboard-refactor.spec.mjs:45:1 › uppercase native target URLs resolve catalog and direct identities while retaining exact report scope
+  [chromium-4322] › dashboard-refactor.spec.mjs:80:1 › native registration replaces a case-variant loaded identity once and closes the Add server drawer
+  [chromium-4322] › dashboard-refactor.spec.mjs:145:1 › deadlock-linked Activity chooses its matching native capture over a newer unrelated snapshot
+  [chromium-4322] › dashboard-refactor.spec.mjs:210:1 › malformed server catalog fails visibly without rendering provider text and recovers through Refresh
+  [chromium-4322] › dashboard-refactor.spec.mjs:233:1 › foreign direct server response never opens diagnostics and a valid retry preserves the requested window
+  [chromium-4322] › dashboard-refactor.spec.mjs:278:1 › dashboard baseline cards compare the latest bucket with its matching UTC hour and disclose source quality without extra reads
+  [chromium-4322] › dashboard-refactor.spec.mjs:303:1 › partial dashboard baseline evidence remains labelled and a missing latest bucket never falls back to an older value
+  [chromium-4322] › dashboard-refactor.spec.mjs:320:1 › missing-hour foreign and failed dashboard baselines keep current observations but never substitute a reference
+  [chromium-4322] › dashboard-refactor.spec.mjs:338:1 › a delayed old-server baseline cannot populate the new server KPI cards
+  [chromium-4322] › dashboard-refactor.spec.mjs:358:1 › a delayed old-window baseline response never overwrites the matching new-hour reference
+  [chromium-4322] › dashboard-refactor.spec.mjs:383:1 › Investigate first promotes plan comparisons with correctly scoped temporal context and evidence links
+  [chromium-4322] › dashboard-refactor.spec.mjs:413:1 › Investigate first retains explicit source gaps and never attaches temporal context to an out-of-window current finding
+  [chromium-4322] › dashboard-refactor.spec.mjs:440:1 › the common incident action is available across target diagnostics and closing a draft returns keyboard focus
+  [chromium-4322] › dashboard-refactor.spec.mjs:458:1 › incident save pins the original window and revision while duplicate activation and retry keep one immutable operation
+  [chromium-4322] › dashboard-refactor.spec.mjs:502:1 › saved incident links are canonical and delayed old-target or foreign reads never display another investigation
+  [chromium-4322] › dashboard-refactor.spec.mjs:533:1 › Viewer activity inspection exposes metadata but no protected SQL action or incident mutation
+  [chromium-4322] › dashboard-refactor.spec.mjs:550:1 › revoking Query Text Reader while captured SQL is pending hides the action and rejects its late plaintext
+  [chromium-4322] › dashboard-refactor.spec.mjs:573:1 › Resources URL restores receipt file node and inspection while pointer stays transient and selecting a file freezes the loaded window
+  [chromium-4322] › dashboard-refactor.spec.mjs:618:1 › Resources missing file node and out-of-window inspection remain explicit through reload without substituting evidence
+  [chromium-4322] › dashboard-refactor.spec.mjs:639:1 › delayed old Resources file and NUMA evidence cannot repopulate selections on another server
+  [chromium-4322] › dashboard-refactor.spec.mjs:665:1 › Activity URL finds the exact paged request identity rather than another row sharing its SPID and protects SQL behind an explicit action
+  [chromium-4322] › dashboard-refactor.spec.mjs:692:1 › Activity loaded selection and chain survive reload and history navigation without exposing protected SQL
+  [chromium-4322] › dashboard-refactor.spec.mjs:713:1 › Activity missing snapshot identity or exact observed time never substitutes another selected session
+  [chromium-4322] › dashboard-refactor.spec.mjs:727:1 › delayed old Activity selection cannot reappear after switching the workspace server
+  [chromium-4322] › dashboard-refactor.spec.mjs:744:1 › Waits URL restores a deliberate category and rejects invalid or duplicate selection without a substitute request
+  [chromium-4322] › dashboard-refactor.spec.mjs:770:1 › target alert URL restores a paged selection and preserves keyboard focus without refetching loaded rows
+  [chromium-4322] › dashboard-refactor.spec.mjs:817:1 › fleet alert URL restores an exact paged alert and filtered or missing selection never substitutes another detail
+  [chromium-4322] › dashboard-refactor.spec.mjs:852:1 › late acknowledgement from an old target alert selection cannot update another selected alert
+  [chromium-4322] › dashboard-refactor.spec.mjs:873:1 › acknowledgement from a prior firing cycle cannot mark refreshed alert evidence and a new cycle uses a new operation
+  [chromium-4322] › dashboard-refactor.spec.mjs:908:1 › query palette prefills only a selected database in the current server catalog and explains missing context
+  [chromium-4322] › dashboard-refactor.spec.mjs:930:1 › delayed query palette catalog from a prior server cannot prefill the new server context
+  [chromium-4322] › dashboard-refactor.spec.mjs:953:1 › fleet CPU memory waits blocking and HA cells open their diagnostic evidence in the shared window
+  [chromium-4322] › dashboard-refactor.spec.mjs:973:1 › diagnostic navigation and server changes retain the selected historical window
+  [chromium-4322] › dashboard-refactor.spec.mjs:989:1 › persistent fleet strip keeps all authorized servers across diagnostics and scopes server selection correctly
+  [chromium-4322] › dashboard-refactor.spec.mjs:1014:1 › persistent fleet strip rejects delayed old-window evidence and explicitly reports an unavailable refresh
+  [chromium-4322] › dashboard-refactor.spec.mjs:1055:1 › persistent fleet strip preserves keyboard focus and horizontal scroll during a live snapshot refresh
+  [chromium-4322] › dashboard-refactor.spec.mjs:1134:1 › pause stops scheduled refresh, resume refreshes, and Rewind fixes the window
+  [chromium-4322] › dashboard-refactor.spec.mjs:1158:1 › custom UTC editor supports keyboard dismissal, validation, apply and focus restoration
+  [chromium-4322] › dashboard-refactor.spec.mjs:1185:1 › custom UTC editor preserves exact microsecond URL bounds on unchanged Apply and on one-bound edits
+  [chromium-4322] › dashboard-refactor.spec.mjs:1207:1 › custom UTC editor accepts tenths and hundredths and keeps invalid ranges from changing scope
+  [chromium-4322] › dashboard-refactor.spec.mjs:1228:1 › command palette keyboard results preserve Rewind scope and restore the invoking focus
+  [chromium-4322] › dashboard-refactor.spec.mjs:1259:1 › investigate-first and blocking drill-downs keep the server, window and event instant
+  [chromium-4322] › dashboard-refactor.spec.mjs:1276:34 › built dashboard inspects the native current head blocker within rewind at 320
+  [chromium-4322] › dashboard-refactor.spec.mjs:1276:34 › built dashboard inspects the native current head blocker within rewind at 1440
+  [chromium-4322] › dashboard-refactor.spec.mjs:1299:1 › timeline rail and keyboard range select the shared workspace and restore it after reload
+  [chromium-4322] › dashboard-refactor.spec.mjs:1324:34 › built dashboard timeline dark layout and keyboard range at 320px
+  [chromium-4322] › dashboard-refactor.spec.mjs:1324:34 › built dashboard timeline dark layout and keyboard range at 1440px
+  [chromium-4322] › dashboard-refactor.spec.mjs:1342:1 › fleet labels save in the built workspace and reload current revision without losing global time
+  [chromium-4322] › dashboard-refactor.spec.mjs:1369:1 › chart drag selects one shared window and the comparison toggle survives navigation
+  [chromium-4322] › dashboard-refactor.spec.mjs:1409:1 › viewer actions name the required roles and missing coverage is never an all-clear
+  [chromium-4322] › dashboard-refactor.spec.mjs:1431:1 › fleet server search and grouping are local controls that preserve global time
+  [chromium-4322] › dashboard-refactor.spec.mjs:1445:1 › deadlock relationships drill into the event activity and clear selection when the server changes
+  [chromium-4322] › dashboard-refactor.spec.mjs:1478:1 › session inspection preserves its observation when filters remove the request and clears on target change
+  [chromium-4322] › dashboard-refactor.spec.mjs:1500:1 › cache query ranking shows synthetic observations and opens scoped interval history
+  [chromium-4322] › dashboard-refactor.spec.mjs:1520:1 › changing the deadlock window clears the old detail while the same event reloads
+  [chromium-4322] › dashboard-refactor.spec.mjs:1555:1 › blocking chains filter loaded rows locally and preserve an unrelated inspected observation
+  [chromium-4322] › dashboard-refactor.spec.mjs:1594:1 › a selected chain disappearing from the next snapshot produces explicit zero matches
+  [chromium-4322] › dashboard-refactor.spec.mjs:1632:1 › workspace database follows diagnostic navigation, time edits, reload and browser history
+  [chromium-4322] › dashboard-refactor.spec.mjs:1678:1 › live database selection updates the URL and sends the selected database to collection reads
+  [chromium-4322] › dashboard-refactor.spec.mjs:1698:1 › database context scopes loaded cache and file rows without relabelling server resources
+  [chromium-4322] › dashboard-refactor.spec.mjs:1731:1 › unknown database scope stays explicit through missing inventory and clears safely
+  [chromium-4322] › dashboard-refactor.spec.mjs:1752:1 › delayed database inventory from an old target never supplies names for the new server
+  [chromium-4322] › dashboard-refactor.spec.mjs:1771:1 › changing database context clears contradictory query and event selections
+  [chromium-4322] › dashboard-refactor.spec.mjs:1790:1 › obsolete database change events cannot restore scope during a server or fleet navigation
+  [chromium-4322] › dashboard-refactor.spec.mjs:1830:1 › timeline URL restores the selected event with exact window and database context after reload
+  [chromium-4322] › dashboard-refactor.spec.mjs:1861:1 › aligning a Live timeline event freezes its loaded window and retains keyboard focus before reload
+  [chromium-4322] › dashboard-refactor.spec.mjs:1897:1 › selected Agent timeline marker retains its focused button during a pending refresh and becomes explicitly missing after failure
+  [chromium-4322] › dashboard-refactor.spec.mjs:1930:1 › Overview rejects response bounds shifted by one microsecond from the fixed workspace window
+  [chromium-4322] › dashboard-refactor.spec.mjs:1947:1 › Overview previous-period comparison requests retain the exact microsecond duration
+  [chromium-4322] › dashboard-refactor.spec.mjs:1965:1 › requested timeline selection remains explicit when hidden or absent and never selects another event
+  [chromium-4322] › dashboard-refactor.spec.mjs:1996:1 › delayed requested timeline evidence cannot restore a selection after switching servers
+  [chromium-4322] › dashboard-refactor.spec.mjs:2025:1 › Resources pointer and keyboard inspection align CPU memory PLE and file latency without changing the workspace window
+  [chromium-4322] › dashboard-refactor.spec.mjs:2062:1 › periodic live configuration history retains the selected scan and keyboard focus until explicit latest
+  [chromium-4322] › dashboard-refactor.spec.mjs:2102:1 › investigation timeline remains usable when dashboard metric series contain no observations
+  [chromium-4322] › dashboard-refactor.spec.mjs:2130:1 › timeline category keyboard control aligns shared charts and preserves exact hidden selections
+  [chromium-4322] › dashboard-refactor.spec.mjs:2177:1 › timeline database context filters plan comparisons while retaining server deadlocks and opens the current plan
+  [chromium-4322] › dashboard-refactor.spec.mjs:2234:1 › failed plan comparison refresh removes old leads and reports unavailable coverage honestly
+  [chromium-4322] › dashboard-refactor.spec.mjs:2251:1 › delayed old-target plan comparisons never reappear in the new server timeline
+  [chromium-4322] › dashboard-refactor.spec.mjs:2270:1 › timeline plan comparisons clear during a window read and reject its delayed result after another rewind
+  [chromium-4322] › dashboard-refactor.spec.mjs:2310:1 › malformed foreign and oversized Health evidence fails visibly without crashing the dashboard
+  [chromium-4322] › dashboard-refactor.spec.mjs:2333:1 › Resources rejects a malformed refreshed file snapshot while retaining independent authorized charts
+  [chromium-4322] › dashboard-refactor.spec.mjs:2352:1 › malformed database option and mismatched configuration history remain explicit gaps in Health
+  [chromium-4322] › dashboard-refactor.spec.mjs:2381:1 › ranking row trends load only visible plans with two concurrent reads and shared runtime wait evidence
+  [chromium-4322] › dashboard-refactor.spec.mjs:2412:1 › ranking row trends expose partial hourly sums and gap reset coverage then allow unavailable evidence to retry
+  [chromium-4322] › dashboard-refactor.spec.mjs:2441:1 › ranking row trends show cache interval rates with reset gaps and inspect the exact incarnation
+  [chromium-4322] › dashboard-refactor.spec.mjs:2464:1 › ranking row trends cannot publish an old metric after a delayed read
+  [chromium-4322] › dashboard-refactor.spec.mjs:2487:1 › ranking row trends discard delayed old target and window values
+  [chromium-4322] › dashboard-refactor.spec.mjs:2519:1 › deadlock URL selection preserves exact event time and loaded row focus through reload back and forward
+  [chromium-4322] › dashboard-refactor.spec.mjs:2540:1 › deadlock URL restoration reads an exact off-page event without substituting the first listed event
+  [chromium-4322] › dashboard-refactor.spec.mjs:2558:1 › missing invalid and mismatched deadlock URL identities never select a different event
+  [chromium-4322] › dashboard-refactor.spec.mjs:2586:1 › delayed deadlock restoration cannot replace the selected event after target and window navigation
+  [chromium-4322] › dashboard-refactor.spec.mjs:2608:3 › exact rules administration IDs restore across bounded pages reload and history without mutations
+  [chromium-4322] › dashboard-refactor.spec.mjs:2608:3 › exact maintenance administration IDs restore across bounded pages reload and history without mutations
+  [chromium-4322] › dashboard-refactor.spec.mjs:2608:3 › exact destinations administration IDs restore across bounded pages reload and history without mutations
+  [chromium-4322] › dashboard-refactor.spec.mjs:2643:1 › deadlock exact microsecond list bounds and focused event survive a labelled same-context refresh
+  [chromium-4322] › dashboard-refactor.spec.mjs:2665:1 › bounded administration restoration stops at five pages and rejects a repeated cursor without selecting a fallback
+  [chromium-4322] › dashboard-refactor.spec.mjs:2693:1 › destination history changes close the old editor and a delayed save cannot rewrite the new selection
+  [chromium-4322] › dashboard-refactor.spec.mjs:2715:1 › quiet dashboard and Resources evidence disclosures remain keyboard accessible and surface incomplete references
+  [chromium-4322] › dashboard-replication-history.spec.mjs:20:38 › built direct replication tab is fully revealed at 320px through reload, resize and zoom without focus theft or vertical movement
+  [chromium-4322] › dashboard-replication-history.spec.mjs:20:38 › built direct replication tab is fully revealed at 1440px through reload, resize and zoom without focus theft or vertical movement
+  [chromium-4322] › dashboard-replication-history.spec.mjs:30:66 › built failedLatest default is the newest attempt and cannot silently fall back
+  [chromium-4322] › dashboard-replication-history.spec.mjs:30:66 › built missingLatest default is the newest attempt and cannot silently fall back
+  [chromium-4322] › dashboard-replication-history.spec.mjs:30:66 › built emptyLatest default is the newest attempt and cannot silently fall back
+  [chromium-4322] › dashboard-replication-history.spec.mjs:31:1 › off-list receipt reload restores exact run/sample and source clock distinctions
+  [chromium-4322] › dashboard-replication-history.spec.mjs:32:1 › uninvestigated Live workspace Refresh advances source bounds; retained Rewind does not drift
+  [chromium-4322] › dashboard-replication-history.spec.mjs:35:49 › Live receipts browsing fixes the shared window and promotes one exact receipt without extra GET
+  [chromium-4322] › dashboard-replication-history.spec.mjs:35:49 › Live observations browsing fixes the shared window and promotes one exact receipt without extra GET
+  [chromium-4322] › dashboard-replication-history.spec.mjs:36:1 › actual database picker preserves server-wide pin while true shared range change retires it
+  [chromium-4322] › dashboard-replication-history.spec.mjs:37:1 › failed exact refresh keeps its pin and facts; explicit out-of-window URL has no replacement
+  [chromium-4322] › dashboard-replication-history.spec.mjs:38:1 › invalid raw pin stays explicit across compare and database edits until Clear
+  [chromium-4322] › dashboard-replication-history.spec.mjs:39:31 › built native 401 purges source receipts and aborts held sibling success
+  [chromium-4322] › dashboard-replication-history.spec.mjs:39:31 › built native 403 purges source receipts and aborts held sibling success
+  [chromium-4322] › dashboard-replication-history.spec.mjs:40:1 › target change fences held old denial and resets exact source without cross-target fallback
+  [chromium-4322] › dashboard-replication-history.spec.mjs:41:1 › list overflow and missing exact receipt remain independent explicit diagnostics
+  [chromium-4322] › dashboard-replication-history.spec.mjs:42:39 › built dark replication workflow respects actual panel bounds and keyboard WCAG at 320px
+  [chromium-4322] › dashboard-replication-history.spec.mjs:42:39 › built dark replication workflow respects actual panel bounds and keyboard WCAG at 390px
+  [chromium-4322] › dashboard-replication-history.spec.mjs:42:39 › built dark replication workflow respects actual panel bounds and keyboard WCAG at 768px
+  [chromium-4322] › dashboard-replication-history.spec.mjs:42:39 › built dark replication workflow respects actual panel bounds and keyboard WCAG at 1440px
+  [chromium-4322] › dashboard-replication-history.spec.mjs:43:67 › built forced replication evidence keeps local table scroll and visible focus at 320px
+  [chromium-4322] › dashboard-replication-history.spec.mjs:43:67 › built zoom replication evidence keeps local table scroll and visible focus at 320px
+  [chromium-4322] › dashboard-replication-history.spec.mjs:43:67 › built forced replication evidence keeps local table scroll and visible focus at 1440px
+  [chromium-4322] › dashboard-replication-history.spec.mjs:43:67 › built zoom replication evidence keeps local table scroll and visible focus at 1440px
+  [chromium-4322] › dashboard-rule-templates.spec.mjs:43:39 › Built template library and complete group apply stop rollback are accessible at 320
+  [chromium-4322] › dashboard-rule-templates.spec.mjs:43:39 › Built template library and complete group apply stop rollback are accessible at 390
+  [chromium-4322] › dashboard-rule-templates.spec.mjs:43:39 › Built template library and complete group apply stop rollback are accessible at 768
+  [chromium-4322] › dashboard-rule-templates.spec.mjs:43:39 › Built template library and complete group apply stop rollback are accessible at 1440
+  [chromium-4322] › dashboard-rule-templates.spec.mjs:76:1 › Built exact immutable version and deployment URL restore independently of copied diagnostic scope
+  [chromium-4322] › dashboard-rule-templates.spec.mjs:85:1 › Built viewer sees required role and no protected requests or admin navigation
+  [chromium-4322] › dashboard-rule-templates.spec.mjs:91:1 › Built confirmed creation survives an unrelated transient workspace authority refresh and retries GET only
+  [chromium-4322] › dashboard-rule-templates.spec.mjs:100:1 › Built uncertain apply retains captured bytes after a successful refresh and never silently advances the batch
+  [chromium-4322] › dashboard-server-lifecycle.spec.mjs:23:1 › server lifecycle selection restores its full immutable tuple through reload and browser history
+  [chromium-4322] › dashboard-server-lifecycle.spec.mjs:34:1 › exact server lifecycle proof survives list overflow and unavailable core dashboard analytics
+  [chromium-4322] › dashboard-server-lifecycle.spec.mjs:45:1 › timeline category filtering preserves the exact lifecycle selection and restores its event focus
+  [chromium-4322] › dashboard-server-lifecycle.spec.mjs:56:1 › malformed server lifecycle tuple never substitutes a sampled event
+  [chromium-4322] › dashboard-server-lifecycle.spec.mjs:62:1 › denied server lifecycle exact read purges protected receipts and requires explicit recovery
+  [chromium-4322] › dashboard-server-lifecycle.spec.mjs:73:1 › inspecting a sampled lifecycle event in Live fixes its received window and retains selection
+  [chromium-4322] › dashboard-server-lifecycle.spec.mjs:83:39 › sampled lifecycle evidence is accessible and contained in dark layout at 320px
+  [chromium-4322] › dashboard-server-lifecycle.spec.mjs:83:39 › sampled lifecycle evidence is accessible and contained in dark layout at 390px
+  [chromium-4322] › dashboard-server-lifecycle.spec.mjs:83:39 › sampled lifecycle evidence is accessible and contained in dark layout at 768px
+  [chromium-4322] › dashboard-server-lifecycle.spec.mjs:83:39 › sampled lifecycle evidence is accessible and contained in dark layout at 1440px
+  [chromium-4322] › dashboard-tempdb-history.spec.mjs:57:66 › built App keeps newest failedLatest as default instead of choosing an older successful receipt
+  [chromium-4322] › dashboard-tempdb-history.spec.mjs:57:66 › built App keeps newest missingLatest as default instead of choosing an older successful receipt
+  [chromium-4322] › dashboard-tempdb-history.spec.mjs:57:66 › built App keeps newest emptyLatest as default instead of choosing an older successful receipt
+  [chromium-4322] › dashboard-tempdb-history.spec.mjs:60:1 › built App reload and Back/Forward restore the exact off-list tuple with no fallback
+  [chromium-4322] › dashboard-tempdb-history.spec.mjs:63:1 › invalid repeated exact pin survives unrelated shared database change with no default exact read
+  [chromium-4322] › dashboard-tempdb-history.spec.mjs:66:42 › Live receipts paging atomically fixes the shared Rewind window and owns one continuation
+  [chromium-4322] › dashboard-tempdb-history.spec.mjs:66:42 › Live files paging atomically fixes the shared Rewind window and owns one continuation
+  [chromium-4322] › dashboard-tempdb-history.spec.mjs:69:1 › Refresh failure keeps the exact selected receipt while explicit URL window change discloses out-of-window instead of latest
+  [chromium-4322] › dashboard-tempdb-history.spec.mjs:72:31 › native 401 purges both TempDB source receipts and fences the pending sibling
+  [chromium-4322] › dashboard-tempdb-history.spec.mjs:72:31 › native 403 purges both TempDB source receipts and fences the pending sibling
+  [chromium-4322] › dashboard-tempdb-history.spec.mjs:75:1 › missing selected payload and independent list cap have explicit recovery without replacing the exact pin
+  [chromium-4322] › dashboard-tempdb-history.spec.mjs:78:39 › built TempDB workflow is dark, keyboard-scrollable and WCAG21A at 320px
+  [chromium-4322] › dashboard-tempdb-history.spec.mjs:78:39 › built TempDB workflow is dark, keyboard-scrollable and WCAG21A at 390px
+  [chromium-4322] › dashboard-tempdb-history.spec.mjs:78:39 › built TempDB workflow is dark, keyboard-scrollable and WCAG21A at 768px
+  [chromium-4322] › dashboard-tempdb-history.spec.mjs:78:39 › built TempDB workflow is dark, keyboard-scrollable and WCAG21A at 1440px
+  [chromium-4322] › dashboard-tempdb-history.spec.mjs:81:31 › built TempDB forced colors retains visible keyboard control focus at 320px
+  [chromium-4322] › dashboard-tempdb-history.spec.mjs:81:31 › built TempDB forced colors retains visible keyboard control focus at 1440px
+  [chromium-4322] › dashboard-tempdb-history.spec.mjs:85:1 › actual shared database picker retains exact TempDB pin, while a changed shared time range retires it
+  [chromium-4322] › dashboard-tempdb-history.spec.mjs:88:31 › light system preference preserves dark TempDB evidence and keyboard focus at 320px
+  [chromium-4322] › dashboard-tempdb-history.spec.mjs:88:31 › light system preference preserves dark TempDB evidence and keyboard focus at 1440px
+  [chromium-4322] › dashboard-volume-planning.spec.mjs:16:66 › built App selects newest failedLatest instead of older healthy-looking capacities
+  [chromium-4322] › dashboard-volume-planning.spec.mjs:16:66 › built App selects newest missingLatest instead of older healthy-looking capacities
+  [chromium-4322] › dashboard-volume-planning.spec.mjs:16:66 › built App selects newest emptyLatest instead of older healthy-looking capacities
+  [chromium-4322] › dashboard-volume-planning.spec.mjs:19:1 › real reload and history navigation restore exact off-list receipt without latest fallback
+  [chromium-4322] › dashboard-volume-planning.spec.mjs:22:47 › Live receipts paging fixes shared Rewind window before one owned continuation
+  [chromium-4322] › dashboard-volume-planning.spec.mjs:22:47 › Live capacities paging fixes shared Rewind window before one owned continuation
+  [chromium-4322] › dashboard-volume-planning.spec.mjs:25:1 › database picker keeps exact pin while true shared time change drops the pin and uses the new window
+  [chromium-4322] › dashboard-volume-planning.spec.mjs:34:1 › invalid repeated pin survives unrelated picker changes and never selects newest
+  [chromium-4322] › dashboard-volume-planning.spec.mjs:37:1 › explicit source refresh failure keeps captured proposal and retry reads that run rather than latest
+  [chromium-4322] › dashboard-volume-planning.spec.mjs:40:31 › native 401 clears both receipt families before held sibling may complete
+  [chromium-4322] › dashboard-volume-planning.spec.mjs:40:31 › native 403 clears both receipt families before held sibling may complete
+  [chromium-4322] › dashboard-volume-planning.spec.mjs:43:1 › target navigation aborts old exact work before restoring new source, including Back
+  [chromium-4322] › dashboard-volume-planning.spec.mjs:46:1 › list cap does not hide independent exact raw source and lookback refusal
+  [chromium-4322] › dashboard-volume-planning.spec.mjs:56:39 › built planning source, raw disclosures and keyboard local scrolling fit at 320px
+  [chromium-4322] › dashboard-volume-planning.spec.mjs:56:39 › built planning source, raw disclosures and keyboard local scrolling fit at 390px
+  [chromium-4322] › dashboard-volume-planning.spec.mjs:56:39 › built planning source, raw disclosures and keyboard local scrolling fit at 768px
+  [chromium-4322] › dashboard-volume-planning.spec.mjs:56:39 › built planning source, raw disclosures and keyboard local scrolling fit at 1440px
+  [chromium-4322] › dashboard-volume-planning.spec.mjs:59:31 › built forced-color planning maintains visible keyboard focus at 320px
+  [chromium-4322] › dashboard-volume-planning.spec.mjs:59:31 › built forced-color planning maintains visible keyboard focus at 1440px
+  [chromium-4322] › dashboard-volume-planning.spec.mjs:62:31 › built light system preference and 200 percent CSS zoom preserve dark readable planning at 320px
+  [chromium-4322] › dashboard-volume-planning.spec.mjs:62:31 › built light system preference and 200 percent CSS zoom preserve dark readable planning at 1440px
+  [chromium-4322] › dashboard-volume-window-history.spec.mjs:60:44 › Rewind volume identity, comparison and completion-time evidence are accessible at 320px
+  [chromium-4322] › dashboard-volume-window-history.spec.mjs:60:44 › Rewind volume identity, comparison and completion-time evidence are accessible at 390px
+  [chromium-4322] › dashboard-volume-window-history.spec.mjs:60:44 › Rewind volume identity, comparison and completion-time evidence are accessible at 768px
+  [chromium-4322] › dashboard-volume-window-history.spec.mjs:60:44 › Rewind volume identity, comparison and completion-time evidence are accessible at 1440px
+  [chromium-4322] › dashboard-volume-window-history.spec.mjs:80:1 › an exact older revision and absent volume survive reload and shared window changes without selecting another identity
+  [chromium-4322] › dashboard-volume-window-history.spec.mjs:99:1 › invalid repeated volume identity refuses selected history and never silently selects the catalog first row
+  [chromium-4322] › dashboard-volume-window-history.spec.mjs:106:1 › a denied exact history clears received evidence and explicit retry restores the same read identity
+  [chromium-4322] › dashboard-volume-window-history.spec.mjs:116:1 › server navigation fences a held old volume response and preserves only the new target selection
+  [chromium-4322] › dashboard-volume-window-history.spec.mjs:131:1 › independent retained capacity remains available when core analytics fails and accepts the shared keyboard inspection
+  [chromium-4322] › deadlock-retained.spec.mjs:30:1 › deadlock investigated pages survive workspace refresh and visited navigation stays local
+  [chromium-4322] › deadlock-retained.spec.mjs:51:1 › deadlock explicit latest failure retains the receipt and Retry repeats exact bounds
+  [chromium-4322] › deadlock-retained.spec.mjs:70:1 › deadlock held continuation survives a moving Live tick with the received window
+  [chromium-4322] › deadlock-retained.spec.mjs:87:1 › native zero-offset deadlock detail opens Activity at the exact retained occurrence
+  [chromium-4322] › deadlock-retained.spec.mjs:105:34 › deadlock latest HTTP 401 removes retained event and relationship evidence
+  [chromium-4322] › deadlock-retained.spec.mjs:105:34 › deadlock latest HTTP 403 removes retained event and relationship evidence
+  [chromium-4322] › deadlock-retained.spec.mjs:118:34 › deadlock retained workflow dark theme and exports to Activity at 320
+  [chromium-4322] › deadlock-retained.spec.mjs:118:34 › deadlock retained workflow dark theme and exports to Activity at 1440
+  [chromium-4322] › operations-projections.spec.mjs:18:31 › Operations supporting history preserves a paged investigation and shared URL on Refresh at 320
+  [chromium-4322] › operations-projections.spec.mjs:18:31 › Operations supporting history preserves a paged investigation and shared URL on Refresh at 1440
+  [chromium-4322] › operations-projections.spec.mjs:19:1 › Operations supporting history retries the exact failed cursor and only successful explicit latest replaces retained rows
+  [chromium-4322] › operations-projections.spec.mjs:20:1 › Operations supporting history aborts held continuation on target navigation and refuses late prior-target evidence
+  [chromium-4322] › workspace-triage.spec.mjs:39:34 › Workspace triage database change preserves Health section and exact scan URL at 320
+  [chromium-4322] › workspace-triage.spec.mjs:39:34 › Workspace triage database change preserves Health section and exact scan URL at 1440
+  [chromium-4322] › workspace-triage.spec.mjs:54:1 › Workspace triage denies a previously loaded workspace database inventory without losing the fixed URL selection
+  [chromium-4322] › workspace-triage.spec.mjs:65:36 › Workspace triage target held continuation survives the real workspace tick
+  [chromium-4322] › workspace-triage.spec.mjs:65:36 › Workspace triage fleet held continuation survives the real workspace tick
+  [chromium-4322] › workspace-triage.spec.mjs:83:34 › Workspace triage retained fleet alert review remains accessible through Refresh at 320
+  [chromium-4322] › workspace-triage.spec.mjs:83:34 › Workspace triage retained fleet alert review remains accessible through Refresh at 1440
+  [chromium-4322] › workspace-triage.spec.mjs:105:1 › Workspace triage acknowledgement survives a workspace tick and records one accepted operation
+  [chromium-4321] › blocking-alert-rules.spec.mjs:9:1 › Blocking rules expose seconds and preserve their signal across create, retry, edit and disable
+  [chromium-4321] › cache-content.spec.mjs:29:1 › cache content opens only on demand, stays inert, is uncached and is absent after reload
+  [chromium-4321] › cache-content.spec.mjs:53:1 › changing the window cancels pending content and prevents stale plaintext from appearing
+  [chromium-4321] › cache-content.spec.mjs:63:1 › viewer sees the required role and cannot trigger a content request
+  [chromium-4321] › cache-interval-ranking.spec.mjs:16:1 › cache view preserves exact numbers, exposes coverage and follows the shared window and metric
+  [chromium-4321] › cache-interval-ranking.spec.mjs:44:1 › changing server during a pending cache read cannot display the previous server evidence
+  [chromium-4321] › cache-interval-ranking.spec.mjs:66:1 › a shared cache URL restores view and metric across reload, Rewind edits and browser history
+  [chromium-4321] › cache-interval-ranking.spec.mjs:96:1 › cache drilldown restores from its URL and pages exact samples with comparison gaps
+  [chromium-4321] › deadlock-alert-rules.spec.mjs:9:1 › Deadlock rules expose counts and preserve their signal across create, retry, edit and disable
+  [chromium-4321] › sql-baseline.spec.mjs:23:1 › Resources binds all SQL reads to the target and historical window and scales memory bands to GiB
+  [chromium-4321] › sql-baseline.spec.mjs:42:1 › Partial SQL history keeps coverage visible and missing reference hours remain gaps
+  [chromium-4321] › sql-baseline.spec.mjs:52:3 › unavailable SQL evidence does not draw bands or hide current observations
+  [chromium-4321] › sql-baseline.spec.mjs:52:3 › empty SQL evidence does not draw bands or hide current observations
+  [chromium-4321] › sql-baseline.spec.mjs:52:3 › foreign SQL evidence does not draw bands or hide current observations
+  [chromium-4321] › sql-baseline.spec.mjs:52:3 › error SQL evidence does not draw bands or hide current observations
+  [chromium-4321] › sql-baseline.spec.mjs:64:1 › Changing target during delayed references discards the previous target bands
+  [chromium-4321] › sql-baseline.spec.mjs:86:1 › The server dashboard renders SQL workload and memory reference bands for the shared Rewind window
+  [chromium-4338] › dashboard-activity-calendar.spec.mjs:17:1 › calendar selects an exact retained capture and preserves scope through reload
+  [chromium-4338] › dashboard-activity-calendar.spec.mjs:30:1 › calendar gaps and invalid dates never substitute another capture
+  [chromium-4338] › dashboard-activity-calendar.spec.mjs:43:31 › calendar is labeled, keyboard reachable and fits at 390px
+  [chromium-4338] › dashboard-activity-calendar.spec.mjs:43:31 › calendar is labeled, keyboard reachable and fits at 1440px
+  [chromium-4338] › dashboard-activity-time.spec.mjs:37:1 › Activity Live and History change shared time context and restore it through reload and browser history
+  [chromium-4338] › dashboard-activity-time.spec.mjs:64:1 › returning captured or event-linked Activity to Live clears the exact evidence link in the shared URL
+  [chromium-4338] › dashboard-activity-time.spec.mjs:79:45 › shared Activity time controls stay accessible in dark Rewind at 320px
+  [chromium-4338] › dashboard-activity-time.spec.mjs:79:45 › shared Activity time controls stay accessible in dark Rewind at 768px
+  [chromium-4338] › dashboard-activity-time.spec.mjs:79:45 › shared Activity time controls stay accessible in dark Rewind at 1024px
+  [chromium-4338] › dashboard-activity-time.spec.mjs:79:45 › shared Activity time controls stay accessible in dark Rewind at 1440px
+  [chromium-4335] › dashboard-admin-keyboard.spec.mjs:104:1 › Enter submits an edit and uncertain retry keeps the exact native update without duplicate pending dispatch
+  [chromium-4335] › dashboard-admin-keyboard.spec.mjs:131:1 › access loss cancels a held edit and a restored role requires explicit reopening with the authoritative revision
+  [chromium-4335] › dashboard-admin-keyboard.spec.mjs:170:3 › all admin table regions support dark focus and keyboard scrolling at 320px
+  [chromium-4335] › dashboard-admin-keyboard.spec.mjs:170:3 › all admin table regions support dark focus and keyboard scrolling at 390px
+  [chromium-4335] › dashboard-admin-keyboard.spec.mjs:170:3 › all admin table regions support dark focus and keyboard scrolling at 768px
+  [chromium-4335] › dashboard-admin-keyboard.spec.mjs:170:3 › all admin table regions support dark focus and keyboard scrolling at 1440px
+  [chromium-4323] › dashboard-administration.spec.mjs:51:1 › calendar month and date browsing select exact maintenance URLs through keyboard reload and history
+  [chromium-4323] › dashboard-administration.spec.mjs:77:1 › calendar uses half-open multi-day coverage and retains cancelled windows without implying an all-clear day
+  [chromium-4323] › dashboard-administration.spec.mjs:94:1 › calendar restores later-page identity and delayed old-target evidence never replaces the current server
+  [chromium-4323] › dashboard-administration.spec.mjs:118:1 › calendar local civil days follow the DST boundary and distinguish UTC day coverage
+  [chromium-4323] › dashboard-administration.spec.mjs:130:1 › calendar distinguishes loading unavailable and empty bounded maintenance evidence
+  [chromium-4323] › dashboard-administration.spec.mjs:152:3 › maintenance calendar keyboard and cancelled multi-day evidence remain accessible at 320px
+  [chromium-4323] › dashboard-administration.spec.mjs:152:3 › maintenance calendar keyboard and cancelled multi-day evidence remain accessible at 390px
+  [chromium-4323] › dashboard-administration.spec.mjs:152:3 › maintenance calendar keyboard and cancelled multi-day evidence remain accessible at 768px
+  [chromium-4323] › dashboard-administration.spec.mjs:152:3 › maintenance calendar keyboard and cancelled multi-day evidence remain accessible at 1440px
+  [chromium-4323] › dashboard-administration.spec.mjs:177:1 › offline permission generation escapes identifiers and only explicit actions copy select or download SQL
+  [chromium-4323] › dashboard-administration.spec.mjs:200:1 › permission generator clears stale output on version principal operation and target changes
+  [chromium-4323] › dashboard-administration.spec.mjs:225:1 › permission generator requires target administrator access and revocation hides existing SQL
+  [chromium-4323] › dashboard-administration.spec.mjs:240:3 › permission generator escaped SQL and keyboard actions remain accessible at 320px
+  [chromium-4323] › dashboard-administration.spec.mjs:240:3 › permission generator escaped SQL and keyboard actions remain accessible at 390px
+  [chromium-4323] › dashboard-administration.spec.mjs:240:3 › permission generator escaped SQL and keyboard actions remain accessible at 768px
+  [chromium-4323] › dashboard-administration.spec.mjs:240:3 › permission generator escaped SQL and keyboard actions remain accessible at 1440px
+  [chromium-4327] › dashboard-alert-lifecycle.spec.mjs:19:1 › all native lifecycle verbs and resolved cycles remain evidence independent of current inbox
+  [chromium-4327] › dashboard-alert-lifecycle.spec.mjs:32:1 › exact restored event absent from first page resolves independently and pins chart alignment
+  [chromium-4327] › dashboard-alert-lifecycle.spec.mjs:44:1 › an older selected event remains pinned after all received pages exceed the 120-marker summary
+  [chromium-4327] › dashboard-alert-lifecycle.spec.mjs:52:1 › list overflow cannot prevent independently resolving an exact selected event
+  [chromium-4327] › dashboard-alert-lifecycle.spec.mjs:59:1 › missing mismatched and malformed exact selections never choose another event or cycle
+  [chromium-4327] › dashboard-alert-lifecycle.spec.mjs:68:1 › history remains independently readable when core Overview analytics fails
+  [chromium-4327] › dashboard-alert-lifecycle.spec.mjs:73:1 › definitive history denial purges list and exact event; explicit access retry recovers
+  [chromium-4327] › dashboard-alert-lifecycle.spec.mjs:79:1 › opening history fixes the global Live window and keeps visited pages through real workspace polling
+  [chromium-4327] › dashboard-alert-lifecycle.spec.mjs:87:39 › integrated alert history uses dark tokens keyboard and responsive evidence at 320px
+  [chromium-4327] › dashboard-alert-lifecycle.spec.mjs:87:39 › integrated alert history uses dark tokens keyboard and responsive evidence at 390px
+  [chromium-4327] › dashboard-alert-lifecycle.spec.mjs:87:39 › integrated alert history uses dark tokens keyboard and responsive evidence at 768px
+  [chromium-4327] › dashboard-alert-lifecycle.spec.mjs:87:39 › integrated alert history uses dark tokens keyboard and responsive evidence at 1440px
+  [chromium-4327] › dashboard-retained-evidence.spec.mjs:40:1 › Waits capture selection survives exact URL reload history and refresh independently of both category controls
+  [chromium-4327] › dashboard-retained-evidence.spec.mjs:74:1 › Waits restores an older capture omitted from the hundred offered choices through bounded pinned metadata
+  [chromium-4327] › dashboard-retained-evidence.spec.mjs:94:1 › invalid duplicate missing shifted and expired Waits capture identities never substitute the latest capture
+  [chromium-4327] › dashboard-retained-evidence.spec.mjs:120:1 › delayed pinned Waits metadata cannot publish after target or exact window changes
+  [chromium-4327] › dashboard-retained-evidence.spec.mjs:144:1 › retained lifecycle markers preserve resolved and refired cycles in database context
+  [chromium-4327] › dashboard-retained-evidence.spec.mjs:158:1 › retained marker pages cache visited rows and reject duplicate or shifted receipts honestly
+  [chromium-4327] › dashboard-retained-evidence.spec.mjs:169:1 › late retained alert reads cannot publish after server or window changes
+  [chromium-4327] › dashboard-retained-evidence.spec.mjs:181:1 › one native seventh-zero custom URL preserves identical exact request bounds across Dashboard Waits and Resources
+  [chromium-4327] › dashboard-retained-evidence.spec.mjs:209:3 › pinned omitted Waits capture stays accessible and locally scrollable at 320px
+  [chromium-4327] › dashboard-retained-evidence.spec.mjs:227:3 › retained alert lifecycle markers retain exact keyboard evidence and responsive coverage at 320px
+  [chromium-4327] › dashboard-retained-evidence.spec.mjs:209:3 › pinned omitted Waits capture stays accessible and locally scrollable at 390px
+  [chromium-4327] › dashboard-retained-evidence.spec.mjs:227:3 › retained alert lifecycle markers retain exact keyboard evidence and responsive coverage at 390px
+  [chromium-4327] › dashboard-retained-evidence.spec.mjs:209:3 › pinned omitted Waits capture stays accessible and locally scrollable at 768px
+  [chromium-4327] › dashboard-retained-evidence.spec.mjs:227:3 › retained alert lifecycle markers retain exact keyboard evidence and responsive coverage at 768px
+  [chromium-4327] › dashboard-retained-evidence.spec.mjs:209:3 › pinned omitted Waits capture stays accessible and locally scrollable at 1440px
+  [chromium-4327] › dashboard-retained-evidence.spec.mjs:227:3 › retained alert lifecycle markers retain exact keyboard evidence and responsive coverage at 1440px
+  [chromium-4324] › dashboard-evidence-contracts.spec.mjs:27:1 › SQL-target planning preserves exact large bytes qualified estimates unknown and full states across captured pages
+  [chromium-4324] › dashboard-evidence-contracts.spec.mjs:35:1 › partial absent and Rewind observations preserve real retained-source boundaries without fabricated forecasts
+  [chromium-4324] › dashboard-evidence-contracts.spec.mjs:43:1 › malformed foreign revision and incompatible planning facts fail visibly without crashing Resources
+  [chromium-4324] › dashboard-evidence-contracts.spec.mjs:50:1 › superseded or mismatched planning continuation retains verified prior facts and requires explicit source recovery
+  [chromium-4324] › dashboard-evidence-contracts.spec.mjs:57:1 › delayed old-server planning facts cannot republish and failed current-source refresh preserves only current receipt
+  [chromium-4324] › dashboard-evidence-contracts.spec.mjs:75:1 › query source filter restores native rankings through reload back forward and independent query selection
+  [chromium-4324] › dashboard-evidence-contracts.spec.mjs:91:1 › invalid or duplicate query source URL values show no fallback ranking and valid controls repair the selection
+  [chromium-4324] › dashboard-evidence-contracts.spec.mjs:105:1 › query source filter survives metric view and database controls while delayed history cannot overwrite it
+  [chromium-4324] › dashboard-evidence-contracts.spec.mjs:129:1 › protected query text is bound to the selected observation and rejects a late result after query and window changes
+  [chromium-4324] › dashboard-evidence-contracts.spec.mjs:181:39 › populated retained SQL volume planning remains accessible at 320px
+  [chromium-4324] › dashboard-evidence-contracts.spec.mjs:181:39 › populated retained SQL volume planning remains accessible at 390px
+  [chromium-4324] › dashboard-evidence-contracts.spec.mjs:181:39 › populated retained SQL volume planning remains accessible at 768px
+  [chromium-4324] › dashboard-evidence-contracts.spec.mjs:181:39 › populated retained SQL volume planning remains accessible at 1440px
+  [chromium-4326] › dashboard-native-insights.spec.mjs:38:1 › selected plan wait categories retain real gaps exact counters and a shared keyboard inspection
+  [chromium-4326] › dashboard-native-insights.spec.mjs:82:1 › selected plan and changed window reject a delayed prior plan response
+  [chromium-4326] › dashboard-native-insights.spec.mjs:102:1 › selected file allocation preserves exact bytes percent growth unknown maximum and loaded snapshot in Rewind
+  [chromium-4326] › dashboard-native-insights.spec.mjs:115:1 › missing and off-page historical file allocation never substitute another received row
+  [chromium-4326] › dashboard-native-insights.spec.mjs:130:1 › partial failed and delayed historical file reads keep their source identity explicit
+  [chromium-4326] › dashboard-native-insights.spec.mjs:147:1 › health check workflow links preserve exact scope and choose configuration or database options explicitly
+  [chromium-4326] › dashboard-native-insights.spec.mjs:162:3 › selected-plan-waits evidence remains accessible and locally scrollable at 320px
+  [chromium-4326] › dashboard-native-insights.spec.mjs:162:3 › selected-file-allocation evidence remains accessible and locally scrollable at 320px
+  [chromium-4326] › dashboard-native-insights.spec.mjs:162:3 › selected-plan-waits evidence remains accessible and locally scrollable at 390px
+  [chromium-4326] › dashboard-native-insights.spec.mjs:162:3 › selected-file-allocation evidence remains accessible and locally scrollable at 390px
+  [chromium-4326] › dashboard-native-insights.spec.mjs:162:3 › selected-plan-waits evidence remains accessible and locally scrollable at 768px
+  [chromium-4326] › dashboard-native-insights.spec.mjs:162:3 › selected-file-allocation evidence remains accessible and locally scrollable at 768px
+  [chromium-4326] › dashboard-native-insights.spec.mjs:162:3 › selected-plan-waits evidence remains accessible and locally scrollable at 1440px
+  [chromium-4326] › dashboard-native-insights.spec.mjs:162:3 › selected-file-allocation evidence remains accessible and locally scrollable at 1440px
+  [chromium-4337] › dashboard-query-selection.spec.mjs:125:1 › the App reloads an off-page pure query URL and preserves exact inspection through ranking paging and browser history
+  [chromium-4337] › dashboard-query-selection.spec.mjs:142:1 › manual App Refresh in Rewind cancels an older ranking continuation and retains the exact query and plan URL
+  [chromium-4337] › dashboard-query-selection.spec.mjs:155:1 › invalid duplicate, orphan and contradictory exact URL selections refuse history reads and offer ranked repair
+  [chromium-4337] › dashboard-query-selection.spec.mjs:170:1 › refreshed native Viewer access aborts protected receipts and leaves unprotected exact history readable
+  [chromium-4337] › dashboard-query-selection.spec.mjs:181:44 › off-page exact query inspection is dark and keyboard accessible in the App at 320px
+  [chromium-4337] › dashboard-query-selection.spec.mjs:181:44 › off-page exact query inspection is dark and keyboard accessible in the App at 390px
+  [chromium-4337] › dashboard-query-selection.spec.mjs:181:44 › off-page exact query inspection is dark and keyboard accessible in the App at 768px
+  [chromium-4337] › dashboard-query-selection.spec.mjs:181:44 › off-page exact query inspection is dark and keyboard accessible in the App at 1440px
+  [chromium-4336] › dashboard-registration-cancellation.spec.mjs:83:43 › closing Add server by button cancels its pending consumer and refuses a late receipt
+  [chromium-4336] › dashboard-registration-cancellation.spec.mjs:83:43 › closing Add server by Escape cancels its pending consumer and refuses a late receipt
+  [chromium-4336] › dashboard-registration-cancellation.spec.mjs:99:1 › verified registration access loss cancels the form and regrant does not reopen its drawer
+  [chromium-4331] › dashboard-reports.spec.mjs:58:1 › Reports workspace recovers an accepted request with an uncertain receipt and creates a new run only after confirmed success
+  [chromium-4331] › dashboard-reports.spec.mjs:79:1 › Reports workspace changes discard the prior request and never reuse another target or window operation
+  [chromium-4331] › dashboard-reports.spec.mjs:96:1 › Reports shared UTC window and kind survive reload and browser history without generating implicitly
+  [chromium-4331] › dashboard-reports.spec.mjs:122:1 › Reports moving Live context freezes an uncertain request but starts a fresh window after verified success
+  [chromium-4331] › dashboard-reports.spec.mjs:143:1 › Reports URL kind refusal preserves invalid selection until the user chooses a supported type
+  [chromium-4331] › dashboard-reports.spec.mjs:161:1 › Reports selected kind refuses an unsupported shared range and can recover without substituting the window
+  [chromium-4331] › dashboard-reports.spec.mjs:174:1 › Instance Health remains explicitly current under Rewind and leaving Reports preserves the global range
+  [chromium-4331] › dashboard-reports.spec.mjs:187:44 › Reports workspace has readable shared time controls and accessible exports at 320px
+  [chromium-4331] › dashboard-reports.spec.mjs:187:44 › Reports workspace has readable shared time controls and accessible exports at 390px
+  [chromium-4331] › dashboard-reports.spec.mjs:187:44 › Reports workspace has readable shared time controls and accessible exports at 768px
+  [chromium-4331] › dashboard-reports.spec.mjs:187:44 › Reports workspace has readable shared time controls and accessible exports at 1440px
+  [chromium-4331] › dashboard-reports.spec.mjs:209:1 › built Reports expires at the native microsecond boundary without generating implicitly
+  [chromium-4331] › dashboard-reports.spec.mjs:230:51 › built Reports removes stale exports on focus after a wall-clock jump
+  [chromium-4331] › dashboard-reports.spec.mjs:230:51 › built Reports removes stale exports on visibilitychange after a wall-clock jump
+  [chromium-4331] › dashboard-reports.spec.mjs:245:1 › built Reports recovers an uncertain expired run before explicitly creating a fresh Live operation
+  [chromium-4331] › dashboard-reports.spec.mjs:266:44 › expired Reports workspace supports explicit keyboard renewal in dark layout at 320px
+  [chromium-4331] › dashboard-reports.spec.mjs:266:44 › expired Reports workspace supports explicit keyboard renewal in dark layout at 390px
+  [chromium-4331] › dashboard-reports.spec.mjs:266:44 › expired Reports workspace supports explicit keyboard renewal in dark layout at 768px
+  [chromium-4331] › dashboard-reports.spec.mjs:266:44 › expired Reports workspace supports explicit keyboard renewal in dark layout at 1440px
+  [chromium-4333] › dashboard-saved-incidents.spec.mjs:91:1 › a saved URL exposes recorded packet evidence and shares its original exact window through reload and history without implicit reports
+  [chromium-4333] › dashboard-saved-incidents.spec.mjs:109:1 › the saved investigation report retries one target-bound native operation and exports the verified saved revision
+  [chromium-4333] › dashboard-saved-incidents.spec.mjs:133:1 › losing verified Viewer read access during a report hides the saved packet and fences its late receipt until a fresh read
+  [chromium-4333] › dashboard-saved-incidents.spec.mjs:161:44 › saved packet references, provenance and opaque JSON are dark, accessible and readable in the App at 320px
+  [chromium-4333] › dashboard-saved-incidents.spec.mjs:161:44 › saved packet references, provenance and opaque JSON are dark, accessible and readable in the App at 390px
+  [chromium-4333] › dashboard-saved-incidents.spec.mjs:161:44 › saved packet references, provenance and opaque JSON are dark, accessible and readable in the App at 768px
+  [chromium-4333] › dashboard-saved-incidents.spec.mjs:161:44 › saved packet references, provenance and opaque JSON are dark, accessible and readable in the App at 1440px
+  [chromium-4332] › dashboard-server-management.spec.mjs:95:1 › per-row settings links preserve shared scope through reload, close and history without implicit mutations
+  [chromium-4332] › dashboard-server-management.spec.mjs:111:1 › same-server database edits, display toggles and verified same-role refresh preserve the unsaved settings draft
+  [chromium-4332] › dashboard-server-management.spec.mjs:139:1 › verified native update and rediscovery replace the loaded row, then retirement removes only that target
+  [chromium-4332] › dashboard-server-management.spec.mjs:164:1 › a settings URL for a target outside the loaded page uses native direct lookup without injecting a registration row
+  [chromium-4332] › dashboard-server-management.spec.mjs:181:1 › an uncertain native settings receipt cannot update the loaded list and readback does not claim an applied callback
+  [chromium-4332] › dashboard-server-management.spec.mjs:204:1 › readers may open current server settings from the loaded list while mutations remain unavailable
+  [chromium-4332] › dashboard-server-management.spec.mjs:214:1 › invalid and duplicate server settings URL identities refuse native detail reads until a loaded row repairs the selection
+  [chromium-4332] › dashboard-server-management.spec.mjs:228:44 › server settings workspace preserves dark accessibility and readable controls at 320px
+  [chromium-4332] › dashboard-server-management.spec.mjs:228:44 › server settings workspace preserves dark accessibility and readable controls at 390px
+  [chromium-4332] › dashboard-server-management.spec.mjs:228:44 › server settings workspace preserves dark accessibility and readable controls at 768px
+  [chromium-4332] › dashboard-server-management.spec.mjs:228:44 › server settings workspace preserves dark accessibility and readable controls at 1440px
+  [chromium-4334] › dashboard-volume-browsing.spec.mjs:19:1 › workspace refresh retains browsed receipt and cached capacities until explicit source renewal
+  [chromium-4334] › dashboard-volume-browsing.spec.mjs:27:1 › pending continuation survives workspace Refresh but a true shared-window change cancels it and Live starts fresh
+  [chromium-4334] › dashboard-volume-browsing.spec.mjs:39:39 › retained planning capacities are dark readable and keyboard operable in the App at 320px
+  [chromium-4334] › dashboard-volume-browsing.spec.mjs:39:39 › retained planning capacities are dark readable and keyboard operable in the App at 390px
+  [chromium-4334] › dashboard-volume-browsing.spec.mjs:39:39 › retained planning capacities are dark readable and keyboard operable in the App at 768px
+  [chromium-4334] › dashboard-volume-browsing.spec.mjs:39:39 › retained planning capacities are dark readable and keyboard operable in the App at 1440px
+  [chromium-4325] › dashboard-workflow-completion.spec.mjs:32:1 › maintenance editing is explicit and retry retains operation revision and untouched microsecond bounds
+  [chromium-4325] › dashboard-workflow-completion.spec.mjs:52:1 › maintenance conflicts require refreshed evidence and cancelled or Viewer windows stay read-only
+  [chromium-4325] › dashboard-workflow-completion.spec.mjs:73:1 › late maintenance saves cannot overwrite a different selection target or revoked role
+  [chromium-4325] › dashboard-workflow-completion.spec.mjs:107:1 › native captured wait categories preserve database scope paging and exact metadata inspection across reload
+  [chromium-4325] › dashboard-workflow-completion.spec.mjs:145:1 › captured wait evidence reports truncation bounds unavailable history retention and errors without substituting sessions
+  [chromium-4325] › dashboard-workflow-completion.spec.mjs:186:1 › delayed captured sessions cannot republish an old server or historical window
+  [chromium-4325] › dashboard-workflow-completion.spec.mjs:225:3 › explicit maintenance editor remains keyboard accessible at 320px
+  [chromium-4325] › dashboard-workflow-completion.spec.mjs:232:3 › native captured wait sessions remain keyboard accessible at 320px
+  [chromium-4325] › dashboard-workflow-completion.spec.mjs:225:3 › explicit maintenance editor remains keyboard accessible at 390px
+  [chromium-4325] › dashboard-workflow-completion.spec.mjs:232:3 › native captured wait sessions remain keyboard accessible at 390px
+  [chromium-4325] › dashboard-workflow-completion.spec.mjs:225:3 › explicit maintenance editor remains keyboard accessible at 768px
+  [chromium-4325] › dashboard-workflow-completion.spec.mjs:232:3 › native captured wait sessions remain keyboard accessible at 768px
+  [chromium-4325] › dashboard-workflow-completion.spec.mjs:225:3 › explicit maintenance editor remains keyboard accessible at 1440px
+  [chromium-4325] › dashboard-workflow-completion.spec.mjs:232:3 › native captured wait sessions remain keyboard accessible at 1440px
+Total: 766 tests in 56 files

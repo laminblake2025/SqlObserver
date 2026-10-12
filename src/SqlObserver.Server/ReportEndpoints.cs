@@ -15,7 +15,12 @@ public static class ReportEndpoints
         RouteGroupBuilder catalog = endpoints.MapGroup("/api/v1/reports").RequireAuthorization();
         catalog.MapGet("/catalog", CatalogAsync);
         RouteGroupBuilder target = endpoints.MapGroup("/api/v1/observation-targets/{instanceId:guid}/reports").RequireAuthorization();
-        target.MapPost("/", CreateAsync);
+        target.AddEndpointFilter(async (context, next) =>
+        {
+            context.HttpContext.Response.Headers.CacheControl = "no-store";
+            return await next(context).ConfigureAwait(false);
+        });
+        target.MapPost("/", CreateAsync).RequireRateLimiting(AdministrativeMutationRateLimitPolicy.PolicyName);
         target.MapGet("/{runId:guid}", GetRunAsync);
         target.MapGet("/{runId:guid}/{section}", ReadPageAsync);
         target.MapGet("/{runId:guid}/html", HtmlAsync);
@@ -36,7 +41,8 @@ public static class ReportEndpoints
             AuthorizationContext auth;
             try { auth = resolver.Resolve(context.User); }
             catch (UnauthorizedAccessException) { return await AuditTerminalAsync(context, instanceId, null, "deny", "denied", StatusCodes.Status403Forbidden, service, resolver, CancellationToken.None, auditPort).ConfigureAwait(false); }
-            ReportRun run = await service.CreateAsync(new ReportCreateRequest(instanceId, new ReportRequest(body.ReportKind, body.OperationId, body.FromUtc, body.ToUtc), auth), operation.Token).ConfigureAwait(false);
+            ReportRun run = await service.CreateAsync(new ReportCreateRequest(instanceId,
+                new ReportRequest(body.ReportKind, body.OperationId, body.FromUtc, body.ToUtc, body.ThreadId), auth), operation.Token).ConfigureAwait(false);
             context.Response.Headers["X-Correlation-ID"] = Guid.NewGuid().ToString("D");
             return Results.Ok(run);
         }
@@ -122,5 +128,6 @@ public static class ReportEndpoints
     }
     private static CancellationTokenSource StartOperationDeadline(CancellationToken callerToken)
     { CancellationTokenSource deadline = CancellationTokenSource.CreateLinkedTokenSource(callerToken); deadline.CancelAfter(ReportContract.TotalOperationTimeout); return deadline; }
-    public sealed record ReportCreateBody(string? ReportKind, Guid OperationId, DateTimeOffset? FromUtc = null, DateTimeOffset? ToUtc = null);
+    public sealed record ReportCreateBody(string? ReportKind, Guid OperationId, DateTimeOffset? FromUtc = null,
+        DateTimeOffset? ToUtc = null, Guid? ThreadId = null);
 }
