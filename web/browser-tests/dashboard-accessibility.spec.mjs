@@ -311,10 +311,10 @@ for (const width of [320, 390, 768, 1440]) {
     await align.focus(); await align.press('Enter');
     await expect(align).toBeFocused();
     await expect(alignment.getByRole('status').locator('time')).toHaveAttribute('datetime', '2026-09-26T10:30:00.125Z');
-    await expect(resources.locator('.chart-crosshair')).toHaveCount(7);
+    await expect(resources.locator('.chart-crosshair')).toHaveCount(9);
     await page.reload();
     await expect(file).toHaveAttribute('aria-pressed', 'true');
-    await expect(resources.locator('.chart-crosshair')).toHaveCount(7);
+    await expect(resources.locator('.chart-crosshair')).toHaveCount(9);
     await expect(alignment.getByRole('status').locator('time')).toHaveAttribute('datetime', '2026-09-26T10:30:00.125Z');
     await auditResponsiveState(page, testInfo, 'resource-selected-inspection');
     await saveFullPage(page, `resource-inspection-${width}.png`);
@@ -430,7 +430,7 @@ for (const width of [320, 390, 768, 1440]) {
     await page.context().addCookies([{ name: 'databaseScopeFixture', value: '1', url: origin }]);
     await open(page, 'health');
     const fleet = page.getByRole('combobox', { name: 'Target server', exact: true });
-    await expect(fleet).toBeVisible();await expect(fleet.locator('option[value!=""]')).toHaveCount(10);
+    await expect(fleet).toBeVisible();await expect(fleet.locator('option:not([value=""])')).toHaveCount(10);
     await expect(fleet).toHaveValue(target);
     await page.getByRole('link', { name: 'Resources', exact: true }).click();
     await expect(page).toHaveURL(/#\/resources\?/);await expect(fleet).toHaveValue(target);
@@ -733,5 +733,6 @@ for (const width of [320, 390, 768, 1440]) {
 }
 
 async function openInvestigationWorkspace(page) {
-  await expect(page.getByRole('button', { name: 'Save investigation', exact: true })).toBeVisible();
+  const save=page.getByRole('button', { name: 'Save investigation', exact: true });
+  if(await save.count())await expect(save).toBeVisible();else await expandDisclosure(page,'Investigation workspace');
 }

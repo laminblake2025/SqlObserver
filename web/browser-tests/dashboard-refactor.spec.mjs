@@ -14,6 +14,7 @@ const firstAlert = '44444444-4444-4444-8444-444444444444';
 const pagedAlert = '66666666-6666-4666-8666-666666666666';
 const href = (surface = 'overview', target = first, range = 'custom') =>
   `/#/${surface}?${new URLSearchParams({ target, range, ...(range === 'custom' ? { from, to } : {}) })}`;
+const locationHashPage=page=>new URL(page.url()).hash.split('?')[0].slice(2);
 const scope = page => new URLSearchParams(new URL(page.url()).hash.split('?')[1]);
 
 async function ensureUtcDisplay(page) {
@@ -352,6 +353,7 @@ test('a delayed old-server baseline cannot populate the new server KPI cards', a
   await page.goto(`${href('health')}&healthSection=summary`); await revealHealthSupport(page); await revealDashboardSupport(page);
   await expect.poll(() => pending).toBe(true);
   await page.getByRole('combobox', { name: 'Target server', exact: true }).selectOption(second);
+  await revealDashboardSupport(page);
   const card = cpuBaselineCard(page);
   await expect(card.locator('.dashboard-baseline-value strong')).toHaveText('80');
   await expect(card.locator('dd')).toHaveText(['55 %', '60 %', '65 %']);
@@ -380,6 +382,7 @@ test('a delayed old-window baseline response never overwrites the matching new-h
   await page.getByRole('button', { name: '↻ Refresh', exact: true }).click();
   await expect.poll(() => pending).toBe(true);
   await page.evaluate(hash => { location.hash = hash; }, `${href('health').substring(1)}&healthSection=summary`.replace(encodeURIComponent(from), encodeURIComponent('2026-09-26T09:00:00.000Z')).replace(encodeURIComponent(to), encodeURIComponent('2026-09-26T11:00:00.000Z')));
+  await revealDashboardSupport(page);
   await expect(card.locator('.dashboard-baseline-value strong')).toHaveText('69');
   await expect(card.locator('dd')).toHaveText(['45 %', '50 %', '55 %']);
   release();
@@ -968,6 +971,7 @@ test('fleet CPU memory waits blocking and HA cells open their diagnostic evidenc
   const cases = [['SQL scheduler CPU', 'resources', null], ['OS free via SQL', 'resources', null], ['Waits', 'waits', null], ['Blocking', 'activity', null], ['HA', 'operations', 'availability']];
   for (const [signal, destination, check] of cases) {
     await page.goto(href('overview', ''));
+    await page.getByRole('checkbox',{name:'Waits & HA',exact:true}).check();
     const row = page.getByRole('region', { name: 'Server health grid', exact: true }).getByRole('row').filter({ has: page.getByRole('link', { name: 'SYNTHETIC SQL 01', exact: true }) });
     const link = row.getByRole('link', { name: new RegExp(`^${signal}:`) });
     const params = new URLSearchParams((await link.getAttribute('href')).split('?')[1]);
@@ -1004,14 +1008,14 @@ test('authorized server selector retains historical and database scope across di
   const selector=page.getByRole('combobox',{name:'Target server',exact:true});
   for(const label of [null,'Resources','Queries']){
     if(label)await page.getByRole('navigation',{name:'Server diagnostics',exact:true}).getByRole('link',{name:label,exact:true}).click();
-    await expect(selector).toHaveValue(first);await expect(selector.locator('option[value!=""]')).toHaveCount(10);
+    await expect(selector).toHaveValue(first);await expect(selector.locator('option:not([value=""])')).toHaveCount(10);
     await expect(selector.locator('option').filter({hasText:'SYNTHETIC SQL 10'})).toHaveCount(1);
     await assertDatabaseScope(page,6);await assertHistoricalScope(page);
   }
   await selector.selectOption(first);await assertDatabaseScope(page,6);await assertHistoricalScope(page);
   await selector.selectOption(second);await assertHistoricalScope(page,second);
   await expect.poll(()=>scope(page).get('databaseId')).toBe(null);await expect(workspaceDatabase(page)).toHaveValue('');
-  await expect(selector).toHaveValue(second);await expect(selector.locator('option[value!=""]')).toHaveCount(10);
+  await expect(selector).toHaveValue(second);await expect(selector.locator('option:not([value=""])')).toHaveCount(10);
 });
 
 test('detail navigation cancels a held full-fleet read and does not request replacement fleet evidence',async({page})=>{
@@ -1029,7 +1033,7 @@ test('detail navigation cancels a held full-fleet read and does not request repl
     const selector=page.getByRole('combobox',{name:'Target server',exact:true});await expect(selector).toHaveValue(first);
     release();await expect.poll(()=>released).toBe(true);await expect(page.locator('body')).not.toContainText('STALE WINDOW');
     await page.getByRole('button',{name:'↻ Refresh',exact:true}).click();
-    await expect(selector.locator('option[value!=""]')).toHaveCount(10);expect(fleetReads).toBe(1);await assertHistoricalScope(page);
+    await expect(selector.locator('option:not([value=""])')).toHaveCount(10);expect(fleetReads).toBe(1);await assertHistoricalScope(page);
   }finally{release();}
 });
 
@@ -1045,7 +1049,7 @@ test('authorized selector preserves keyboard focus and Live scope during held ca
     await page.goto(href('health',first,'1h')+'&databaseId=6');
     const selector=page.getByRole('combobox',{name:'Target server',exact:true});await expect(selector).toHaveValue(first);await assertDatabaseScope(page,6);
     const original=await selector.elementHandle();await selector.focus();await page.clock.runFor(61_000);await expect.poll(()=>pending).toBe(true);
-    await expect(selector).toBeFocused();await expect(selector.locator('option[value!=""]')).toHaveCount(10);expect(await original.evaluate(element=>element.isConnected)).toBe(true);
+    await expect(selector).toBeFocused();await expect(selector.locator('option:not([value=""])')).toHaveCount(10);expect(await original.evaluate(element=>element.isConnected)).toBe(true);
     release();await expect.poll(()=>catalogReads).toBe(2);await expect(selector).toBeFocused();expect(fleetReads).toBe(0);
     await selector.selectOption(second);await expect.poll(()=>scope(page).get('target')).toBe(second);await expect.poll(()=>scope(page).get('databaseId')).toBe(null);
     expect(Object.fromEntries(scope(page))).toMatchObject({target:second,range:'1h'});expect(scope(page).has('from')).toBe(false);expect(scope(page).has('to')).toBe(false);
@@ -1058,19 +1062,19 @@ test('pause stops scheduled refresh, resume refreshes, and Rewind fixes the wind
   page.on('request', request => { if (new URL(request.url()).pathname === '/api/v1/overview') requests.push(request.url()); });
   await page.clock.install({ time: new Date('2026-10-01T16:00:00Z') });
   await open(page, 'overview', first, '1h');
-  await expect(page.getByRole('heading', { name: 'Server grid', exact: true })).toBeVisible();
-  await page.getByRole('button', { name: 'Pause live updates', exact: true }).click();
-  await expect(page.getByText('Live \u00b7 paused', { exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Server fleet', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Live', exact: true }).click();
+  await expect(page.getByRole('button', {name:'Paused',exact:true})).toBeVisible();
   const pausedRequests = requests.length;
   await page.clock.fastForward(70_000);
   expect(requests).toHaveLength(pausedRequests);
-  await page.getByRole('button', { name: 'Resume live updates', exact: true }).click();
+  await page.getByRole('button', { name: 'Paused', exact: true }).click();
   await expect.poll(() => requests.length).toBeGreaterThan(pausedRequests);
-  await expect(page.getByText('Live \u00b7 moving', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', {name:'Live',exact:true})).toBeVisible();
   await page.getByRole('combobox', { name: 'Time range', exact: true }).selectOption('custom');
-  await expect(page.getByText('Rewind \u00b7 fixed', { exact: true })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Pause live updates', exact: true })).toHaveCount(0);
-  await expect(page.getByRole('heading', { name: 'Server grid', exact: true })).toBeVisible();
+  await expect(page.getByText('Frozen', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Live', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: 'Server fleet', exact: true })).toBeVisible();
   const rewindRequests = requests.length, selected = Object.fromEntries(scope(page));
   await page.clock.fastForward(70_000);
   expect(requests).toHaveLength(rewindRequests);
@@ -1100,8 +1104,8 @@ test('custom UTC editor supports keyboard dismissal, validation, apply and focus
   await expect(fromInput).toHaveCount(0);
   await expect(edit).toBeFocused();
   const selectedUrl = page.url();
-  await page.getByRole('button', { name: 'Show UTC time', exact: true }).click();
-  await expect(page.getByRole('button', { name: 'Show local time', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Show local time', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Show UTC time', exact: true })).toBeVisible();
   expect(page.url()).toBe(selectedUrl);
 });
 
@@ -1179,14 +1183,14 @@ test('command palette keyboard results preserve Rewind scope and restore the inv
   await result.press('Enter');
   await expect(dialog).not.toBeVisible();
   await assertHistoricalScope(page, second);
-  await expect(page.getByRole('heading', { name: 'Investigate SYNTHETIC SQL 02', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'SYNTHETIC SQL 02', exact: true })).toBeVisible();
   await expect(launch).toBeFocused();
   expect(errors).toEqual([]);
 });
 
 test('investigate-first and blocking drill-downs keep the server, window and event instant', async ({ page }) => {
   await open(page, 'health', second);
-  await expect(page.getByRole('heading', { name: /Head blocker \u00b7 session 51/ })).toBeVisible();
+  await expect(page.getByText('Head blocker · session 51',{exact:true})).toBeVisible();await expandDisclosure(page,'Current blocking graph evidence');
   const blocking = page.locator('.server-dashboard-blocking');
   await expect(blocking.getByText('Session 72', { exact: true })).toBeVisible();
   await expect(blocking).toContainText('LCK_M_X \u00b7 12000 ms \u00b7 depth 1');
@@ -1205,7 +1209,7 @@ for (const width of [320, 1440]) test(`built dashboard inspects the native curre
   const errors = [], reads = []; page.on('pageerror', error => errors.push(error.message));
   page.on('request', request => { if (new URL(request.url()).pathname.endsWith('/activity/blocking/current')) reads.push(request.url()); });
   await page.setViewportSize({ width, height: 1000 }); await open(page, 'health', second);
-  const summary = page.getByRole('region', { name: 'What needs attention', exact: true });
+  const summary = page.locator('.dashboard-head-blockers');
   await expect(summary).toContainText('1 distinct blocked session');
   const button = summary.getByRole('button', { name: 'Inspect head blocker 51', exact: true });
   await button.focus(); await page.keyboard.press('Enter');
@@ -1339,7 +1343,7 @@ test('viewer actions name the required roles and missing coverage is never an al
   await page.goto('/__fixture?mode=partial');
   await page.goto(href('overview'));
   await expect(page.getByRole('button', { name: '+ Add server', exact: true })).toHaveCount(0);
-  await expect(page.getByText('0/1 servers reporting current SQL core evidence', { exact: true })).toBeVisible();
+  await expect(page.locator('.overview-secondary-controls')).toContainText('0/1 current SQL core sources');
   await page.getByText('Collection coverage and evidence gaps', { exact: true }).click();
   await expect(page.getByText('Synthetic collection timeout', { exact: true })).toBeVisible();
   await page.goto(href('health')); await revealHealthSupport(page); await revealDashboardSupport(page);
@@ -1353,12 +1357,12 @@ test('viewer actions name the required roles and missing coverage is never an al
   await page.goto('/__fixture?mode=error');
   await page.goto(href('overview'));
   await expect(page.getByRole('alert')).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Server grid', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: 'Server fleet', exact: true })).toHaveCount(0);
 });
 
 test('fleet server search and grouping are local controls that preserve global time', async ({ page }) => {
   await open(page, 'overview', '');
-  await expect(page.getByRole('heading', { name: 'Server grid', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Server fleet', exact: true })).toBeVisible();
   await page.getByRole('combobox', { name: 'Group servers by', exact: true }).selectOption('tag');
   await expect(page.getByRole('rowheader', { name: /Tag: east/ })).toBeVisible();
   await page.getByRole('textbox', { name: 'Search loaded servers', exact: true }).fill('SQL 02');
@@ -1366,7 +1370,7 @@ test('fleet server search and grouping are local controls that preserve global t
   await expect(grid).toContainText('Showing 1 of 10 authorized targets');
   await grid.getByRole('link', { name: 'SYNTHETIC SQL 02', exact: true }).click();
   await assertHistoricalScope(page, second);
-  await expect(page.getByRole('heading', { name: 'Investigate SYNTHETIC SQL 02', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'SYNTHETIC SQL 02', exact: true })).toBeVisible();
 });
 
 
@@ -1411,7 +1415,8 @@ test('session inspection preserves its observation when filters remove the reque
   await inspect.click();
   await expect(inspect).toHaveAttribute('aria-pressed', 'true');
   const detail = page.getByRole('region', { name: 'Session details', exact: true });
-  await expect(detail).toContainText('This observation is preserved when filters change or the request disappears.');
+  await expect(detail).toContainText('capture pinned');
+  await detail.getByRole('button', { name: 'Overview', exact: true }).click();
   await expect(detail).toContainText('synthetic_dba');
   const captured = await detail.getByText(/^Observed /).textContent();
   await live.getByRole('checkbox', { name: 'Blocked only', exact: true }).check();
@@ -1492,7 +1497,7 @@ test('blocking chains filter loaded rows locally and preserve an unrelated inspe
   const table = live.getByRole('region', { name: 'Loaded session observations', exact: true });
   const chain = live.getByRole('combobox', { name: 'Blocking chain (capture)', exact: true });
   await expect(table.getByRole('button', { name: /^Inspect / })).toHaveCount(7);
-  await page.getByRole('button', { name: 'Pause live updates', exact: true }).click();
+  await page.getByRole('button', { name: 'Live', exact: true }).click();
   await table.getByRole('button', { name: 'Inspect 90/0', exact: true }).click();
   const detail = page.getByRole('region', { name: 'Session details', exact: true });
   await expect(detail.getByRole('heading', { name: 'Session 90 / 0', exact: true })).toBeVisible();
@@ -1527,7 +1532,7 @@ test('a selected chain disappearing from the next snapshot produces explicit zer
   const table = live.getByRole('region', { name: 'Loaded session observations', exact: true });
   const chain = live.getByRole('combobox', { name: 'Blocking chain (capture)', exact: true });
   await expect(table.getByRole('button', { name: /^Inspect / })).toHaveCount(7);
-  await page.getByRole('button', { name: 'Pause live updates', exact: true }).click();
+  await page.getByRole('button', { name: 'Live', exact: true }).click();
   await live.getByRole('button', { name: 'Filter chain: Session 51', exact: true }).click();
   await expect(table.getByRole('button', { name: /^Inspect / })).toHaveCount(3);
   await page.route(`**/${first}/activity/live?*`, async route => {
@@ -1959,7 +1964,7 @@ test('Resources pointer and keyboard inspection align CPU memory PLE and file la
   const resources = page.getByRole('region', { name: 'Resources for SYNTHETIC SQL 01', exact: true });
   await resources.getByRole('button', { name: 'View read and write latency trend for database 5, file Orders_data', exact: true }).click();
   const charts = resources.locator('.overview-chart');
-  await expect(charts).toHaveCount(9);
+  await expect(charts).toHaveCount(7);
   const cpu = resources.locator('.server-dashboard-chart').filter({ has: page.getByRole('heading', { name: 'SQL scheduler CPU', exact: true }) }).locator('.overview-chart');
   await cpu.scrollIntoViewIfNeeded();
   const box = await cpu.boundingBox(); expect(box).not.toBeNull();
@@ -2670,5 +2675,6 @@ test('quiet dashboard and Resources evidence disclosures remain keyboard accessi
 });
 
 async function openInvestigationWorkspace(page) {
-  await expect(page.getByRole('button', { name: 'Save investigation', exact: true })).toBeVisible();
+  const save=page.getByRole('button', { name: 'Save investigation', exact: true });
+  if(await save.count())await expect(save).toBeVisible();else await expandDisclosure(page,'Investigation workspace');
 }

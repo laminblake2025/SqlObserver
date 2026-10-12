@@ -692,6 +692,11 @@ public sealed class RepositoryReplaySafetyIntegrationTests
             new MigrationApplyRequest(1, DefaultTimeout), CancellationToken.None);
         Assert.False(upgraded.HasFailures);
         Assert.Single(upgraded.Results);
+        // Preserve and verify the 0119 boundary, then qualify the current port
+        // against its required schema, including payload last-seen accounting.
+        MigrationBatchResult current = await migrations.ApplyPendingAsync(
+            new MigrationApplyRequest(MigrationBatchResult.MaximumResults, DefaultTimeout), CancellationToken.None);
+        Assert.False(current.HasFailures);
         await using NpgsqlDataSource collector = database.CreateCollectorDataSource();
         WorkerLease lease = await AcquireLeaseAsync(collector, "legacy-payload-target");
         var port = new PostgreSqlSensitivePayloadPort(collector);

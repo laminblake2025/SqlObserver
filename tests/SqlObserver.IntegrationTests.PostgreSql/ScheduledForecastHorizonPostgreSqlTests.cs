@@ -106,9 +106,16 @@ public sealed class ScheduledForecastHorizonPostgreSqlTests(PostgreSql18Fixture 
         Guid target = Guid.NewGuid();
         await SeedHistoryAsync(database, target);
         await using NpgsqlDataSource collector = database.CreateCollectorDataSource();
-        var repository = new PostgreSqlAnalyticsRepositoryPort(collector, new IdentityFingerprintKey(new byte[32]));
         WorkerLeaseIdentity lease = await AcquireLeaseAsync(collector);
-        await repository.ScheduleAsync(lease, CancellationToken.None);
+        // This fixture stops at 0082: use that scheduler ABI, before later SQL rollup routines.
+        async Task ScheduleLegacyAsync()
+        {
+            await using var command = collector.CreateCommand("SELECT control.schedule_m10_derivation_jobs(@owner,@fence);");
+            command.Parameters.AddWithValue("owner", lease.Owner.Value);
+            command.Parameters.AddWithValue("fence", lease.FencingToken.Value);
+            await command.ExecuteScalarAsync();
+        }
+        await ScheduleLegacyAsync();
         const string jobsSql = "SELECT jsonb_agg(to_jsonb(j) ORDER BY j.job_id)::text FROM control.analytics_job j;";
         const string securitySql = """
             SELECT jsonb_agg(jsonb_build_object('identity',p.oid::regprocedure::text,
@@ -132,7 +139,7 @@ public sealed class ScheduledForecastHorizonPostgreSqlTests(PostgreSql18Fixture 
         Assert.Equal(repair.Descriptor.Number.Value, Assert.Single(upgrade.Results).Migration.Number.Value);
         Assert.Equal(jobsBefore, await ScalarTextAsync(database, jobsSql));
         Assert.Equal(securityBefore, await ScalarTextAsync(database, securitySql));
-        await repository.ScheduleAsync(lease, CancellationToken.None);
+        await ScheduleLegacyAsync();
         Assert.Equal(forecastsBefore, await ScalarTextAsync(database, forecastsSql));
     }
 

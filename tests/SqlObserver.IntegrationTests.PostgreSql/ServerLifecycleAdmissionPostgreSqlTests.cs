@@ -164,8 +164,8 @@ public sealed class ServerLifecycleAdmissionPostgreSqlTests(PostgreSql18Fixture 
             var configuration=new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string,string?>
             { ["ConnectionStrings:SqlObserverRepository"]=collector.ConnectionString,["SqlObserver:IdentityFingerprintKey"]=Convert.ToBase64String(RandomNumberGenerator.GetBytes(32)) }).Build();
             var services=new ServiceCollection();services.AddLogging();services.AddSingleton<IConfiguration>(configuration);services.AddSqlObserverCollectorRuntime(configuration);
-            await using var provider=services.BuildServiceProvider();var registry=provider.GetRequiredService<CollectorRegistry>();Assert.Equal(21,registry.CatalogEntries.Count);
-            Assert.Equal(21,(await new PostgreSqlCollectorRuntimeRepositoryPort(collector).ReconcileCatalogAsync(new(registry.CatalogEntries,lease,Timeout),CancellationToken.None)).UnchangedCount);
+            await using var provider=services.BuildServiceProvider();var registry=provider.GetRequiredService<CollectorRegistry>();Assert.Equal(22,registry.CatalogEntries.Count);
+            Assert.Equal(22,(await new PostgreSqlCollectorRuntimeRepositoryPort(collector).ReconcileCatalogAsync(new(registry.CatalogEntries,lease,Timeout),CancellationToken.None)).UnchangedCount);
         }
         finally {await leases.ReleaseAsync(new(lease,Timeout),CancellationToken.None);}
     }

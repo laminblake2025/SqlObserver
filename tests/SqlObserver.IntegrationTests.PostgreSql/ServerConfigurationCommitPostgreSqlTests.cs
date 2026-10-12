@@ -226,15 +226,15 @@ public sealed class ServerConfigurationCommitPostgreSqlTests(PostgreSql18Fixture
         await using (var reconcile = database.DataSource.CreateCommand("""
             SELECT unchanged_count FROM control.reconcile_collector_catalog_m14(
               ARRAY(SELECT collector_id FROM control.collector_contract
-                    WHERE execution_order BETWEEN 1 AND 19 ORDER BY execution_order),
+                    WHERE execution_order BETWEEN 1 AND 19 AND collector_version=1 ORDER BY execution_order),
               ARRAY(SELECT collector_version FROM control.collector_contract
-                    WHERE execution_order BETWEEN 1 AND 19 ORDER BY execution_order),
+                    WHERE execution_order BETWEEN 1 AND 19 AND collector_version=1 ORDER BY execution_order),
               ARRAY(SELECT manifest_sha256 FROM control.collector_contract
-                    WHERE execution_order BETWEEN 1 AND 19 ORDER BY execution_order),
+                    WHERE execution_order BETWEEN 1 AND 19 AND collector_version=1 ORDER BY execution_order),
               ARRAY(SELECT asset_bundle_sha256 FROM control.collector_contract
-                    WHERE execution_order BETWEEN 1 AND 19 ORDER BY execution_order),
+                    WHERE execution_order BETWEEN 1 AND 19 AND collector_version=1 ORDER BY execution_order),
               ARRAY(SELECT execution_order FROM control.collector_contract
-                    WHERE execution_order BETWEEN 1 AND 19 ORDER BY execution_order),
+                    WHERE execution_order BETWEEN 1 AND 19 AND collector_version=1 ORDER BY execution_order),
               'collector/catalog/reconcile',@owner,@fence);
             """))
         {

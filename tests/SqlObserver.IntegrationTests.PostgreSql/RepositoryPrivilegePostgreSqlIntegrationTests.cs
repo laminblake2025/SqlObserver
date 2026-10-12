@@ -292,7 +292,7 @@ public sealed class RepositoryPrivilegePostgreSqlIntegrationTests
         Assert.Equal(ownersBefore, await ReadOwnersAsync(database));
         await AssertNoPublicExecuteAsync(database);
         MigrationBatchResult repeat = await new PostgreSqlMigrationPort(database.DataSource)
-            .ApplyPendingAsync(new MigrationApplyRequest(256, Timeout), CancellationToken.None);
+            .ApplyPendingAsync(new MigrationApplyRequest(MigrationBatchResult.MaximumResults, Timeout), CancellationToken.None);
         Assert.False(repeat.HasFailures);
         Assert.Empty(repeat.Results);
     }
@@ -303,7 +303,7 @@ public sealed class RepositoryPrivilegePostgreSqlIntegrationTests
         try
         {
             MigrationBatchResult result = await new PostgreSqlMigrationPort(database.DataSource)
-                .ApplyPendingAsync(new MigrationApplyRequest(256, Timeout), CancellationToken.None);
+                .ApplyPendingAsync(new MigrationApplyRequest(MigrationBatchResult.MaximumResults, Timeout), CancellationToken.None);
             Assert.False(result.HasFailures);
             return database;
         }

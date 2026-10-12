@@ -167,8 +167,8 @@ public sealed class RepositoryRuntimeIntegrationTests
         Assert.Equal(2, preview.Entries.Count);
         Assert.All(preview.Entries, static entry =>
         {
-            Assert.False(entry.PolicyEnabled);
-            Assert.Equal(RetentionPreviewReason.PolicyDisabled, entry.Reason);
+            Assert.True(entry.PolicyEnabled);
+            Assert.Equal(RetentionPreviewReason.MinimumPartitionFloor, entry.Reason);
             Assert.Equal(RetentionPreviewDisposition.Keep, entry.Disposition);
         });
     }
