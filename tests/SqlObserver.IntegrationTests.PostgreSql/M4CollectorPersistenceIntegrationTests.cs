@@ -2004,7 +2004,7 @@ public sealed partial class M4CollectorPersistenceIntegrationTests
             CommandTimeout = checked((int)Math.Ceiling(request.Timeout.Value.TotalSeconds)),
         };
         port.GetMethod("AddRunIdentity", hiddenStatic)!.Invoke(null, [command, request.Work, request.Summary.RunId, request.Lease, digest]);
-        port.GetMethod("AddCommitParameters", hiddenStatic)!.Invoke(null, [command, request, false, false]);
+        port.GetMethod("AddCommitParameters", hiddenStatic)!.Invoke(null, [command, request, false, false, false]);
         mutate?.Invoke(command);
         return (string)(await command.ExecuteScalarAsync())!;
     }
@@ -2059,7 +2059,8 @@ public sealed partial class M4CollectorPersistenceIntegrationTests
                 SET ROLE sqlobserver_migrator;
                 WITH catalog AS MATERIALIZED (
                     SELECT * FROM control.collector_contract
-                    WHERE collector_version=CASE WHEN collector_id='database.inventory' THEN 2 ELSE 1 END)
+                    WHERE execution_order BETWEEN 1 AND 19
+                      AND collector_version=CASE WHEN collector_id='database.inventory' THEN 2 ELSE 1 END)
                 SELECT * FROM control.reconcile_collector_catalog_m15(
                     ARRAY(SELECT collector_id FROM catalog ORDER BY execution_order),
                     ARRAY(SELECT collector_version FROM catalog ORDER BY execution_order),

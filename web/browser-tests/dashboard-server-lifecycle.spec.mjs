@@ -73,6 +73,7 @@ test('denied server lifecycle exact read purges protected receipts and requires 
 
 test('inspecting a sampled lifecycle event in Live fixes its received window and retains selection',async({page})=>{
   await prepare(page);await page.goto('/#/health?'+new URLSearchParams({target:binding.targetId,range:'1h'}));
+  await expandDisclosure(page,'Retained alerts, server lifecycle & SQL Agent evidence');
   await expect(panel(page)).toContainText('3 retained events');
   await panel(page).getByText('Browse server lifecycle events',{exact:true}).click();
   await expect.poll(()=>params(page).get('range')).toBe('custom');

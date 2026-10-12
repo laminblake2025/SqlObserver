@@ -1,4 +1,4 @@
-import { revealHealthSupport, expandDisclosure } from './redesign-controls.mjs';
+import { revealHealthSupport, revealDashboardSupport, expandDisclosure } from './redesign-controls.mjs';
 import { test, expect } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 import { mkdir } from 'node:fs/promises';
@@ -303,7 +303,7 @@ for (const width of [320, 390, 768, 1440]) {
     expect(fileActionBounds.height).toBeGreaterThan(0);
     expect(fileActionBounds.height, 'File history action must remain a readable compact button').toBeLessThanOrEqual(64);
     await file.press('Enter');
-    await expect(resources.locator('.overview-chart')).toHaveCount(9);
+    await expect(resources.locator('.overview-chart')).toHaveCount(7);
     const alignment = resources.getByRole('region', { name: 'Resource chart alignment', exact: true });
     const input = alignment.getByLabel('Resource inspection time (UTC)', { exact: true });
     await input.fill('2026-09-26T10:30:00.125');
@@ -311,10 +311,10 @@ for (const width of [320, 390, 768, 1440]) {
     await align.focus(); await align.press('Enter');
     await expect(align).toBeFocused();
     await expect(alignment.getByRole('status').locator('time')).toHaveAttribute('datetime', '2026-09-26T10:30:00.125Z');
-    await expect(resources.locator('.chart-crosshair')).toHaveCount(9);
+    await expect(resources.locator('.chart-crosshair')).toHaveCount(7);
     await page.reload();
     await expect(file).toHaveAttribute('aria-pressed', 'true');
-    await expect(resources.locator('.chart-crosshair')).toHaveCount(9);
+    await expect(resources.locator('.chart-crosshair')).toHaveCount(7);
     await expect(alignment.getByRole('status').locator('time')).toHaveAttribute('datetime', '2026-09-26T10:30:00.125Z');
     await auditResponsiveState(page, testInfo, 'resource-selected-inspection');
     await saveFullPage(page, `resource-inspection-${width}.png`);
@@ -400,7 +400,7 @@ for (const width of [320, 390, 768, 1440]) {
     const from = '2026-09-26T08:00:00.000Z', to = '2026-09-26T12:00:00.000Z';
     await page.goto(`/#/resources?${new URLSearchParams({ target, range: 'custom', from, to, databaseId: '6' })}`);
     await openInvestigationWorkspace(page);
-    const open = page.getByRole('button', { name: 'Open incident', exact: true });
+    const open = page.getByRole('button', { name: 'Save investigation', exact: true });
     await open.focus(); await open.press('Enter');
     const title = page.getByLabel('Incident title', { exact: true });
     await expect(title).toBeFocused();
@@ -531,7 +531,7 @@ for (const width of [320, 390, 768, 1440]) {
     const grid = page.getByRole('region', { name: 'Server health grid', exact: true });
     const server = grid.getByRole('link', { name: 'SYNTHETIC SQL 02', exact: true });
     await expect(server).toBeVisible();
-    await grid.getByRole('checkbox', { name: 'Waits & HA', exact: true }).check();
+    await page.getByRole('checkbox', { name: 'Waits & HA', exact: true }).check();
     const row = grid.getByRole('row').filter({ has: page.getByRole('link', { name: 'SYNTHETIC SQL 02', exact: true }) });
     for (const [label, destination] of [['SQL scheduler CPU', 'resources'], ['OS free via SQL', 'resources'], ['Waits', 'waits'], ['Blocking', 'activity'], ['HA', 'operations']]) {
       const link = row.getByRole('link', { name: new RegExp(`^${label}:`) });
@@ -564,7 +564,7 @@ for (const width of [320, 390, 768, 1440]) {
     ]);
     await page.goto(`/#/health?${new URLSearchParams({ target: '11111111-1111-4111-8111-000000000001', range: 'custom', from: '2026-09-26T08:00:00.000Z', to: '2026-09-26T12:00:00.000Z', databaseId: '6', healthSection: 'summary' })}`);
     await page.getByRole('button', { name: 'Show UTC time', exact: true }).click();
-    await revealHealthSupport(page);
+    await revealHealthSupport(page);await revealDashboardSupport(page);
     const cards = page.getByRole('region', { name: 'Latest SQL buckets and hourly baselines', exact: true });
     const cpu = cards.getByRole('region', { name: 'SQL scheduler CPU baseline comparison', exact: true });
     await expect(cpu.locator('.dashboard-baseline-value strong')).toHaveText('70');
@@ -611,6 +611,7 @@ for (const width of [320, 390, 768, 1440]) {
       await route.fulfill({ response, json: body });
     });
     await page.goto(`/#/health?${new URLSearchParams({ target, range: 'custom', from: '2026-09-26T08:00:00.000Z', to: '2026-09-26T12:00:00.000Z', healthSection: 'summary' })}`);
+    await revealHealthSupport(page);
     await expect(page.getByRole('alert').filter({ hasText: 'Health evidence returned an invalid or mismatched response. Refresh to retry.' })).toBeVisible();
     await revealHealthSupport(page);
     await expect(page.getByRole('region', { name: 'Latest SQL buckets and hourly baselines', exact: true })).toBeVisible();
@@ -732,10 +733,5 @@ for (const width of [320, 390, 768, 1440]) {
 }
 
 async function openInvestigationWorkspace(page) {
-  const summary = page.locator('summary').filter({ hasText: /^Investigation workspace$/ });
-  await expect(summary).toBeVisible();
-  if (await summary.locator('..').getAttribute('open') === null) {
-    await summary.focus(); await page.keyboard.press('Enter');
-  }
-  await expect(summary.locator('..')).toHaveAttribute('open', '');
+  await expect(page.getByRole('button', { name: 'Save investigation', exact: true })).toBeVisible();
 }

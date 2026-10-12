@@ -85,6 +85,7 @@ for (const width of [320, 1440]) test(`Workspace triage retained fleet alert rev
   let reads = 0;
   page.on('request', request => { if (new URL(request.url()).pathname === '/api/v1/alerts/active') reads++; });
   await page.goto(href('alerts', { target: '' })); const screen = inbox(page, true);
+  await expect(screen.getByRole('button', { name: 'Load more', exact: true })).toBeEnabled();
   await screen.getByRole('button', { name: 'Load more', exact: true }).focus(); await page.keyboard.press('Enter');
   const selected = screen.getByRole('button', { name: 'Select SYNTHETIC paged alert on SYNTHETIC SQL 02', exact: true });
   await selected.focus(); await page.keyboard.press('Enter');

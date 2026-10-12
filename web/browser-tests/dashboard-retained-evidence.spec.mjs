@@ -159,6 +159,7 @@ test('retained lifecycle markers preserve resolved and refired cycles in databas
 test('retained marker pages cache visited rows and reject duplicate or shifted receipts honestly',async({page})=>{
   await fixture(page);const session=await installAlertLifecycleHistoryFixture(page,{origin,backend:alertLifecycleHistoryBackend({count:101})});
   await page.goto(href('health',first,{...alertWindow,healthSection:'summary'}));await chooseAlerts(page);
+  await expandDisclosure(page,'Retained alerts, server lifecycle & SQL Agent evidence');
   const panel=page.getByRole('region',{name:'Alert lifecycle history',exact:true});await panel.getByText('Browse alert lifecycle events',{exact:true}).click();
   await expect(panel).toContainText('100 received of 101');await panel.getByRole('button',{name:'Next alert history page',exact:true}).click();await expect(panel).toContainText('101 received of 101');
   const before=session.reads.length,markerCount=await timeline(page).getByRole('button',{name:/^Align charts: Alert /}).count();await panel.getByRole('button',{name:'First alert history page',exact:true}).click();await panel.getByRole('button',{name:'Next alert history page',exact:true}).click();expect(session.reads).toHaveLength(before);

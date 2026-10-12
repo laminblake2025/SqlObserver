@@ -449,7 +449,7 @@ test('the common incident action is available across target diagnostics and clos
   for (const surface of ['overview', 'health', 'activity', 'waits', 'resources', 'queries', 'deadlocks', 'operations', 'alerts']) {
     await page.goto(href(surface));
     await openInvestigationWorkspace(page);
-    const open = page.getByRole('button', { name: 'Open incident', exact: true });
+    const open = page.getByRole('button', { name: 'Save investigation', exact: true });
     await expect(open).toHaveCount(1);
     await expect(open).toBeEnabled();
     await open.focus(); await open.press('Enter');
@@ -466,7 +466,7 @@ test('incident save pins the original window and revision while duplicate activa
   await incidentWorkspaceFixture(page, true);
   await page.goto(`${href('resources')}&databaseId=6`);
   await openInvestigationWorkspace(page);
-  await page.getByRole('button', { name: 'Open incident', exact: true }).click();
+  await page.getByRole('button', { name: 'Save investigation', exact: true }).click();
   const title = page.getByRole('textbox', { name: 'Incident title', exact: true }), notes = page.getByRole('textbox', { name: 'Notes', exact: true });
   await title.fill('SYNTHETIC resource investigation'); await notes.fill('Synthetic note\nNo connected VM evidence.');
   await ensureUtcDisplay(page);
@@ -526,7 +526,7 @@ test('saved incident links are canonical and delayed old-target or foreign reads
   await page.getByRole('combobox', { name: 'Target server', exact: true }).selectOption(second);
   await expect.poll(() => scope(page).get('target')).toBe(second);
   await openInvestigationWorkspace(page);
-  await expect(page.getByRole('button', { name: 'Open incident', exact: true })).toBeEnabled();
+  await expect(page.getByRole('button', { name: 'Save investigation', exact: true })).toBeEnabled();
   release();
   await expect(page.getByRole('heading', { name: 'SYNTHETIC retained investigation 01', exact: true })).toHaveCount(0);
   await page.unroute(`**/observation-targets/${first}/incidents/saved/${seededIncident}`);
@@ -551,7 +551,7 @@ test('Viewer activity inspection exposes metadata but no protected SQL action or
   await detail.getByRole('button', { name: 'Captured SQL', exact: true }).click();
   await expect(detail).toContainText('Captured SQL is hidden. Query Text Reader access is required for this server.');
   await expect(detail.getByRole('button', { name: 'Load captured SQL', exact: true })).toHaveCount(0);
-  await expect(page.getByRole('button', { name: 'Open incident', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Save investigation', exact: true })).toHaveCount(0);
   await expect(detail.locator('pre.query-text')).toHaveCount(0);
   expect(protectedReads).toBe(0); expect(incidentWrites).toBe(0);
 });
@@ -1345,7 +1345,7 @@ test('viewer actions name the required roles and missing coverage is never an al
   await page.goto(href('health')); await revealHealthSupport(page); await revealDashboardSupport(page);
   await openInvestigationWorkspace(page);
   await expect(page.getByText('Operator or Target Administrator access unlocks saving an incident for this server.', { exact: true })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Open incident', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Save investigation', exact: true })).toHaveCount(0);
   await page.goto('/__fixture?mode=empty');
   await page.goto(href('overview'));
   await expect(page.getByRole('heading', { name: 'Start monitoring your SQL environment' })).toBeVisible();
@@ -2649,6 +2649,7 @@ test('quiet dashboard and Resources evidence disclosures remain keyboard accessi
   await page.context().addCookies([{ name: 'baselineKpiFixture', value: '1', url: origin }, { name: 'resourceInspectionFixture', value: '1', url: origin }]);
   for (const [surface, label] of [['health', 'Dashboard evidence status'], ['resources', 'Resources evidence status']]) {
     await page.goto(`${href(surface)}&healthSection=summary`);
+    if (surface === 'health') await revealDashboardSupport(page);
     const footer = page.getByRole('region', { name: label, exact: true });
     await expect(footer).toContainText('0 reported collection gaps');
     await expect(footer.locator('.compact-evidence-action')).toHaveCount(0);
@@ -2669,10 +2670,5 @@ test('quiet dashboard and Resources evidence disclosures remain keyboard accessi
 });
 
 async function openInvestigationWorkspace(page) {
-  const summary = page.locator('summary').filter({ hasText: /^Investigation workspace$/ });
-  await expect(summary).toBeVisible();
-  if (await summary.locator('..').getAttribute('open') === null) {
-    await summary.focus(); await page.keyboard.press('Enter');
-  }
-  await expect(summary.locator('..')).toHaveAttribute('open', '');
+  await expect(page.getByRole('button', { name: 'Save investigation', exact: true })).toBeVisible();
 }

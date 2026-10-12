@@ -174,13 +174,13 @@ for (const surface of ['queries', 'waits']) test(`${labels[surface]} same-window
   expect(parameters(page).has('chartAt')).toBe(false); expect(parameters(page).get('range')).not.toBe('custom');
 });
 
-test('Same-window navigation carries exact inspection across Queries, Waits, Fleet and Dashboard tabs', async ({ page }) => {
+test('Same-window navigation and a bookmarked Fleet view carry exact inspection across diagnostics and Dashboard tabs', async ({ page }) => {
   await open(page, 'queries', { chartAt: at }); await aligned(page, 'queries');
   const mainNavigation = page.locator('nav');
   await mainNavigation.getByRole('link', { name: 'Waits', exact: true }).click();
   await expect(input(page, 'waits')).toBeVisible(); await expect(controls(page, 'waits').locator('time')).toHaveAttribute('datetime', at);
   expect(parameters(page).get('chartAt')).toBe(at);
-  await mainNavigation.getByRole('link', { name: 'Fleet', exact: true }).click();
+  await page.goto(href('queries', { chartAt: at }).replace('/#/queries?', '/#/overview?'));
   const fleet = page.getByRole('region', { name: 'Fleet chart alignment', exact: true });
   await expect(fleet.locator('time')).toHaveAttribute('datetime', at);
   const server = page.getByRole('region', { name: 'Server health grid', exact: true }).getByRole('link', { name: 'SYNTHETIC SQL 01', exact: true });

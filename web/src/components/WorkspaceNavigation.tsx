@@ -41,5 +41,8 @@ export function WorkspaceNavigation({ page, surface, scope, href }: {
 
 const serverTabs = [["health", "Summary"], ["activity", "Activity"], ["waits", "Waits"], ["resources", "Resources"], ["queries", "Queries"], ["deadlocks", "Deadlocks"], ["operations", "Operations"]] as const;
 export function ServerNavigation({ page, href }: { readonly page: Destination; readonly href: (page: Destination) => string }) {
-  return <nav className="server-navigation" aria-label="Server diagnostics">{serverTabs.map(([key, name]) => <a key={key} href={href(key)} aria-current={page === key ? "page" : undefined}>{name}</a>)}</nav>;
+  return <nav className="server-navigation" aria-label="Server diagnostics" onFocusCapture={event => {
+    const target = event.target;
+    requestAnimationFrame(() => { if (target instanceof HTMLElement && document.activeElement === target) target.scrollIntoView({ block: "nearest", inline: "nearest" }); });
+  }}>{serverTabs.map(([key, name]) => <a key={key} href={href(key)} aria-current={page === key ? "page" : undefined}>{name}</a>)}</nav>;
 }
