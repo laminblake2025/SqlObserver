@@ -1,3 +1,4 @@
+import { revealDashboardSupport, expandDisclosure } from './redesign-controls.mjs';
 import { test, expect } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 import { mkdir } from 'node:fs/promises';
@@ -28,6 +29,7 @@ async function settled(page) {
 for (const width of [320, 390, 768, 1440]) test(`dashboard answers precede folded raw evidence with keyboard access at ${width}px`, async ({ page }, info) => {
   await page.setViewportSize({ width, height: 1000 });
   await page.goto('/#/health?' + new URLSearchParams({ target, range: 'custom', from, to, databaseId: '6', compare: '1', healthSection: 'summary' }));
+  await revealDashboardSupport(page);await expandDisclosure(page,'Retained alerts, server lifecycle & SQL Agent evidence');await expandDisclosure(page,'Current blocking graph evidence');
   const timeline = page.getByRole('region', { name: 'Investigation timeline', exact: true });
   const history = page.getByRole('region', { name: 'Alert lifecycle history', exact: true });
   const agent = page.getByRole('region', { name: 'SQL Agent first-observed evidence', exact: true });
@@ -40,9 +42,9 @@ for (const width of [320, 390, 768, 1440]) test(`dashboard answers precede folde
   await expect(workspace).not.toHaveAttribute('open', '');
   await expect(page.getByRole('heading', { name: 'Server summary for SYNTHETIC SQL 01', exact: true })).toHaveCount(0);
   await expect(page.locator('.health-screen').getByRole('button', { name: 'Close', exact: true })).toHaveCount(0);
-  const navBeforeKpis = await page.evaluate(() => Boolean(document.querySelector('.health-navigation-frame')?.compareDocumentPosition(document.querySelector('.server-dashboard-kpis')) & Node.DOCUMENT_POSITION_FOLLOWING));
+  const navBeforeKpis = await page.evaluate(() => Boolean(document.querySelector('.server-navigation')?.compareDocumentPosition(document.querySelector('.server-dashboard-kpis')) & Node.DOCUMENT_POSITION_FOLLOWING));
   expect(navBeforeKpis, 'Embedded section navigation precedes heavy dashboard content').toBe(true);
-  const selectors = ['.server-dashboard-kpis', '.dashboard-investigation', '.dashboard-timeline', '.server-dashboard-charts',
+  const selectors = ['.dashboard-head-blockers', '.server-dashboard-kpis', '.dashboard-timeline', '.server-dashboard-charts',
     '.server-dashboard-blocking', '.alert-lifecycle-history', '.server-agent-evidence'];
   const ordered = await page.evaluate(selectors => {
     const elements = selectors.map(selector => document.querySelector('.server-dashboard ' + selector));

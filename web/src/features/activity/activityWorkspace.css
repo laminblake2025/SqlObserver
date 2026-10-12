@@ -18,6 +18,10 @@
 .activity-capture-status { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; color: var(--muted); font-size: 12px; margin: 8px 0 12px; }
 .activity-capture-status .activity-coverage { color: var(--accent, #20c9bc); }
 .activity-capture-status .activity-coverage.partial { color: #f6bf60; }
+@media (forced-colors: active) {
+  .activity-capture-status .activity-coverage,
+  .activity-capture-status .activity-coverage.partial { color:CanvasText; }
+}
 .activity-summary-grid { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 12px; margin-bottom: 14px; }
 .activity-summary-card { display: flex; align-items: center; gap: 14px; text-align: left; padding: 14px; background: var(--surface-raised, #142634); border: 1px solid var(--border); border-radius: 6px; color: var(--muted); font-size: 12px; font-weight: 400; min-width: 0; }
 .activity-summary-card > svg { width: 26px; height: 26px; flex-shrink: 0; color: #8cb5ca; }
@@ -119,6 +123,7 @@
   .app-layout:has(.activity-capture-screen) .topbar .topbar-time-controls select { width: 95px; min-width: 0; max-width: 95px; }
   .app-layout:has(.activity-capture-screen) .topbar .time-range-editor, .app-layout:has(.activity-capture-screen) .topbar .time-range-editor > button { max-width: 95px; min-width: 0; white-space: normal; }
   .app-layout:has(.activity-capture-screen) .topbar button { padding: 5px 7px; min-height: 36px; height: 36px; font-size: 12px; }
+  .app-layout:has(.activity-capture-screen) .topbar .workspace-refresh { min-height:44px; height:44px; }
   .app-layout:has(.activity-capture-screen) .topbar .topbar-search { min-width: 34px; }
   .app-layout:has(.activity-capture-screen) .topbar .timezone-button { padding-inline: 3px; }
   .app-layout:has(.activity-capture-screen) .page-heading { margin-bottom: 10px; gap: 8px; }

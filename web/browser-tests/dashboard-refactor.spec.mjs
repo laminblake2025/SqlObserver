@@ -330,7 +330,7 @@ test('missing-hour foreign and failed dashboard baselines keep current observati
     await page.context().addCookies([{ name: 'dashboardBaselineState', value: state, url: origin }]);
     // An identical hash URL is same-document navigation; reload to read each
     // distinct synthetic reference failure rather than reusing the prior page.
-    if (state === 'missing-hour') await page.goto(`${href('health')}&healthSection=summary`); await revealHealthSupport(page); await revealDashboardSupport(page);
+    if (state === 'missing-hour') { await page.goto(`${href('health')}&healthSection=summary`); await revealHealthSupport(page); await revealDashboardSupport(page); }
     else { await page.reload(); await revealHealthSupport(page); await revealDashboardSupport(page); }
     const card = cpuBaselineCard(page);
     await expect(card.locator('.dashboard-baseline-value strong')).toHaveText('70');
@@ -2252,7 +2252,7 @@ test('malformed foreign and oversized Health evidence fails visibly without cras
   });
   for (const next of ['malformed', 'foreign', 'oversized']) {
     mode = next;
-    if (next === 'malformed') await page.goto(`${href('health')}&healthSection=summary`); await revealHealthSupport(page); await revealDashboardSupport(page);
+    if (next === 'malformed') { await page.goto(`${href('health')}&healthSection=summary`); await revealHealthSupport(page); await revealDashboardSupport(page); }
     else { await page.reload(); await revealHealthSupport(page); await revealDashboardSupport(page); }
     await expect(page.getByRole('alert').filter({ hasText: healthContractFailure })).toBeVisible();
     await expect(page.getByRole('region', { name: 'Latest SQL buckets and hourly baselines', exact: true })).toBeVisible();

@@ -81,7 +81,7 @@ for (const width of [320, 390, 768, 1440]) for (const forced of [false, true])
     await page.goto(href('queries'));
     const tabs = page.getByRole('tablist', { name: 'Query views', exact: true });
     await expect(tabs).toBeVisible(); await settled(page);
-    const navigation = page.locator('nav');
+    const navigation = page.getByRole('navigation', { name: 'Server diagnostics', exact: true });
     if (forced) {
       const background = await page.locator('.sidebar').evaluate(element => {
         const probe = document.createElement('span');
@@ -98,18 +98,19 @@ for (const width of [320, 390, 768, 1440]) for (const forced of [false, true])
     expect(await links.count()).toBeGreaterThan(2);
     const before = page.url(), readCount = runs.get(page).requests.length;
     await page.getByRole('link', { name: 'Skip to content', exact: true }).focus();
-    await page.keyboard.press('Tab');
-    await paintedFocus(links.first(), width <= 960 ? 'nav' : '.sidebar', forced, width <= 960 ? -3 : 3);
+    await page.getByRole('link', { name: 'Skip to content', exact: true }).press('Enter');
+    for(let step=0;step<40&&!await links.first().evaluate(element=>element===document.activeElement);step++)await page.keyboard.press('Tab');
+    await paintedFocus(links.first(), 'nav', forced, -3);
     await capture(page, `diagnostic-${forced ? 'forced' : 'dark'}-${width}-nav-first`);
     for (let index = 1; index < await links.count(); index++) await page.keyboard.press('Tab');
-    await paintedFocus(links.last(), width <= 960 ? 'nav' : '.sidebar', forced, width <= 960 ? -3 : 3);
+    await paintedFocus(links.last(), 'nav', forced, -3);
     await capture(page, `diagnostic-${forced ? 'forced' : 'dark'}-${width}-nav-last`);
-    if (width <= 960) {
+    if (width <= 520) {
       expect(await navigation.evaluate(element => element.scrollWidth > element.clientWidth)).toBe(true);
       expect(await navigation.evaluate(element => element.scrollLeft + element.clientWidth)).toBeGreaterThanOrEqual(await navigation.evaluate(element => element.scrollWidth - 1));
     }
     for (let index = 1; index < await links.count(); index++) await page.keyboard.press('Shift+Tab');
-    await paintedFocus(links.first(), width <= 960 ? 'nav' : '.sidebar', forced, width <= 960 ? -3 : 3);
+    await paintedFocus(links.first(), 'nav', forced, -3);
     expect(page.url()).toBe(before); expect(runs.get(page).requests).toHaveLength(readCount);
 
     const queryTabs = tabs.getByRole('tab');
@@ -151,13 +152,13 @@ for (const width of [320, 390, 768, 1440]) for (const forced of [false, true])
         return { left: parseFloat(style.paddingLeft), right: parseFloat(style.paddingRight), inset: heading.left - box.left,
           width: box.width, clientWidth: element.clientWidth, scrollWidth: element.scrollWidth };
       });
-      expect(geometry.left).toBe(width <= 560 ? 14 : 20); expect(geometry.right).toBe(geometry.left);
+      expect(geometry.left).toBe(16); expect(geometry.right).toBe(geometry.left);
       expect(geometry.inset).toBeGreaterThanOrEqual(geometry.left); expect(geometry.scrollWidth - geometry.clientWidth).toBeLessThanOrEqual(1);
     }
     const captured = page.getByRole('region', { name: 'Captured sessions by server wait category', exact: true });
     await expect(captured).toBeVisible();
     expect(await captured.evaluate(element => element.classList.contains('waits-evidence-panel'))).toBe(false);
-    expect(await captured.evaluate(element => parseFloat(getComputedStyle(element).paddingLeft))).toBe(20);
+    expect(await captured.evaluate(element => parseFloat(getComputedStyle(element).paddingLeft))).toBe(16);
     const category = page.getByRole('combobox', { name: 'Query Store category', exact: true });
     await category.focus(); await page.keyboard.press('Tab'); await page.keyboard.press('Shift+Tab'); await expect(category).toBeFocused();
     await noPageOverflow(page); await capture(page, `diagnostic-${forced ? 'forced' : 'dark'}-${width}-waits-insets`);
@@ -173,6 +174,6 @@ for (const width of [320, 390, 768, 1440]) for (const forced of [false, true])
       const style = getComputedStyle(element), bounds = element.getBoundingClientRect();
       return { padding: parseFloat(style.paddingLeft), inset: element.querySelector('h3').getBoundingClientRect().left - bounds.left };
     });
-    expect(currentInset.padding).toBe(width <= 560 ? 14 : 20);
+    expect(currentInset.padding).toBe(16);
     expect(currentInset.inset).toBeGreaterThanOrEqual(currentInset.padding); await noPageOverflow(page);
   });

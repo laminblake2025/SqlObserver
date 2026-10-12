@@ -127,8 +127,8 @@ test('native captured wait categories preserve database scope paging and exact m
   const link = new URLSearchParams((await inspect.getAttribute('href')).split('?')[1]);
   expect(link.get('sessionSnapshot')).toBe(waitCaptureId()); expect(link.get('sessionIdentity')).toBe(waitSessionIdentity(72));
   expect(link.get('sessionObserved')).toBe(waitCaptureUtc); expect(link.get('range')).toBe('1h');
-  await inspect.click(); await expect(page.getByRole('complementary', { name: 'Session details', exact: true })).toContainText('72');
-  await page.reload(); await expect(page.getByRole('complementary', { name: 'Session details', exact: true })).toContainText('72');
+  await inspect.click(); await expect(page.getByRole('region', { name: 'Session details', exact: true })).toContainText('72');
+  await page.reload(); await expect(page.getByRole('region', { name: 'Session details', exact: true })).toContainText('72');
   expect(protectedReads).toEqual([]);
   await page.goto(href('waits', first, { databaseId: '6' }));
   await expect(captured(page)).toContainText('1 matching requests of 1 loaded');

@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { revealHealthSupport } from './redesign-controls.mjs';
 import AxeBuilder from '@axe-core/playwright';
 import { mkdir } from 'node:fs/promises';
 import { resolve } from 'node:path';
@@ -154,7 +155,7 @@ test('health check workflow links preserve exact scope and choose configuration 
     expect(destination.get('from')).toBe(from); expect(destination.get('to')).toBe(to);
     expect(destination.get('databaseId')).toBe('6'); expect(destination.get('compare')).toBe('1'); expect(destination.get('healthSection')).toBe(section);
   }
-  await nav.getByRole('link', { name: 'Configuration drift', exact: true }).click(); await expect(page.getByRole('tab', { name: 'Dashboard', exact: true })).toHaveAttribute('aria-selected', 'true');
+  await nav.getByRole('link', { name: 'Configuration drift', exact: true }).click(); await revealHealthSupport(page); await expect(page.getByRole('tab', { name: 'Dashboard', exact: true })).toHaveAttribute('aria-selected', 'true');
   await page.goBack(); await nav.getByRole('link', { name: 'Database options', exact: true }).click(); await expect(page.getByRole('tab', { name: 'Databases', exact: true })).toHaveAttribute('aria-selected', 'true');
 });
 

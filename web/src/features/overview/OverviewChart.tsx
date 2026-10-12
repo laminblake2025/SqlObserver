@@ -74,11 +74,14 @@ export function OverviewChart({series,previous,fromUtc,toUtc,markers=[],crosshai
     {all.map(({s,shift})=>{
       const color=colorFor(s);
       const points=plotPoints(s,shift,from,to,x,y);
+      const observed=points.filter((point):point is PlotPoint=>point!==null);
+      const gaps=observed.slice(1).map((point,index)=>point.x-observed[index]!.x).filter(gap=>gap>0);
+      const hitRadius=Math.max(.1,Math.min(4,gaps.length?Math.min(...gaps)*.4:4));
       const connectedTimes=new Set<string>();
       points.forEach((point,index)=>{if(point&&(points[index-1]||points[index+1]))connectedTimes.add(point.timeUtc);});
       return <g key={`${s.targetId}:${s.metric}:${s.dimension}:${shift}`}>
         {lineSegments(points).map((d,index)=><path className="chart-series" d={d} fill="none" key={index} stroke={color} strokeDasharray={shift ? "5 5" : undefined} strokeLinecap="round" strokeLinejoin="round" strokeOpacity={shift ? .48 : .95} strokeWidth={shift ? 1.75 : 2.5}/>)}
-        {points.filter((point): point is PlotPoint => point !== null).map(point=><circle className={`chart-marker${connectedTimes.has(point.timeUtc)?' chart-point-hit-target':''}`} cx={point.x} cy={point.y} fill={shift ? "var(--surface)" : color} key={`${point.timeUtc}:${shift}`} r={connectedTimes.has(point.timeUtc)?4:shift ? 1.5 : 2} stroke={color} strokeWidth={shift ? 1 : 1.25}>
+        {observed.map(point=><circle className={`chart-marker${connectedTimes.has(point.timeUtc)?' chart-point-hit-target':''}`} cx={point.x} cy={point.y} fill={shift ? "var(--surface)" : color} key={`${point.timeUtc}:${shift}`} r={connectedTimes.has(point.timeUtc)?hitRadius:shift ? 1.5 : 2} stroke={color} strokeWidth={connectedTimes.has(point.timeUtc)?0:shift ? 1 : 1.25}>
           <title>{`${s.label} ${s.dimension??''} · ${timeLabel(point.timeUtc)} · ${formatOverviewChartValue(point.value,range)} ${s.unit} · ${point.samples} samples${shift?' · previous period':''}`}</title>
         </circle>)}
       </g>;

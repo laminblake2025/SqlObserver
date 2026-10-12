@@ -43,9 +43,13 @@
 .app-layout .page-heading-actions .workspace-investigations { margin:0; border:none; padding:0; }
 .app-layout .page-heading-actions button, .app-layout .page-heading-actions a { min-height:36px; }
 .server-navigation { display:flex; flex-wrap:wrap; gap:12px; border-bottom:1px solid var(--border); margin:0 0 16px; padding:0; }
-.server-navigation a { padding:12px 15px; border-bottom:3px solid transparent; color:var(--muted); font-size:14px; }
+.server-navigation a { display:inline-flex; align-items:center; min-height:44px; padding:12px 15px; border-bottom:3px solid transparent; color:var(--muted); font-size:14px; }
 .server-navigation a[aria-current=page] { border-color:var(--teal); color:var(--text); font-weight:600; }
 .server-navigation a:hover { background:var(--surface-soft); text-decoration:none; }
+.server-navigation a:focus-visible { outline:3px solid var(--focus); outline-offset:-3px; }
+.server-navigation a { scroll-margin-inline:2px; }
+.app-layout .server-navigation { padding-inline:1px; }
+.app-layout .topbar .workspace-refresh { min-width:44px; min-height:44px; height:auto; }
 .app-layout .panel { border-radius:5px; padding:16px; background:var(--surface); box-shadow:none; }
 .app-layout .section-heading { margin-bottom:12px; align-items:center; }
 .app-layout h2, .app-layout h3, .app-layout h4 { font-size:18px; line-height:1.3; margin-top:0; margin-bottom:10px; }

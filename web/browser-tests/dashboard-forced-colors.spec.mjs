@@ -92,7 +92,7 @@ async function inspectDormantSupportingHistory(page,reads,legacyReads){
 async function open(page,surface){
  await page.context().addCookies([{name:'dashboardRefactor',value:'1',url:origin},{name:'chartReferenceRole',value:'viewer',url:origin},
   ...(['health','queries','waits'].includes(surface)?[{name:'timelineFixture',value:'1',url:origin}]:[]),
-  ...(['queries','waits'].includes(surface)?[{name:'queryRowTrendFixture',value:'1',url:origin}]:[]),
+  ...(['health','queries','waits'].includes(surface)?[{name:'queryRowTrendFixture',value:'1',url:origin}]:[]),
   ...(surface==='resources'?[{name:'resourceInspectionFixture',value:'1',url:origin},{name:'sqlVolumeFixture',value:'1',url:origin}]:[])]);
  await page.goto('/#/'+surface+'?'+new URLSearchParams({target,range:'1h',...(surface==='queries'?{queryView:'cache'}:{})}));
  if(surface==='alerts')await expect(page.getByRole('heading',{name:'Alert triage',exact:true})).toBeVisible();
@@ -113,7 +113,7 @@ async function keyboardFocus(page){
  const refresh=page.getByRole('button',{name:'↻ Refresh',exact:true});
  // Reach the real control from the skip target using sequential keyboard navigation.
  // A programmatic .focus() would miss keyboard modality and focus traversal defects.
- for(let step=0;step<80&&!await refresh.evaluate(e=>e===document.activeElement);step++)await page.keyboard.press('Tab');
+ for(let step=0;step<80&&!await refresh.evaluate(e=>e===document.activeElement);step++)await page.keyboard.press('Shift+Tab');
  await expect(refresh).toBeFocused();await refresh.scrollIntoViewIfNeeded();
  const painted=await refresh.evaluate(e=>{
   const style=getComputedStyle(e),box=e.getBoundingClientRect();

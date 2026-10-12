@@ -16,7 +16,7 @@ const scope = page => Object.fromEntries(new URLSearchParams(new URL(page.url())
 const refresh = page => page.getByRole('button', { name: '↻ Refresh', exact: true });
 const supportingReads = new Set(['health', 'health/databases', 'health/files', 'health/database-option-changes',
   'health/server-configuration-changes', 'health/server-configuration-snapshot', 'deadlocks', 'alerts/active',
-  'activity/blocking/current', 'activity/waits/trend', 'query-performance/regressions',
+  'activity/blocking/current', 'activity/waits/trend', 'query-performance/regressions', 'query-performance/top', 'lifecycle/collection',
   'sql-agent/failures', 'analytics/baselines', 'analytics/sql-baselines', 'alerts/history', 'lifecycle/history']);
 async function json(route, value, status = 200) {
   await route.fulfill({ status, contentType: 'application/json', headers: { 'cache-control': 'no-store' }, body: JSON.stringify(value) });
