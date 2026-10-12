@@ -152,8 +152,18 @@ public sealed class SqlVolumePlanningWindowHttpTests
     public async Task CallerCancellationReachesOwnedNativeRead()
     {
         await using var factory = new Factory(); factory.Repository.Wait = true; using var client = Client(factory); using var cancellation = new CancellationTokenSource();
-        var pending = client.GetAsync(List(), cancellation.Token); await factory.Repository.Started.Task.WaitAsync(TimeSpan.FromSeconds(5)); cancellation.Cancel();
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => pending); await factory.Repository.Cancelled.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        var pending = client.GetAsync(List(), cancellation.Token);
+        try
+        {
+            await NativeReadTestBarrier.WaitForStartAsync(factory.Repository.Started.Task, pending);
+            cancellation.Cancel();
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => pending);
+            await factory.Repository.Cancelled.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        }
+        finally
+        {
+            cancellation.Cancel();
+        }
     }
     private static string Remove(string route, string field) => route.Split('?')[0] + "?" + string.Join('&', route.Split('?')[1].Split('&').Where(value => !value.StartsWith(field + "=", StringComparison.Ordinal)));
     private static SqlVolumePlanningWindowReceipt Receipt(Guid run,int minute,int count=2) => new(run,2,From.AddMinutes(minute),"succeeded","none",0,count,count,"available","observed_volumes");

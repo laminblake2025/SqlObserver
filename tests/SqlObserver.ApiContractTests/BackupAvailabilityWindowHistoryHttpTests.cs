@@ -173,8 +173,18 @@ public sealed class BackupAvailabilityWindowHistoryHttpTests
     public async Task CallerCancellationReachesOwnedNativeRead()
     {
         await using var factory = new Factory(); factory.Repository.Wait = true; using var client = Client(factory); using var cancellation = new CancellationTokenSource();
-        var pending = client.GetAsync(List(), cancellation.Token); await factory.Repository.Started.Task.WaitAsync(TimeSpan.FromSeconds(5)); cancellation.Cancel();
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => pending); await factory.Repository.Cancelled.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        var pending = client.GetAsync(List(), cancellation.Token);
+        try
+        {
+            await NativeReadTestBarrier.WaitForStartAsync(factory.Repository.Started.Task, pending);
+            cancellation.Cancel();
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => pending);
+            await factory.Repository.Cancelled.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        }
+        finally
+        {
+            cancellation.Cancel();
+        }
     }
     private static string Remove(string route, string field) => route.Split('?')[0] + "?" + string.Join('&', route.Split('?')[1].Split('&').Where(value => !value.StartsWith(field + "=", StringComparison.Ordinal)));
     private static BackupAvailabilityWindowHistoryReceipt Receipt(Guid run,int minute,int count=2) => new(run,2,1,1,From.AddMinutes(minute),From.AddMinutes(minute).AddSeconds(-1),"succeeded","none",0,1,null,count,count,0,0,"available","observed_rows");
