@@ -20,6 +20,7 @@
 .app-layout .topbar label { margin:0; font-size:12px; }
 .app-layout .topbar select { max-width:240px; }
 .app-layout .topbar .overview-controls { margin:0; padding:0; }
+.app-layout .time-range-popover { z-index:40; }
 .app-layout .topbar-time-controls > label { font-size:0; }
 .app-layout .topbar .database-scope-label > span { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0,0,0,0); }
 .app-layout .topbar .database-scope-controls { display:flex; flex-direction:row; align-items:center; gap:5px; margin:0; }
