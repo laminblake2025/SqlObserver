@@ -1,3 +1,4 @@
+import { expandDisclosure } from './redesign-controls.mjs';
 import {test,expect} from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 import {mkdir} from 'node:fs/promises';
@@ -16,7 +17,7 @@ async function prepare(page){
   await page.context().addCookies(['dashboardRefactor','serverLifecycleHistoryFixture'].map(name=>({name,value:'1',url:origin})));
   await page.addInitScript(()=>localStorage.setItem('sqlobserver.timeDisplayMode','utc'));
 }
-async function open(page,selection=false){await prepare(page);await page.goto('/'+hash(selection));await expect(panel(page)).toContainText('3 retained events');}
+async function open(page,selection=false){await prepare(page);await page.goto('/'+hash(selection));await expandDisclosure(page,'Retained alerts, server lifecycle & SQL Agent evidence');await expandDisclosure(page,'Retained alerts, server lifecycle & SQL Agent evidence');await expect(panel(page)).toContainText('3 retained events');}
 async function proof(page){await expect(selected(page)).toContainText('Sampled restart detected');await selected(page).getByText('Immutable before and after engine evidence',{exact:true}).click();
   await expect(selected(page).getByRole('region',{name:'Before immutable engine evidence',exact:true})).toBeVisible();}
 

@@ -119,7 +119,7 @@ async function open(page, options = {}) { await page.goto('/' + href(options)); 
 async function expectSelected(page, query = queryA) { await expect(panel(page).getByText(query, { exact: true })).toBeVisible(); await expect(history(page)).toBeVisible(); }
 async function openHistory(page) { await history(page).click(); await expect(panel(page)).toContainText('CPU 7201'); }
 const reads = (page, kind) => contexts.get(page).requests.filter(item => item.kind === kind);
-const refresh = page => page.locator('.page-actions').getByRole('button', { name: '↻ Refresh', exact: true });
+const refresh = page => page.getByRole('button', { name: '↻ Refresh', exact: true });
 const exactScope = page => Object.fromEntries(hashParams(page));
 
 test('the App reloads an off-page pure query URL and preserves exact inspection through ranking paging and browser history', async ({ page }) => {

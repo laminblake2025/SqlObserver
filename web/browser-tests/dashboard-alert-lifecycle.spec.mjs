@@ -1,3 +1,4 @@
+import { expandDisclosure } from './redesign-controls.mjs';
 import {test,expect} from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 import {mkdir} from 'node:fs/promises';
@@ -17,7 +18,7 @@ async function setup(p,count=16,liveClock=false){if(liveClock)await p.clock.inst
 test.afterEach(async({page})=>{const session=sessions.get(page);if(session)expect(session.errors).toEqual([]);});
 
 test('all native lifecycle verbs and resolved cycles remain evidence independent of current inbox',async({page})=>{
- const session=await setup(page);await page.goto(href({databaseId:'6',compare:'1'}));await browser(page);await expect(panel(page)).toContainText('16 received of 16');
+ const session=await setup(page);await page.goto(href({databaseId:'6',compare:'1'})); await expandDisclosure(page,'Retained alerts, server lifecycle & SQL Agent evidence');await browser(page);await expect(panel(page)).toContainText('16 received of 16');
  for(const kind of ['fired','acknowledged','resolved','snoozed','unsnoozed','assigned','reassigned','unassigned'])await expect(panel(page).getByRole('table')).toContainText('Alert '+kind);
  const event=lifecycleFixtureEvent(7,binding);await button(page,'Inspect alert event '+event.eventId).click();await expect(detail(page)).toContainText('Alert resolved');
  expect(query(page).get('timelineEvent')).toBe(identity(event));expect(query(page).get('databaseId')).toBe('6');expect(query(page).get('compare')).toBe('1');
@@ -30,7 +31,7 @@ test('all native lifecycle verbs and resolved cycles remain evidence independent
 });
 
 test('exact restored event absent from first page resolves independently and pins chart alignment',async({page})=>{
- const session=await setup(page,201),event=lifecycleFixtureEvent(200,binding,{count:201});await page.goto(selectedHref(event));
+ const session=await setup(page,201),event=lifecycleFixtureEvent(200,binding,{count:201});await page.goto(selectedHref(event)); await expandDisclosure(page,'Retained alerts, server lifecycle & SQL Agent evidence');
  await expect(detail(page)).toContainText(event.eventId);await expect(detail(page)).toContainText('Alert reassigned');await expect(panel(page)).toContainText('100 received of 201');
  await expect(timeline(page)).toContainText('validated exact selected event');
  await expect(timelineBrowser(page)).not.toHaveAttribute('open','');await expect(timeline(page).getByRole('link',{name:'Open selected event evidence',exact:true})).toBeVisible();
@@ -42,7 +43,7 @@ test('exact restored event absent from first page resolves independently and pin
 });
 
 test('an older selected event remains pinned after all received pages exceed the 120-marker summary',async({page})=>{
- await setup(page,201);const event=lifecycleFixtureEvent(0,binding,{count:201});await page.goto(selectedHref(event));await expect(detail(page)).toContainText(event.eventId);await browser(page);
+ await setup(page,201);const event=lifecycleFixtureEvent(0,binding,{count:201});await page.goto(selectedHref(event)); await expandDisclosure(page,'Retained alerts, server lifecycle & SQL Agent evidence');await expect(detail(page)).toContainText(event.eventId);await browser(page);
  await button(page,'Next alert history page').click();await expect(panel(page)).toContainText('200 received of 201');await button(page,'Next alert history page').click();await expect(panel(page)).toContainText('201 received of 201');
  await browseTimeline(page);
  await expect(timeline(page).locator('button.dashboard-timeline-align')).toHaveCount(120);await expect(timeline(page).locator('button.dashboard-timeline-align[aria-pressed="true"]')).toHaveCount(1);await expect(timeline(page)).toContainText('119 other latest loaded events');
@@ -50,34 +51,34 @@ test('an older selected event remains pinned after all received pages exceed the
 });
 
 test('list overflow cannot prevent independently resolving an exact selected event',async({page})=>{
- const session=await setup(page,10001),event=lifecycleFixtureEvent(0,binding,{count:10001});await page.goto(selectedHref(event));
+ const session=await setup(page,10001),event=lifecycleFixtureEvent(0,binding,{count:10001});await page.goto(selectedHref(event)); await expandDisclosure(page,'Retained alerts, server lifecycle & SQL Agent evidence');
  await expect(panel(page).getByText('Browse alert lifecycle events',{exact:true}).locator('xpath=parent::details')).not.toHaveAttribute('open','');
  await expect(button(page,'Retry alert history read')).toBeVisible();await expect(detail(page)).toContainText(event.eventId);await expect(detail(page)).toContainText('does not establish complete window coverage');
  expect(session.reads.filter(r=>r.selected)).toHaveLength(1);expect(session.reads.filter(r=>!r.selected)).toHaveLength(1);
 });
 
 test('missing mismatched and malformed exact selections never choose another event or cycle',async({page})=>{
- const session=await setup(page),event=lifecycleFixtureEvent(7,binding);const wrong={...event,episodeId:lifecycleFixtureEvent(8,binding).episodeId};await page.goto(selectedHref(wrong));
+ const session=await setup(page),event=lifecycleFixtureEvent(7,binding);const wrong={...event,episodeId:lifecycleFixtureEvent(8,binding).episodeId};await page.goto(selectedHref(wrong)); await expandDisclosure(page,'Retained alerts, server lifecycle & SQL Agent evidence');
  await expect(detail(page)).toContainText('This exact event is not retained');await expect(detail(page).getByRole('link',{name:/Open current alert status/})).toHaveCount(0);
  await expect(timeline(page).getByRole('link',{name:'Open selected event evidence',exact:true})).toHaveCount(0);
  await page.getByRole('button',{name:'Review selected alert event evidence',exact:true}).press('Enter');await expect(page.getByRole('region',{name:'Alert history evidence',exact:true})).toBeFocused();
- const before=session.reads.filter(r=>r.selected).length;await page.goto(selectedHref(event)+'&timelineEvent='+encodeURIComponent(identity(event)));await expect(panel(page)).toContainText('requested alert event and cycle are invalid');expect(session.reads.filter(r=>r.selected)).toHaveLength(before);
- await page.goto(selectedHref({...event,eventAtUtc:lifecycleToUtc}));await expect(panel(page)).toContainText('requested alert event and cycle are invalid');expect(session.reads.filter(r=>r.selected)).toHaveLength(before);
+ const before=session.reads.filter(r=>r.selected).length;await page.goto(selectedHref(event)+'&timelineEvent='+encodeURIComponent(identity(event))); await expandDisclosure(page,'Retained alerts, server lifecycle & SQL Agent evidence');await expect(panel(page)).toContainText('requested alert event and cycle are invalid');expect(session.reads.filter(r=>r.selected)).toHaveLength(before);
+ await page.goto(selectedHref({...event,eventAtUtc:lifecycleToUtc})); await expandDisclosure(page,'Retained alerts, server lifecycle & SQL Agent evidence');await expect(panel(page)).toContainText('requested alert event and cycle are invalid');expect(session.reads.filter(r=>r.selected)).toHaveLength(before);
 });
 
 test('history remains independently readable when core Overview analytics fails',async({page})=>{
  await setup(page);await page.route('**/api/v1/overview?*',async route=>{if(new URL(route.request().url()).searchParams.get('targetId')===lifecycleAlpha)return route.fulfill({status:503,contentType:'application/json',body:'{}'});return route.continue();});
- await page.goto(href());await expect(panel(page)).toContainText('16 received of 16');await browser(page);await expect(panel(page).getByRole('table')).toContainText('Alert resolved');
+ await page.goto(href()); await expandDisclosure(page,'Retained alerts, server lifecycle & SQL Agent evidence');await expect(panel(page)).toContainText('16 received of 16');await browser(page);await expect(panel(page).getByRole('table')).toContainText('Alert resolved');
 });
 
 test('definitive history denial purges list and exact event; explicit access retry recovers',async({page})=>{
- const session=await setup(page),event=lifecycleFixtureEvent(7,binding);await page.goto(selectedHref(event));await expect(detail(page)).toContainText(event.eventId);await browser(page);await expect(panel(page)).toContainText('16 received of 16');
+ const session=await setup(page),event=lifecycleFixtureEvent(7,binding);await page.goto(selectedHref(event)); await expandDisclosure(page,'Retained alerts, server lifecycle & SQL Agent evidence');await expect(detail(page)).toContainText(event.eventId);await browser(page);await expect(panel(page)).toContainText('16 received of 16');
  session.handler=async(route)=>{await route.fulfill({status:403,contentType:'application/json',body:'{}'});return true;};await button(page,'Refresh selected alert event').click();await expect(panel(page)).toContainText('Protected event pages and selected detail were removed');await expect(detail(page)).toHaveCount(0);await expect(panel(page).getByRole('table')).toHaveCount(0);
  session.handler=undefined;await button(page,'Retry alert history access').click();await expect(detail(page)).toContainText(event.eventId);await browser(page);await expect(panel(page)).toContainText('16 received of 16');
 });
 
 test('opening history fixes the global Live window and keeps visited pages through real workspace polling',async({page})=>{
- const session=await setup(page,101,true);await page.goto(href({range:'1h',from:'',to:''}));await expect(panel(page)).toContainText('100 received of 101');
+ const session=await setup(page,101,true);await page.goto(href({range:'1h',from:'',to:''})); await expandDisclosure(page,'Retained alerts, server lifecycle & SQL Agent evidence');await expect(panel(page)).toContainText('100 received of 101');
  await browser(page);await expect.poll(()=>query(page).get('range')).toBe('custom');const fixed={from:query(page).get('from'),to:query(page).get('to')};
  await button(page,'Next alert history page').click();await expect(panel(page)).toContainText('101 received of 101');const reads=session.reads.length,cursor=session.reads.at(-1).cursor;
  await page.clock.runFor(61_000);await expect(panel(page)).toContainText('page 2');expect(session.reads).toHaveLength(reads);expect(query(page).get('from')).toBe(fixed.from);expect(query(page).get('to')).toBe(fixed.to);expect(cursor).toBeTruthy();
@@ -85,7 +86,7 @@ test('opening history fixes the global Live window and keeps visited pages throu
 });
 
 for(const width of [320,390,768,1440])test(`integrated alert history uses dark tokens keyboard and responsive evidence at ${width}px`,async({page},info)=>{
- await page.setViewportSize({width,height:1000});await setup(page);const event=lifecycleFixtureEvent(7,binding);await page.goto(selectedHref(event));await expect(detail(page)).toContainText(event.eventId);await browser(page);
+ await page.setViewportSize({width,height:1000});await setup(page);const event=lifecycleFixtureEvent(7,binding);await page.goto(selectedHref(event)); await expandDisclosure(page,'Retained alerts, server lifecycle & SQL Agent evidence');await expect(detail(page)).toContainText(event.eventId);await browser(page);
  const scroll=panel(page).getByRole('region',{name:'Received alert lifecycle event table',exact:true});await scroll.focus();await expect(scroll).toBeFocused();if(width<=390){expect(await scroll.evaluate(n=>n.scrollWidth>n.clientWidth)).toBe(true);await page.keyboard.press('ArrowRight');await expect.poll(()=>scroll.evaluate(n=>n.scrollLeft)).toBeGreaterThan(0);}else{expect(await scroll.evaluate(n=>n.scrollWidth-n.clientWidth)).toBeLessThanOrEqual(1);}
  await button(page,'Refresh selected alert event').focus();await page.keyboard.press('Enter');await expect(detail(page)).toContainText(event.eventId);
  expect(await page.evaluate(()=>getComputedStyle(document.documentElement).colorScheme)).toBe('dark');expect(await page.evaluate(()=>document.documentElement.scrollWidth-innerWidth)).toBeLessThanOrEqual(1);

@@ -93,7 +93,7 @@ test('Built confirmed creation survives an unrelated transient workspace authori
   const editor=region(page).getByRole('form',{name:'Rule template editor',exact:true});await expect(editor.getByRole('combobox',{name:'Product signal',exact:true})).toBeEnabled();
   await editor.getByRole('textbox',{name:'Template title',exact:true}).fill('SYNTHETIC recovery');await editor.getByRole('textbox',{name:'Intended rule name',exact:true}).fill('recovery.connections');await editor.getByRole('textbox',{name:'Template reason',exact:true}).fill('SYNTHETIC captured intention');
   await button(page,'Save template').click();await expect(button(page,'Retry template status')).toBeVisible();const writes=session.writes.length;
-  session.parent.meStatus=503;await page.locator('.page-actions').getByRole('button',{name:/Refresh$/u}).click();await expect(page.getByText('Workspace access refresh is unavailable.',{exact:false})).toBeVisible();
+  session.parent.meStatus=503;await page.getByRole('button',{name:'↻ Refresh',exact:true}).click();await expect(page.getByText('Workspace access refresh is unavailable.',{exact:false})).toBeVisible();
   await expect(button(page,'Retry template status')).toBeVisible();failRead=false;await button(page,'Retry template status').click();
   await expect(region(page).getByRole('region',{name:'Current template version',exact:true})).toContainText('SYNTHETIC recovery');expect(session.writes).toHaveLength(writes);
 });

@@ -13,7 +13,7 @@ const generate = page => view(page).getByRole('button', { name: 'Generate invest
 const html = page => view(page).getByRole('link', { name: 'Open printable investigation', exact: true });
 const share = page => view(page).getByRole('link', { name: 'Open the saved window and share this investigation', exact: true });
 const scope = page => Object.fromEntries(new URLSearchParams(new URL(page.url()).hash.split('?')[1]));
-const refresh = page => page.locator('.page-actions').getByRole('button', { name: '↻ Refresh', exact: true });
+const refresh = page => page.getByRole('button', { name: '↻ Refresh', exact: true });
 const supportingReads = new Set(['health', 'health/databases', 'health/files', 'health/database-option-changes',
   'health/server-configuration-changes', 'health/server-configuration-snapshot', 'deadlocks', 'alerts/active',
   'activity/blocking/current', 'activity/waits/trend', 'query-performance/regressions',

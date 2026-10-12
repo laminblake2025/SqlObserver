@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { revealHealthSupport } from './redesign-controls.mjs';
 import AxeBuilder from '@axe-core/playwright';
 import { mkdir } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
@@ -182,8 +183,9 @@ test('Same-window navigation carries exact inspection across Queries, Waits, Fle
   await mainNavigation.getByRole('link', { name: 'Fleet', exact: true }).click();
   const fleet = page.getByRole('region', { name: 'Fleet chart alignment', exact: true });
   await expect(fleet.locator('time')).toHaveAttribute('datetime', at);
-  const server = page.getByRole('navigation', { name: 'Loaded server status', exact: true }).locator('a').filter({ hasText: 'SYNTHETIC SQL 01' });
+  const server = page.getByRole('region', { name: 'Server health grid', exact: true }).getByRole('link', { name: 'SYNTHETIC SQL 01', exact: true });
   await expect(server).toHaveCount(1); await server.click();
+  await revealHealthSupport(page);
   const dashboard = page.getByRole('region', { name: 'Dashboard chart alignment', exact: true });
   await expect(dashboard.locator('time')).toHaveAttribute('datetime', at);
   const tabs = page.getByRole('tablist', { name: 'Server summary sections', exact: true });
@@ -233,7 +235,7 @@ for (const surface of ['queries', 'waits']) test(`${labels[surface]} a cancelled
     if (heldRoute || url.pathname !== `/api/v1/observation-targets/${alpha}/${sourcePath(surface)}`) return false;
     heldRoute = route; return true;
   };
-  await page.locator('.page-actions').getByRole('button', { name: '↻ Refresh', exact: true }).click();
+  await page.getByRole('button', { name: '↻ Refresh', exact: true }).click();
   await expect.poll(() => Boolean(heldRoute)).toBe(true);
   await page.getByRole('combobox', { name: 'Target server', exact: true }).selectOption(beta);
   await expect(input(page, surface)).toBeVisible(); expect(parameters(page).get('target')).toBe(beta);
@@ -250,7 +252,7 @@ for (const surface of ['queries', 'waits']) test(`${labels[surface]} a cancelled
 for (const [surface, status] of [['queries', 403], ['waits', 401]]) test(`${labels[surface]} ${status} clears alignment evidence until explicit native access retry`, async ({ page }) => {
   await open(page, surface, { chartAt: at }); await aligned(page, surface);
   runs.get(page).denial = { surface, status };
-  await page.locator('.page-actions').getByRole('button', { name: '↻ Refresh', exact: true }).click();
+  await page.getByRole('button', { name: '↻ Refresh', exact: true }).click();
   const retry = page.getByRole('button', { name: surface === 'queries' ? 'Retry query access' : 'Retry wait trend', exact: true });
   await expect(retry).toBeVisible(); await expect(controls(page, surface)).toHaveCount(0);
   await expect(page.locator('.chart-crosshair')).toHaveCount(0); await expect(page.locator('body')).not.toContainText('SYNTHETIC_SECRET_NOT_FOR_DISPLAY');

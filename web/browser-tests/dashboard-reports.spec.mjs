@@ -128,7 +128,7 @@ test('Reports moving Live context freezes an uncertain request but starts a fres
   expect(first.observations[0].body).toEqual({ reportKind: 'performance-window', operationId: expect.any(String),
     fromUtc: '2026-10-02T11:00:00.000Z', toUtc: '2026-10-02T12:00:00.000Z' });
   await page.clock.setFixedTime(new Date('2026-10-02T12:02:00Z'));
-  await page.locator('.page-actions').getByRole('button', { name: '↻ Refresh', exact: true }).click();
+  await page.getByRole('button', { name: '↻ Refresh', exact: true }).click();
   await page.getByRole('button', { name: 'Show local time', exact: true }).click();
   await generate(page).click(); await expect(html(page)).toBeVisible();
   const recovered = await observations(page);

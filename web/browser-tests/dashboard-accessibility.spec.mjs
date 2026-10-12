@@ -377,7 +377,7 @@ for (const width of [320, 390, 768, 1440]) {
     parameters.set('sessionIdentity', 'f'.repeat(64));
     await page.evaluate(query => { location.hash = '#/activity?' + query; }, parameters.toString());
     await expect(detail).toHaveCount(0);
-    await expect(page.locator('.live-sessions')).toContainText('The requested session was not found in this captured snapshot.');
+    await expect(page.locator('.activity-capture-screen')).toContainText('The requested session was not found in this captured snapshot.');
     await auditResponsiveState(page, testInfo, 'activity-missing-request');
     await saveFullPage(page, `activity-unavailable-selection-${width}.png`);
     expect(protectedReads).toBe(0);
@@ -542,7 +542,7 @@ for (const width of [320, 390, 768, 1440]) {
     }
     await auditResponsiveState(page, testInfo, 'fleet-evidence-links');
     await saveFullPage(page, `fleet-evidence-links-${width}.png`);
-    const waits = row.getByRole('link', { name: /^Investigate/ });
+    const waits = row.getByRole('link', { name: /^Waits:/ });
     await waits.focus();
     await waits.press('Enter');
     await expect(page).toHaveURL(new RegExp(`#/waits\\?target=${target}`));

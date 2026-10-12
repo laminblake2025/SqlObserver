@@ -82,7 +82,7 @@ for (const status of [401, 403]) test(`database inventory HTTP ${status} remains
   await page.goto(href({ healthSection: 'collection' })); await revealHealthSupport(page);
   const database = frame(page).getByRole('combobox', { name: 'Workspace database', exact: true });
   await expect(database).toBeDisabled(); await expect(database).toHaveValue('6');
-  await expect(frame(page).getByRole('alert')).toHaveText("Your access to this server's database inventory could not be verified. Refresh after access is restored.");
+  await expect(frame(page).locator('.database-scope-status')).toHaveText("Your access to this server's database inventory could not be verified. Refresh after access is restored.");
   await expect(summary(page, 'Inventory details').locator('..')).not.toHaveAttribute('open', '');
   await expect(frame(page).getByRole('status').filter({ hasText: 'Selected database ID 6 has not been received' })).toBeVisible();
   const clear = frame(page).getByRole('button', { name: 'Clear database filter', exact: true });

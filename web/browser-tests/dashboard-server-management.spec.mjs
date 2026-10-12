@@ -125,7 +125,7 @@ test('same-server database edits, display toggles and verified same-role refresh
   await page.getByRole('button', { name: 'Show UTC time', exact: true }).click();
   await expect(field(page, 'Display name')).toHaveValue('SYNTHETIC unsaved workspace draft');
   await expect(field(page, 'Windows host')).toHaveValue('unsaved.example.test');
-  const refresh = page.locator('.page-actions').getByRole('button', { name: '↻ Refresh', exact: true });
+  const refresh = page.getByRole('button', { name: '↻ Refresh', exact: true });
   await refresh.click();
   await expect.poll(() => context.accessReads.length).toBeGreaterThan(accessReads);
   await expect(refresh).toBeEnabled(); await expect(action(page, 'Save settings')).toBeEnabled();

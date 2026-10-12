@@ -26,7 +26,7 @@
     },
     {
       "path": "src/SqlObserver.Alerting/packages.lock.json",
-      "sha256": "ee5a22f9f1a9377e5c8c6fb6665cfaa4c96e0ce5f8589089ec49eb8a58989c2a"
+      "sha256": "023cc2c4278661751fa386518c7dc09d3c16c9ba7a61e9ddc3a1c4ee1b542d43"
     },
     {
       "path": "src/SqlObserver.Analytics/SqlObserver.Analytics.csproj",
@@ -34,7 +34,7 @@
     },
     {
       "path": "src/SqlObserver.Analytics/packages.lock.json",
-      "sha256": "ee5a22f9f1a9377e5c8c6fb6665cfaa4c96e0ce5f8589089ec49eb8a58989c2a"
+      "sha256": "023cc2c4278661751fa386518c7dc09d3c16c9ba7a61e9ddc3a1c4ee1b542d43"
     },
     {
       "path": "src/SqlObserver.Application/SqlObserver.Application.csproj",
@@ -42,7 +42,7 @@
     },
     {
       "path": "src/SqlObserver.Application/packages.lock.json",
-      "sha256": "52d7e11aedb15072a22be47ad0cb73137f55de871c24440827240d6e0959da60"
+      "sha256": "a7a24f315fd54f099efc675c7a28f15ba6901954e58e3c2793568ac705d162f2"
     },
     {
       "path": "src/SqlObserver.Audit/SqlObserver.Audit.csproj",
@@ -58,7 +58,7 @@
     },
     {
       "path": "src/SqlObserver.Collector/packages.lock.json",
-      "sha256": "fabfe120bbd195009143106bdb98b9a859088a39393abb3ef938ba5858e0f0b2"
+      "sha256": "be84e9538e32ca205ecb96713a33d1fccbe8fbab5c47f514e33c847c4e1f22bf"
     },
     {
       "path": "src/SqlObserver.Collector.Abstractions/SqlObserver.Collector.Abstractions.csproj",
@@ -66,7 +66,7 @@
     },
     {
       "path": "src/SqlObserver.Collector.Abstractions/packages.lock.json",
-      "sha256": "4b3733aee06824f3bc1364aa332176d2398de2136313bf30f4b16e3801f638f6"
+      "sha256": "15776e833ac6f2a174dc3bdfbebc0c93533720cb69868694bc8df23c364091a8"
     },
     {
       "path": "src/SqlObserver.Collectors/SqlObserver.Collectors.csproj",
@@ -74,7 +74,7 @@
     },
     {
       "path": "src/SqlObserver.Collectors/packages.lock.json",
-      "sha256": "ee5a22f9f1a9377e5c8c6fb6665cfaa4c96e0ce5f8589089ec49eb8a58989c2a"
+      "sha256": "023cc2c4278661751fa386518c7dc09d3c16c9ba7a61e9ddc3a1c4ee1b542d43"
     },
     {
       "path": "src/SqlObserver.Domain/SqlObserver.Domain.csproj",
@@ -82,7 +82,7 @@
     },
     {
       "path": "src/SqlObserver.Domain/packages.lock.json",
-      "sha256": "2241481b7e74dcdcd600303146b730ecc12cbd8e49aa55755ef95ee499fe229a"
+      "sha256": "03eeadc5ef377c17f787ab65f41fb4c8a9c936bb7f7f4171111fdeec8a81cb46"
     },
     {
       "path": "src/SqlObserver.Infrastructure.PostgreSql/SqlObserver.Infrastructure.PostgreSql.csproj",
@@ -90,7 +90,7 @@
     },
     {
       "path": "src/SqlObserver.Infrastructure.PostgreSql/packages.lock.json",
-      "sha256": "437e112cc64f77d2ade621d52f1d89558552f2ef154c9047e4098600d87595fe"
+      "sha256": "8e59cdd654f5c8f859219cb3c27a94915981e6dec3dec2f6048af724e22de3ec"
     },
     {
       "path": "src/SqlObserver.Infrastructure.SqlServer/SqlObserver.Infrastructure.SqlServer.csproj",
@@ -98,7 +98,7 @@
     },
     {
       "path": "src/SqlObserver.Infrastructure.SqlServer/packages.lock.json",
-      "sha256": "63876c3d754df9668c7c8bbdd7a2e7c57706037778bd53b325d5377582bc779d"
+      "sha256": "d88448631e3fa9946bd3e2ede2f5d705f1849a523e64b7018b9dba08ff08ec14"
     },
     {
       "path": "src/SqlObserver.Infrastructure.Windows/SqlObserver.Infrastructure.Windows.csproj",
@@ -106,7 +106,7 @@
     },
     {
       "path": "src/SqlObserver.Infrastructure.Windows/packages.lock.json",
-      "sha256": "2e517dddc12dffd4123fdc2dd0886bea00767c87dc992dc293bb0a9d1a109124"
+      "sha256": "cdd70804a7d24f55062d3d2d36f1b14f39131e5cdf9c5c9e0f5b55485d7c83a9"
     },
     {
       "path": "src/SqlObserver.Mcp/SqlObserver.Mcp.csproj",
@@ -130,7 +130,7 @@
     },
     {
       "path": "src/SqlObserver.Observability/packages.lock.json",
-      "sha256": "5155e41a59144f5b151ebf8740dd978c29ec7d014197e1ec5f5f354c6606eadb"
+      "sha256": "9921a06f61fbd419a030273ecc8a58e96cffaf02bcf95e1c07088e62098b2468"
     },
     {
       "path": "src/SqlObserver.Reporting/SqlObserver.Reporting.csproj",
@@ -138,7 +138,7 @@
     },
     {
       "path": "src/SqlObserver.Reporting/packages.lock.json",
-      "sha256": "4b3733aee06824f3bc1364aa332176d2398de2136313bf30f4b16e3801f638f6"
+      "sha256": "15776e833ac6f2a174dc3bdfbebc0c93533720cb69868694bc8df23c364091a8"
     },
     {
       "path": "src/SqlObserver.Security/SqlObserver.Security.csproj",

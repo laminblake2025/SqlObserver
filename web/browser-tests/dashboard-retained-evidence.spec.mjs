@@ -1,3 +1,4 @@
+import { expandDisclosure } from './redesign-controls.mjs';
 import { test, expect } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 import { mkdir } from 'node:fs/promises';
@@ -144,7 +145,7 @@ test('delayed pinned Waits metadata cannot publish after target or exact window 
 test('retained lifecycle markers preserve resolved and refired cycles in database context', async ({ page }) => {
   await fixture(page); const reads=[],mutations=[];
   page.on('request',request=>{if(request.url().includes('/alerts/history'))reads.push(new URL(request.url()));if(!['GET','HEAD'].includes(request.method()))mutations.push(request.url());});
-  await page.goto(href('health',first,{...alertWindow,databaseId:'6',compare:'1',healthSection:'summary'}));await chooseAlerts(page);
+  await page.goto(href('health',first,{...alertWindow,databaseId:'6',compare:'1',healthSection:'summary'}));await chooseAlerts(page); await expandDisclosure(page,'Retained alerts, server lifecycle & SQL Agent evidence');
   await expect(timeline(page).getByRole('button',{name:/^Align charts: Alert /})).toHaveCount(16);
   await expect(alertAlign(page,'resolved')).toBeVisible();await alertAlign(page,'resolved').focus();await page.keyboard.press('Enter');
   await expect(alertAlign(page,'resolved')).toHaveAttribute('aria-pressed','true');

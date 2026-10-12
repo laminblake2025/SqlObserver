@@ -1,4 +1,4 @@
-import { revealHealthSupport } from './redesign-controls.mjs';
+import { revealHealthSupport, revealDashboardSupport, expandDisclosure } from './redesign-controls.mjs';
 import { test, expect } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 import { mkdir } from 'node:fs/promises';
@@ -183,7 +183,7 @@ test('deadlock-linked Activity chooses its matching native capture over a newer 
       sessionLogin: '2026-09-26T00:00:00', requestStart: '2026-09-26T09:59:00', delta: null };
     await route.fulfill({ status: 200, contentType: 'application/json', json: {
       snapshotId: matched ? matchedId : unrelatedId, observedUtc: matched ? matchedAt : newerAt,
-      repositoryTimeUtc: '2026-09-26T12:00:00Z', state: 'current', truncated: false,
+      repositoryTimeUtc: '2026-09-26T12:00:00Z', state: 'available', truncated: false,
       rows: [row], databases: [{ id: 5, name: 'Orders' }], nextCursor: null,
     } });
   });
@@ -286,7 +286,7 @@ test('dashboard baseline cards compare the latest bucket with its matching UTC h
   await baselineSummaryFixture(page);
   const reads = [];
   page.on('request', request => { if (new URL(request.url()).pathname.endsWith('/analytics/sql-baselines')) reads.push(request.url()); });
-  await page.goto(`${href('health')}&healthSection=summary`);
+  await page.goto(`${href('health')}&healthSection=summary`); await revealHealthSupport(page); await revealDashboardSupport(page);
   await page.getByRole('button', { name: 'Show UTC time', exact: true }).click();
   const card = cpuBaselineCard(page);
   await expect(card).toHaveAttribute('data-reference-state', 'available');
@@ -310,7 +310,7 @@ test('dashboard baseline cards compare the latest bucket with its matching UTC h
 test('partial dashboard baseline evidence remains labelled and a missing latest bucket never falls back to an older value', async ({ page }) => {
   await baselineSummaryFixture(page, 'partial');
   await page.context().addCookies([{ name: 'dashboardObservationState', value: 'partial', url: origin }]);
-  await page.goto(`${href('health')}&healthSection=summary`);
+  await page.goto(`${href('health')}&healthSection=summary`); await revealHealthSupport(page); await revealDashboardSupport(page);
   const card = cpuBaselineCard(page);
   await expect(card).toHaveAttribute('data-observation-state', 'partial');
   await expect(card).toContainText('Partial SQL observations; this mean describes only available samples.');
@@ -330,8 +330,8 @@ test('missing-hour foreign and failed dashboard baselines keep current observati
     await page.context().addCookies([{ name: 'dashboardBaselineState', value: state, url: origin }]);
     // An identical hash URL is same-document navigation; reload to read each
     // distinct synthetic reference failure rather than reusing the prior page.
-    if (state === 'missing-hour') await page.goto(`${href('health')}&healthSection=summary`);
-    else await page.reload();
+    if (state === 'missing-hour') await page.goto(`${href('health')}&healthSection=summary`); await revealHealthSupport(page); await revealDashboardSupport(page);
+    else { await page.reload(); await revealHealthSupport(page); await revealDashboardSupport(page); }
     const card = cpuBaselineCard(page);
     await expect(card.locator('.dashboard-baseline-value strong')).toHaveText('70');
     await expect(card).toHaveAttribute('data-reference-state', 'missing');
@@ -349,7 +349,7 @@ test('a delayed old-server baseline cannot populate the new server KPI cards', a
   await page.route(`**/observation-targets/${first}/analytics/sql-baselines?*`, async route => {
     const response = await route.fetch(); pending = true; await gate; await route.fulfill({ response });
   });
-  await page.goto(`${href('health')}&healthSection=summary`);
+  await page.goto(`${href('health')}&healthSection=summary`); await revealHealthSupport(page); await revealDashboardSupport(page);
   await expect.poll(() => pending).toBe(true);
   await page.getByRole('combobox', { name: 'Target server', exact: true }).selectOption(second);
   const card = cpuBaselineCard(page);
@@ -364,7 +364,7 @@ test('a delayed old-server baseline cannot populate the new server KPI cards', a
 
 test('a delayed old-window baseline response never overwrites the matching new-hour reference', async ({ page }) => {
   await baselineSummaryFixture(page);
-  await page.goto(`${href('health')}&healthSection=summary`);
+  await page.goto(`${href('health')}&healthSection=summary`); await revealHealthSupport(page); await revealDashboardSupport(page);
   const card = cpuBaselineCard(page);
   await expect(card.locator('dd')).toHaveText(['50 %', '55 %', '60 %']);
   let release, pending = false, reads = 0;
@@ -390,7 +390,7 @@ test('a delayed old-window baseline response never overwrites the matching new-h
 test('Investigate first promotes plan comparisons with correctly scoped temporal context and evidence links', async ({ page }) => {
   await timelineFixture(page);
   await page.context().addCookies([{ name: 'investigationContextFixture', value: '1', url: origin }]);
-  await page.goto(`${href('health')}&healthSection=summary`);
+  await page.goto(`${href('health')}&healthSection=summary`); await revealHealthSupport(page); await revealDashboardSupport(page);
   await page.getByRole('button', { name: 'Show UTC time', exact: true }).click();
   const summary = attentionSummary(page), plan = planAttention(page, 6);
   await expect(plan).toBeVisible();
@@ -427,7 +427,7 @@ test('Investigate first retains explicit source gaps and never attaches temporal
     body.evidence[0].issues.unshift({ targetId: first, server: 'SYNTHETIC SQL 01', title: 'SYNTHETIC current-only exception', detail: 'Synthetic current snapshot outside selected history.', destination: 'activity', priority: 0, observedAtUtc: '2026-09-26T12:00:00.000001Z' });
     await route.fulfill({ response, json: body });
   });
-  await page.goto(`${href('health')}&healthSection=summary`);
+  await page.goto(`${href('health')}&healthSection=summary`); await revealHealthSupport(page); await revealDashboardSupport(page);
   const summary = attentionSummary(page);
   const outside = summary.getByRole('link', { name: /^SYNTHETIC current-only exception/ }).locator('xpath=parent::li');
   await expect(outside).toContainText('Latest overview evidence outside the selected history window');
@@ -548,6 +548,7 @@ test('Viewer activity inspection exposes metadata but no protected SQL action or
   await page.goto(sessionHref('c'.repeat(64)));
   const detail = page.getByRole('region', { name: 'Session details', exact: true });
   await expect(detail.getByRole('heading', { name: 'Session 51', exact: true })).toBeVisible();
+  await detail.getByRole('button', { name: 'Captured SQL', exact: true }).click();
   await expect(detail).toContainText('Captured SQL is hidden. Query Text Reader access is required for this server.');
   await expect(detail.getByRole('button', { name: 'Load captured SQL', exact: true })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Open incident', exact: true })).toHaveCount(0);
@@ -560,6 +561,7 @@ test('revoking Query Text Reader while captured SQL is pending hides the action 
   await page.context().addCookies([{ name: 'activityQueryReaderFixture', value: '1', url: origin }]);
   await page.goto(sessionHref('c'.repeat(64)));
   const detail = page.getByRole('region', { name: 'Session details', exact: true });
+  await detail.getByRole('button', { name: 'Captured SQL', exact: true }).click();
   const load = detail.getByRole('button', { name: 'Load captured SQL', exact: true });
   await expect(load).toBeEnabled();
   let release, pending = false;
@@ -570,6 +572,7 @@ test('revoking Query Text Reader while captured SQL is pending hides the action 
   await load.press('Enter'); await expect.poll(() => pending).toBe(true);
   await page.context().addCookies([{ name: 'activityQueryReaderFixture', value: '0', url: origin }]);
   await page.getByRole('button', { name: '↻ Refresh', exact: true }).click();
+  await detail.getByRole('button', { name: 'Captured SQL', exact: true }).click();
   await expect(detail).toContainText('Captured SQL is hidden. Query Text Reader access is required for this server.');
   await expect(load).toHaveCount(0);
   release();
@@ -690,6 +693,7 @@ test('Activity URL finds the exact paged request identity rather than another ro
   await page.reload();
   await expect(detail.getByRole('heading', { name: 'Session 51', exact: true })).toBeVisible();
   expect(protectedReads).toHaveLength(0);
+  await detail.getByRole('button', { name: 'Captured SQL', exact: true }).click();
   await detail.getByRole('button', { name: 'Load captured SQL', exact: true }).press('Enter');
   await expect(detail.locator('pre.query-text')).toHaveText('SELECT 1 AS synthetic_fixture_only;');
   expect(protectedReads).toHaveLength(1);
@@ -705,10 +709,11 @@ test('Activity loaded selection and chain survive reload and history navigation 
   const table = page.getByRole('region', { name: 'Loaded session observations', exact: true });
   await table.getByRole('button', { name: 'Inspect 51/0', exact: true }).press('Enter');
   await expect.poll(() => Object.fromEntries(scope(page))).toMatchObject({ sessionSnapshot, sessionObserved, sessionIdentity: 'a'.repeat(64), range: '1h' });
-  const chain = page.getByRole('combobox', { name: 'Blocking chain (loaded page)', exact: true });
+  await expandDisclosure(page, 'Advanced session filters');
+  const chain = page.getByRole('combobox', { name: 'Blocking chain (capture)', exact: true });
   await chain.selectOption('session:51');
   await expect.poll(() => scope(page).get('sessionChain')).toBe('session:51');
-  await page.reload();
+  await page.reload(); await expandDisclosure(page, 'Advanced session filters');
   await expect(chain).toHaveValue('session:51');
   await expect(page.getByRole('region', { name: 'Session details', exact: true }).getByRole('heading', { name: 'Session 51', exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Clear chain filter', exact: true }).click();
@@ -725,8 +730,8 @@ test('Activity missing snapshot identity or exact observed time never substitute
   for (const url of [sessionHref('f'.repeat(64)), sessionHref('a'.repeat(64), sessionObserved, '77777777-7777-4777-8777-777777777777'), sessionHref('a'.repeat(64), '2026-09-26T11:30:00.123457Z')]) {
     await page.goto(url);
     await expect(page.getByRole('region', { name: 'Session details', exact: true })).toHaveCount(0);
-    await expect(page.locator('.live-sessions')).toContainText(/requested.*(?:not present|unavailable|not found|did not match|does not match|missing|outside the 24-hour retention)|Session snapshot did not match the requested capture and observation time/i);
-    await expect(page.locator('.live-sessions button[aria-pressed="true"]').filter({ hasText: /^Inspect / })).toHaveCount(0);
+    await expect(page.locator('.activity-capture-screen')).toContainText(/requested.*(?:not present|unavailable|not found|did not match|does not match|missing|outside the 24-hour retention)|Session snapshot did not match the requested capture and observation time/i);
+    await expect(page.locator('.activity-capture-screen button[aria-pressed="true"]').filter({ hasText: /^Inspect / })).toHaveCount(0);
     expect(scope(page).get('sessionIdentity')).toBeTruthy();
   }
   expect(protectedReads).toBe(0);
@@ -916,14 +921,14 @@ test('acknowledgement from a prior firing cycle cannot mark refreshed alert evid
 test('query palette prefills only a selected database in the current server catalog and explains missing context', async ({ page }) => {
   await databaseFixture(page);
   await page.context().addCookies([{ name: 'paletteCatalogFixture', value: '1', url: origin }]);
-  await page.goto(`${href('health')}&databaseId=6`);
+  await page.goto(`${href('health')}&databaseId=6`); await revealHealthSupport(page); await revealDashboardSupport(page);
   await page.keyboard.press('Control+k');
   const dialog = page.getByRole('dialog', { name: 'Jump to evidence' });
   await dialog.getByRole('button', { name: 'Query hash', exact: true }).click();
   await expect(dialog.getByRole('spinbutton', { name: 'Database ID', exact: true })).toHaveValue('6');
   await expect(dialog.locator('#query-search-databases option[value="6"]')).toHaveAttribute('label', 'Warehouse');
   await page.keyboard.press('Escape');
-  await page.goto(`${href('health')}&databaseId=99`);
+  await page.goto(`${href('health')}&databaseId=99`); await revealHealthSupport(page); await revealDashboardSupport(page);
   await page.keyboard.press('Control+k');
   await dialog.getByRole('button', { name: 'Query hash', exact: true }).click();
   const database = dialog.getByRole('spinbutton', { name: 'Database ID', exact: true });
@@ -943,7 +948,7 @@ test('delayed query palette catalog from a prior server cannot prefill the new s
   await page.route(`**/${first}/query-performance/status`, async route => { const response = await route.fetch(); requested = true; await gate; await route.fulfill({ response }).catch(() => {}); returned = true; });
   const dialog = page.getByRole('dialog', { name: 'Jump to evidence' });
   try {
-    await page.goto(`${href('health')}&databaseId=6`);
+    await page.goto(`${href('health')}&databaseId=6`); await revealHealthSupport(page); await revealDashboardSupport(page);
     await page.keyboard.press('Control+k');
     await dialog.getByRole('button', { name: 'Query hash', exact: true }).click();
     await expect.poll(() => requested).toBe(true);
@@ -995,7 +1000,7 @@ test('diagnostic navigation and server changes retain the selected historical wi
 });
 
 test('authorized server selector retains historical and database scope across diagnostic navigation', async ({ page }) => {
-  await databaseFixture(page); await page.goto(href('health')+'&databaseId=6');
+  await databaseFixture(page); await page.goto(href('health')+'&databaseId=6'); await revealHealthSupport(page); await revealDashboardSupport(page);
   const selector=page.getByRole('combobox',{name:'Target server',exact:true});
   for(const label of [null,'Resources','Queries']){
     if(label)await page.getByRole('navigation',{name:'Server diagnostics',exact:true}).getByRole('link',{name:label,exact:true}).click();
@@ -1337,7 +1342,7 @@ test('viewer actions name the required roles and missing coverage is never an al
   await expect(page.getByText('0/1 servers reporting current SQL core evidence', { exact: true })).toBeVisible();
   await page.getByText('Collection coverage and evidence gaps', { exact: true }).click();
   await expect(page.getByText('Synthetic collection timeout', { exact: true })).toBeVisible();
-  await page.goto(href('health'));
+  await page.goto(href('health')); await revealHealthSupport(page); await revealDashboardSupport(page);
   await openInvestigationWorkspace(page);
   await expect(page.getByText('Operator or Target Administrator access unlocks saving an incident for this server.', { exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Open incident', exact: true })).toHaveCount(0);
@@ -1485,7 +1490,7 @@ test('blocking chains filter loaded rows locally and preserve an unrelated inspe
   await open(page, 'activity', first, '1h');
   const live = page.getByRole('region', { name: 'Live sessions', exact: true });
   const table = live.getByRole('region', { name: 'Loaded session observations', exact: true });
-  const chain = live.getByRole('combobox', { name: 'Blocking chain (loaded page)', exact: true });
+  const chain = live.getByRole('combobox', { name: 'Blocking chain (capture)', exact: true });
   await expect(table.getByRole('button', { name: /^Inspect / })).toHaveCount(7);
   await page.getByRole('button', { name: 'Pause live updates', exact: true }).click();
   await table.getByRole('button', { name: 'Inspect 90/0', exact: true }).click();
@@ -1520,7 +1525,7 @@ test('a selected chain disappearing from the next snapshot produces explicit zer
   await open(page, 'activity', first, '1h');
   const live = page.getByRole('region', { name: 'Live sessions', exact: true });
   const table = live.getByRole('region', { name: 'Loaded session observations', exact: true });
-  const chain = live.getByRole('combobox', { name: 'Blocking chain (loaded page)', exact: true });
+  const chain = live.getByRole('combobox', { name: 'Blocking chain (capture)', exact: true });
   await expect(table.getByRole('button', { name: /^Inspect / })).toHaveCount(7);
   await page.getByRole('button', { name: 'Pause live updates', exact: true }).click();
   await live.getByRole('button', { name: 'Filter chain: Session 51', exact: true }).click();
@@ -1555,7 +1560,7 @@ async function assertDatabaseScope(page, databaseId) {
 
 test('workspace database follows diagnostic navigation, time edits, reload and browser history', async ({ page }) => {
   await databaseFixture(page);
-  await page.goto(href('health'));
+  await page.goto(href('health')); await revealHealthSupport(page); await revealDashboardSupport(page);
   await expect(workspaceDatabase(page).getByRole('option', { name: /^Warehouse / })).toHaveCount(1);
   await workspaceDatabase(page).selectOption('6');
   await assertDatabaseScope(page, 6);
@@ -1680,7 +1685,7 @@ test('delayed database inventory from an old target never supplies names for the
   const gate = new Promise(resolve => { release = resolve; });
   await page.route(`**/${first}/health/databases?*`, async route => { requested = true; await gate; await route.continue().catch(() => {}); });
   try {
-    await page.goto(href('health'));
+    await page.goto(href('health')); await revealHealthSupport(page); await revealDashboardSupport(page);
     await expect.poll(() => requested).toBe(true);
     await page.getByRole('combobox', { name: 'Target server', exact: true }).selectOption(second);
     await expect(workspaceDatabase(page).getByRole('option', { name: /^Warehouse 02 / })).toHaveCount(1);
@@ -1821,7 +1826,7 @@ test('aligning a Live timeline event freezes its loaded window and retains keybo
 
 test('selected Agent timeline marker retains its focused button during a pending refresh and becomes explicitly missing after failure', async ({ page }) => {
   await timelineFixture(page);
-  await page.goto(`${href('health')}&healthSection=summary`);
+  await page.goto(`${href('health')}&healthSection=summary`); await revealHealthSupport(page); await revealDashboardSupport(page);
   await browseTimelineEvents(page);
   const timeline = investigationTimeline(page);
   const selected = timeline.getByRole('button', { name: /^Align charts: SQL Agent job failure/ }).first();
@@ -1889,7 +1894,7 @@ test('Overview previous-period comparison requests retain the exact microsecond 
 
 test('requested timeline selection remains explicit when hidden or absent and never selects another event', async ({ page }) => {
   await timelineFixture(page);
-  await page.goto(`${href('health')}&databaseId=6`);
+  await page.goto(`${href('health')}&databaseId=6`); await revealHealthSupport(page); await revealDashboardSupport(page);
   await browseTimelineEvents(page);
   const timeline = investigationTimeline(page), category = timeline.getByRole('combobox', { name: 'Timeline event category', exact: true });
   await expect(planTimelineButtons(page)).toHaveCount(1);
@@ -1920,7 +1925,7 @@ test('requested timeline selection remains explicit when hidden or absent and ne
 
 test('delayed requested timeline evidence cannot restore a selection after switching servers', async ({ page }) => {
   await timelineFixture(page);
-  await page.goto(`${href('health')}&databaseId=6`);
+  await page.goto(`${href('health')}&databaseId=6`); await revealHealthSupport(page); await revealDashboardSupport(page);
   await browseTimelineEvents(page);
   await expect(planTimelineButtons(page)).toHaveCount(1);
   await planTimelineButtons(page).click();
@@ -2031,7 +2036,7 @@ test('investigation timeline remains usable when dashboard metric series contain
     const body = await response.json();
     await route.fulfill({ response, json: { ...body, evidence: body.evidence.map(item => ({ ...item, series: [] })) } });
   });
-  await page.goto(href('health'));
+  await page.goto(href('health')); await revealHealthSupport(page); await revealDashboardSupport(page);
   await browseTimelineEvents(page);
   await expect(planTimelineButtons(page)).toHaveCount(2);
   const timeline = investigationTimeline(page);
@@ -2054,7 +2059,7 @@ test('investigation timeline remains usable when dashboard metric series contain
 
 test('timeline category keyboard control aligns shared charts and preserves exact hidden selections', async ({ page }) => {
   await timelineFixture(page);
-  await page.goto(href('health'));
+  await page.goto(href('health')); await revealHealthSupport(page); await revealDashboardSupport(page);
   await browseTimelineEvents(page);
   await expect(planTimelineButtons(page)).toHaveCount(2);
   const timeline = investigationTimeline(page);
@@ -2101,7 +2106,7 @@ test('timeline category keyboard control aligns shared charts and preserves exac
 
 test('timeline database context filters plan comparisons while retaining server deadlocks and opens the current plan', async ({ page }) => {
   await timelineFixture(page);
-  await page.goto(`${href('health')}&compare=1`);
+  await page.goto(`${href('health')}&compare=1`); await revealHealthSupport(page); await revealDashboardSupport(page);
   await browseTimelineEvents(page);
   await expect(planTimelineButtons(page)).toHaveCount(2);
   await workspaceDatabase(page).selectOption('6');
@@ -2159,7 +2164,7 @@ test('timeline database context filters plan comparisons while retaining server 
 
 test('failed plan comparison refresh removes old leads and reports unavailable coverage honestly', async ({ page }) => {
   await timelineFixture(page);
-  await page.goto(href('health'));
+  await page.goto(href('health')); await revealHealthSupport(page); await revealDashboardSupport(page);
   await browseTimelineEvents(page);
   await expect(planTimelineButtons(page)).toHaveCount(2);
   await page.route(`**/${first}/query-performance/regressions?*`, route => route.fulfill({ status: 503, json: {} }));
@@ -2180,7 +2185,7 @@ test('delayed old-target plan comparisons never reappear in the new server timel
   const gate = new Promise(resolve => { release = resolve; });
   await page.route(`**/${first}/query-performance/regressions?*`, async route => { requested = true; await gate; await route.continue().catch(() => {}); continued = true; });
   try {
-    await page.goto(href('health'));
+    await page.goto(href('health')); await revealHealthSupport(page); await revealDashboardSupport(page);
     await expect.poll(() => requested).toBe(true);
     await page.getByRole('combobox', { name: 'Target server', exact: true }).selectOption(second);
     await browseTimelineEvents(page);
@@ -2195,7 +2200,7 @@ test('delayed old-target plan comparisons never reappear in the new server timel
 
 test('timeline plan comparisons clear during a window read and reject its delayed result after another rewind', async ({ page }) => {
   await timelineFixture(page);
-  await page.goto(href('health'));
+  await page.goto(href('health')); await revealHealthSupport(page); await revealDashboardSupport(page);
   await browseTimelineEvents(page);
   await expect(planTimelineButtons(page)).toHaveCount(2);
   let release, requested = false, continued = false;
@@ -2247,8 +2252,8 @@ test('malformed foreign and oversized Health evidence fails visibly without cras
   });
   for (const next of ['malformed', 'foreign', 'oversized']) {
     mode = next;
-    if (next === 'malformed') await page.goto(`${href('health')}&healthSection=summary`);
-    else await page.reload();
+    if (next === 'malformed') await page.goto(`${href('health')}&healthSection=summary`); await revealHealthSupport(page); await revealDashboardSupport(page);
+    else { await page.reload(); await revealHealthSupport(page); await revealDashboardSupport(page); }
     await expect(page.getByRole('alert').filter({ hasText: healthContractFailure })).toBeVisible();
     await expect(page.getByRole('region', { name: 'Latest SQL buckets and hourly baselines', exact: true })).toBeVisible();
     await expect(page.getByText('Evaluated using repository time:', { exact: false })).toHaveCount(0);
@@ -2287,7 +2292,7 @@ test('malformed database option and mismatched configuration history remain expl
     const response = await route.fetch(), body = await response.json(); body.fromUtc = '2026-09-26T08:00:00.000001Z';
     await route.fulfill({ response, json: body });
   });
-  await page.goto(`${href('health')}&healthSection=databases`);
+  await page.goto(`${href('health')}&healthSection=databases`); await revealHealthSupport(page); await revealDashboardSupport(page);
   await expect(page.getByRole('region', { name: 'Database option changes', exact: true })).toContainText('Option history is unavailable.');
   await page.getByRole('tab', { name: 'Dashboard', exact: true }).click();
   await expect(page.getByRole('region', { name: 'Server configuration changes', exact: true })).toContainText('Configuration history is unavailable or changed while paging.');

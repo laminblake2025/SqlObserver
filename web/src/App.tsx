@@ -383,10 +383,10 @@ export function App() {
 
       <div className="workspace">
         <header className="topbar" aria-label="Workspace context">
-          <label className="topbar-server"><span className="visually-hidden">Server</span><select aria-label="Target server" disabled={catalogDenied} value={route.target} onChange={event => { location.hash = routeHref(route.page, event.target.value); }}>
+          {route.page !== "rule-templates" && <label className="topbar-server"><span className="visually-hidden">Server</span><select aria-label="Target server" disabled={catalogDenied} value={route.target} onChange={event => { location.hash = routeHref(route.page, event.target.value); }}>
             <option value="">{targetPage ? "Select server" : "All servers"}</option>
             {targetOptions.map(target => <option key={target.instanceId} value={target.instanceId.toLowerCase()}>{target.displayName}</option>)}
-          </select></label>
+          </select></label>}
           {selected && <DatabaseScopeControls targetId={selected.instanceId} databaseId={scope.databaseId} onChange={changeDatabaseContext} refresh={slowRefresh} compact />}
           {usesTimeContext && <div className="topbar-time-controls overview-controls" aria-label="Workspace time context"><TimeRangeControls scope={scope} onChange={changeTimeContext} maximumDays={maxTimeRangeDays} /></div>}
           {!isRewind ? <button className="time-mode-pill" type="button" aria-pressed={livePaused} onClick={() => { if (livePaused) setLiveTick(wakeLiveTick); setLivePaused(value => !value); }} title={livePaused ? "Resume live updates" : "Pause live updates"}><i aria-hidden="true"/>{livePaused ? "Paused" : "Live"}</button> : <><span className="time-mode-pill frozen">Frozen</span><button className="secondary-button return-live" onClick={() => changeTimeContext({range: "1h", from: undefined, to: undefined})}>Return to Live</button></>}

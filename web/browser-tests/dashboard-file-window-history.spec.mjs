@@ -77,7 +77,7 @@ test('selecting a received receipt in Live freezes the global window and exact r
  await expect.poll(()=>params(page)).toMatchObject({range:'custom',from:bound.fromUtc,to:bound.toUtc,fileSnapshotRun:receipt.runId,fileSnapshotRevision:'1'});
  await expect(snapshot(page)).toContainText(receipt.runId);const fixed=params(page),count=context.reads.length;await page.clock.runFor(61000);
  expect(params(page)).toEqual(fixed);expect(context.reads).toHaveLength(count);
- await page.locator('.page-actions').getByRole('button',{name:/Refresh/}).click();
+ await page.getByRole('button', { name: '↻ Refresh', exact: true }).click();
  await expect.poll(()=>context.reads.slice(count).some(url=>url.pathname.endsWith('/'+receipt.runId))).toBe(true);
  await expect(panel(page).getByRole('button',{name:'Refresh file snapshot',exact:true})).toBeEnabled();await expect(snapshot(page)).toContainText(receipt.runId);
  const pinnedReads=context.reads.slice(pinOffset).filter(url=>/\/history\//.test(url.pathname));

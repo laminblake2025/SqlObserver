@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { revealHealthSupport } from './redesign-controls.mjs';
 import AxeBuilder from '@axe-core/playwright';
 import { mkdir } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
@@ -63,6 +64,7 @@ test('built configuration recovery requires explicit current-state readback in R
       targetRevision: 1, collectorEnabled: enabled, scheduleRevision: 2 } });
   });
   await page.goto(href('health'));
+  await revealHealthSupport(page);
   const panel = page.getByRole('region', { name: 'Current server settings', exact: true });
   await expect(panel).toContainText('even when the timeline is rewound');
   await panel.getByRole('button', { name: 'Enable configuration collection', exact: true }).click();

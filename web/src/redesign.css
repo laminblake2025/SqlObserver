@@ -292,6 +292,12 @@
 
 @media (max-width:850px) {
  .app-layout .server-dashboard-chart .overview-chart { max-height:none; min-height:180px; }
+ .app-layout .sidebar { flex-wrap:wrap; gap:8px; }
+ .app-layout .brand-lockup { min-width:0; flex:1 1 120px; }
+ .app-layout .brand-lockup div { min-width:0; }
+ .app-layout .brand-lockup strong { white-space:normal; overflow-wrap:anywhere; }
+ .app-layout .brand-mark { flex-shrink:0; }
+ .app-layout .mobile-navigation-toggle { flex:0 0 auto; max-width:100%; }
 }
 
 /* Keep the shared system-color palette authoritative after the redesign palette. */

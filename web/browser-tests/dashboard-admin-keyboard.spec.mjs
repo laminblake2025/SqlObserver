@@ -147,13 +147,13 @@ test('access loss cancels a held edit and a restored role requires explicit reop
   await editor(page).getByRole('textbox', { name: 'Configuration reference', exact: true }).press('Enter');
   await expect.poll(() => context.mutations.length).toBe(1);
   context.roles = ['Viewer'];
-  await page.locator('.page-actions').getByRole('button', { name: /Refresh/u }).click();
+  await page.getByRole('button', { name: '↻ Refresh', exact: true }).click();
   await expect(editor(page)).toHaveCount(0);
   await expect.poll(() => context.failedRequests.length).toBe(1);
   release(); await finished;
   await expect(page.getByText('Destination updated. Approval is required for the new revision.', { exact: true })).toHaveCount(0);
   context.roles = roles;
-  await page.locator('.page-actions').getByRole('button', { name: /Refresh/u }).click();
+  await page.getByRole('button', { name: '↻ Refresh', exact: true }).click();
   const manage = page.getByRole('complementary', { name: 'HTTPS webhook', exact: true }).getByRole('button', { name: 'Manage destination', exact: true });
   await expect(manage).toBeVisible(); await expect(editor(page)).toHaveCount(0);
   await manage.press('Enter');
