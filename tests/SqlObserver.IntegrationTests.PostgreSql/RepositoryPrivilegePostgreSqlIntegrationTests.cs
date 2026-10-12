@@ -61,7 +61,11 @@ public sealed class RepositoryPrivilegePostgreSqlIntegrationTests
             SELECT p.oid::regprocedure::text,pg_get_userbyid(p.proowner),p.prosecdef,p.proconfig,
                 has_function_privilege('sqlobserver_collector',p.oid,'EXECUTE'),
                 has_function_privilege('sqlobserver_server',p.oid,'EXECUTE'),
-                has_function_privilege('sqlobserver_auditor',p.oid,'EXECUTE')
+                has_function_privilege('sqlobserver_auditor',p.oid,'EXECUTE'),
+                has_function_privilege('sqlobserver_migrator',p.oid,'EXECUTE'),
+                p.oid IN ('system.collection_run_reference_holds(uuid,uuid)'::regprocedure,
+                    'system.collection_run_non_fk_holds(uuid,uuid,timestamptz,timestamptz)'::regprocedure),
+                p.oid='system.plan_cache_content_payload_hold(uuid)'::regprocedure
             FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
             WHERE n.nspname=ANY(@schemas) ORDER BY p.oid::regprocedure::text;
             """);
@@ -70,6 +74,8 @@ public sealed class RepositoryPrivilegePostgreSqlIntegrationTests
         {
             int count = 0;
             bool expirySeen = false;
+            int dependencyReadersSeen = 0;
+            bool payloadHoldSeen = false;
             while (await reader.ReadAsync())
             {
                 count++;
@@ -93,10 +99,40 @@ public sealed class RepositoryPrivilegePostgreSqlIntegrationTests
                     Assert.False(reader.GetBoolean(5));
                     Assert.False(reader.GetBoolean(6));
                 }
+                else if (reader.GetBoolean(9))
+                {
+                    payloadHoldSeen = true;
+                    Assert.Equal("sqlobserver_payload_expirer", reader.GetString(1));
+                    Assert.True(reader.GetBoolean(2));
+                    string[] configuration = reader.GetFieldValue<string[]>(3);
+                    Assert.Contains("search_path=pg_catalog", configuration);
+                    Assert.Contains("row_security=on", configuration);
+                    Assert.Contains("TimeZone=UTC", configuration);
+                    Assert.False(reader.GetBoolean(4));
+                    Assert.False(reader.GetBoolean(5));
+                    Assert.False(reader.GetBoolean(6));
+                    Assert.False(reader.GetBoolean(7));
+                }
+                else if (reader.GetBoolean(8))
+                {
+                    dependencyReadersSeen++;
+                    Assert.Equal("sqlobserver_run_dependency_reader", reader.GetString(1));
+                    Assert.True(reader.GetBoolean(2));
+                    string[] configuration = reader.GetFieldValue<string[]>(3);
+                    Assert.Contains("search_path=pg_catalog", configuration);
+                    Assert.Contains("row_security=on", configuration);
+                    Assert.Contains("TimeZone=UTC", configuration);
+                    Assert.False(reader.GetBoolean(4));
+                    Assert.False(reader.GetBoolean(5));
+                    Assert.False(reader.GetBoolean(6));
+                    Assert.True(reader.GetBoolean(7));
+                }
                 else Assert.Equal("sqlobserver_migrator", reader.GetString(1));
             }
             Assert.True(count > 0);
             Assert.True(expirySeen);
+            Assert.Equal(2, dependencyReadersSeen);
+            Assert.True(payloadHoldSeen);
         }
 
         foreach (string relation in new[]
