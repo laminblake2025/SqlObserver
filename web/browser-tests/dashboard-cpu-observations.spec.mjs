@@ -5,8 +5,8 @@ import {fileURLToPath} from 'node:url';
 import {cpuObservationBinding as binding,cpuObservationAlpha as alpha,cpuObservationFixtureReceipt,installCpuObservationHistoryFixture} from '../tools/cpu-observation-history-fixture.mjs';
 const sessions=new WeakMap(),panel=p=>p.getByRole('region',{name:'CPU component observations',exact:true}),exact=p=>panel(p).getByRole('region',{name:'Selected CPU observation',exact:true});
 test.beforeEach(async({page})=>{
- await page.clock.install({time:new Date('2026-10-04T12:00:00Z')});await page.context().addCookies(['dashboardRefactor','resourceInspectionFixture'].map(name=>({name,value:'1',url:'http://127.0.0.1:4322'})).concat([{name:'chartReferenceRole',value:'viewer',url:'http://127.0.0.1:4322'}]));
- const session=await installCpuObservationHistoryFixture(page,{origin:'http://127.0.0.1:4322',allowOtherApi:true,adjusted:true,componentGap:true});sessions.set(page,session);page.on('pageerror',e=>session.unexpected.push(e.message));
+ await page.clock.install({time:new Date('2026-10-04T12:00:00Z')});await page.context().addCookies(['dashboardRefactor','resourceInspectionFixture'].map(name=>({name,value:'1',url:'http://127.0.0.1:4432'})).concat([{name:'chartReferenceRole',value:'viewer',url:'http://127.0.0.1:4432'}]));
+ const session=await installCpuObservationHistoryFixture(page,{origin:'http://127.0.0.1:4432',allowOtherApi:true,adjusted:true,componentGap:true});sessions.set(page,session);page.on('pageerror',e=>session.unexpected.push(e.message));
 });
 test.afterEach(async({page})=>expect(sessions.get(page).unexpected).toEqual([]));
 for(const width of [320,1440])test('Resources composes independent CPU observations with preserved raw capture history at '+width,async({page})=>{

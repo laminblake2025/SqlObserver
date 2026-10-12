@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { evidence, database } from '../component-tests/healthFixture.mjs';
 
-const origin = 'http://127.0.0.1:4322';
+const origin = 'http://127.0.0.1:4432';
 const target = '11111111-1111-4111-8111-000000000002';
 async function installLegacyInventory(page, invalid = false) {
   await page.context().addCookies([{name:'dashboardRefactor',value:'1',url:origin},

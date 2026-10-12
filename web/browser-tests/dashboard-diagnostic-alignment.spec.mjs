@@ -3,7 +3,7 @@ import AxeBuilder from '@axe-core/playwright';
 import { mkdir } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 
-const origin = 'http://127.0.0.1:4322';
+const origin = 'http://127.0.0.1:4432';
 const alpha = '11111111-1111-4111-8111-000000000001', beta = '11111111-1111-4111-8111-000000000002';
 const from = '2026-10-02T08:00:00.123456Z', to = '2026-10-02T12:00:00.123456Z', at = '2026-10-02T10:00:00.654321Z';
 const query = '000000001000' + '0'.repeat(52), plan = '000000002000' + '0'.repeat(52);
@@ -175,11 +175,11 @@ for (const surface of ['queries', 'waits']) test(`${labels[surface]} same-window
 
 test('Same-window navigation carries exact inspection across Queries, Waits, Fleet and Dashboard tabs', async ({ page }) => {
   await open(page, 'queries', { chartAt: at }); await aligned(page, 'queries');
-  const mainNavigation = page.getByRole('navigation', { name: 'Main navigation', exact: true });
+  const mainNavigation = page.locator('nav');
   await mainNavigation.getByRole('link', { name: 'Waits', exact: true }).click();
   await expect(input(page, 'waits')).toBeVisible(); await expect(controls(page, 'waits').locator('time')).toHaveAttribute('datetime', at);
   expect(parameters(page).get('chartAt')).toBe(at);
-  await mainNavigation.getByRole('link', { name: 'Overview', exact: true }).click();
+  await mainNavigation.getByRole('link', { name: 'Fleet', exact: true }).click();
   const fleet = page.getByRole('region', { name: 'Fleet chart alignment', exact: true });
   await expect(fleet.locator('time')).toHaveAttribute('datetime', at);
   const server = page.getByRole('navigation', { name: 'Loaded server status', exact: true }).locator('a').filter({ hasText: 'SYNTHETIC SQL 01' });
@@ -193,7 +193,7 @@ test('Same-window navigation carries exact inspection across Queries, Waits, Fle
   await expect(dashboard.locator('time')).toHaveAttribute('datetime', at); expect(parameters(page).get('chartAt')).toBe(at);
   for (const key of ['target', 'range', 'from', 'to', 'databaseId', 'compare'])
     expect(parameters(page).get(key)).toBe(new URLSearchParams(href('queries').split('?')[1]).get(key));
-  await mainNavigation.getByRole('link', { name: 'Query performance', exact: true }).click();
+  await mainNavigation.getByRole('link', { name: 'Queries', exact: true }).click();
   await expect(input(page, 'queries')).toBeVisible(); await expect(controls(page, 'queries').locator('time')).toHaveAttribute('datetime', at);
   await settled(page);
 });

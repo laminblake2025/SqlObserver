@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 import { mkdir } from 'node:fs/promises';
 
-const origin = 'http://127.0.0.1:4322';
+const origin = 'http://127.0.0.1:4432';
 const target = '11111111-1111-4111-8111-000000000001';
 const from = '2026-09-26T08:00:00.123456Z', to = '2026-09-26T12:00:00.654321Z';
 const scan = '22222222-2222-4222-8222-222222222222';

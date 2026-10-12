@@ -83,6 +83,12 @@ public sealed class BaselineHourPersistencePostgreSqlTests(PostgreSql18Fixture f
         Assert.Equal(repair.Descriptor.Number.Value, Assert.Single(upgrade.Results).Migration.Number.Value);
         Assert.Equal(legacyBefore, await ReadUnknownRowsAsync(database, target));
         Assert.Equal(functionsBefore, await ReadFunctionMetadataAsync(database));
+        // The current port requires the later versioned claim contract. Verify
+        // 0081 in isolation above, then exercise the port on the current schema.
+        MigrationBatchResult current = await new PostgreSqlMigrationPort(database.DataSource)
+            .ApplyPendingAsync(new MigrationApplyRequest(MigrationBatchResult.MaximumResults, Timeout), CancellationToken.None);
+        Assert.False(current.HasFailures);
+        Assert.Equal(legacyBefore, await ReadUnknownRowsAsync(database, target));
         await using NpgsqlDataSource collector = database.CreateCollectorDataSource();
         var repository = new PostgreSqlAnalyticsRepositoryPort(collector, new IdentityFingerprintKey(new byte[32]));
         AnalyticsJobRequest request = await ClaimBaselineAsync(database, collector, repository, target);

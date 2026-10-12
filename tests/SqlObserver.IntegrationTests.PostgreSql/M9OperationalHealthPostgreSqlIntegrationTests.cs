@@ -130,7 +130,8 @@ public sealed partial class M9OperationalHealthPostgreSqlIntegrationFixtureTests
                      array_agg(manifest_sha256 ORDER BY execution_order) manifests,
                      array_agg(asset_bundle_sha256 ORDER BY execution_order) bundles,
                      array_agg(execution_order ORDER BY execution_order) orders
-                FROM control.collector_contract WHERE execution_order BETWEEN 1 AND 13;
+                FROM control.collector_contract WHERE execution_order BETWEEN 1 AND 13
+                  AND collector_version=1;
             """);
         await using var catalogReader = await catalogCommand.ExecuteReaderAsync();
         Assert.True(await catalogReader.ReadAsync());
@@ -596,10 +597,10 @@ public sealed partial class M9OperationalHealthPostgreSqlIntegrationFixtureTests
         Assert.True(registryCount >= 21);
         await using var tableCommand = new NpgsqlCommand("SELECT count(*) FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace CROSS JOIN generate_series(current_date-1,current_date+1,interval '1 day') d WHERE n.nspname='telemetry' AND c.relname = ANY(ARRAY(SELECT parent_name||'_'||to_char(d,'YYYYMMDD') FROM unnest(ARRAY['backup_status_snapshot','sql_agent_failure_scan_snapshot','sql_agent_failure_occurrence','tempdb_snapshot','tempdb_file_snapshot','availability_group_replica_snapshot','availability_group_database_snapshot']) parent_name));", connection);
         Assert.Equal(21L, Convert.ToInt64(await tableCommand.ExecuteScalarAsync(), System.Globalization.CultureInfo.InvariantCulture));
-        await using var retentionCommand = new NpgsqlCommand("SELECT count(*),bool_and(NOT enabled) FROM system.retention_policy WHERE data_class LIKE 'm9_%';", connection);
+        await using var retentionCommand = new NpgsqlCommand("SELECT count(*),bool_and(enabled = (data_class NOT IN ('m9_agent_failures','m9_tempdb_files'))) FROM system.retention_policy WHERE data_class LIKE 'm9_%';", connection);
         await using NpgsqlDataReader retentionReader = await retentionCommand.ExecuteReaderAsync();
         Assert.True(await retentionReader.ReadAsync());
-        Assert.Equal(8L, retentionReader.GetInt64(0));
+        Assert.Equal(11L, retentionReader.GetInt64(0));
         Assert.True(retentionReader.GetBoolean(1));
         await retentionReader.DisposeAsync();
         await using var invalidFuture = new NpgsqlCommand("SELECT control.ensure_m9_daily_partitions(current_date+7,3);", connection);
@@ -613,7 +614,8 @@ public sealed partial class M9OperationalHealthPostgreSqlIntegrationFixtureTests
             Assert.True(preview.Entries.Count <= 16);
             Assert.All(preview.Entries, entry =>
             {
-                Assert.Equal(RetentionPreviewReason.PolicyDisabled, entry.Reason);
+                Assert.Equal(setName == "tempdb_file_snapshot" ? RetentionPreviewReason.PolicyDisabled
+                    : RetentionPreviewReason.MinimumPartitionFloor, entry.Reason);
                 Assert.Equal(RetentionPreviewDisposition.Keep, entry.Disposition);
             });
         }

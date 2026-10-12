@@ -88,7 +88,7 @@ test('late maintenance saves cannot overwrite a different selection target or re
       await editor(page).getByRole('button', { name: 'Save window changes', exact: true }).click(); await expect.poll(() => started).toBe(true);
       if (change === 'role') {
         await page.context().addCookies([{ name: 'maintenanceEditRole', value: 'viewer', url: origin }]);
-        await page.locator('.page-actions').getByRole('button', { name: /Refresh/ }).click();
+        await page.getByRole('button', { name: '↻ Refresh', exact: true }).click();
         await expect(page.getByRole('button', { name: 'Edit window', exact: true })).toHaveCount(0);
       } else if (change === 'history') {
         await page.goBack();
@@ -204,7 +204,7 @@ test('delayed captured sessions cannot republish an old server or historical win
     historyStarted = true; await historyGate; await route.continue().catch(() => {}); historyReturned = true;
   });
   try {
-    await page.locator('.page-actions').getByRole('button', { name: /Refresh/ }).click(); await expect.poll(() => historyStarted).toBe(true);
+    await page.getByRole('button', { name: '↻ Refresh', exact: true }).click(); await expect.poll(() => historyStarted).toBe(true);
     await page.evaluate(hash => { location.hash = hash; }, href('waits', second, { ...custom, to: '2026-10-02T11:20:00.000000Z' }).slice(1));
     await expect(captured(page)).toContainText('No retained native session capture is available inside this window.');
   } finally { releaseHistory(); }

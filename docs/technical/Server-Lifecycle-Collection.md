@@ -27,4 +27,4 @@ The recorded-native replay preserves two actual source snapshots through the pro
 
 Stable native samples yield two receipts and no inferred events. The initial comparison boundary remains a visibility gap. Restart transitions, physical failover, qualified AG consistency, in-flight native faults, continuously deployed collection, supported-browser certification and manual accessibility remain separate qualification work. No live migration or opt-in is implied by the implementation or disposable test results.
 
-Current evidence and next work are recorded in the [dashboard handoff](SqlObserver-Dashboard-Refactor-Handoff-2026-10-02.md) and [lifecycle admission evidence](../../artifacts/dashboard-lifecycle-admission-2026-10-05/completion.json).
+Current evidence and next work are recorded in the [dashboard handoff](SqlObserver-Dashboard-Refactor-Handoff-2026-10-02.md) and lifecycle admission evidence (local output: `artifacts/dashboard-lifecycle-admission-2026-10-05/completion.json`).

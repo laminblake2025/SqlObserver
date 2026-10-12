@@ -4,7 +4,7 @@ import {mkdir} from 'node:fs/promises';
 import {fileURLToPath} from 'node:url';
 import {backupAvailabilityReadBinding,validBackupAvailabilityRead,handleBackupAvailabilityWindowHistoryFixture,backupAvailabilityMicro} from '../component-tests/backupAvailabilityWindowHistoryFixture.mjs';
 
-const origin='http://127.0.0.1:4322';
+const origin='http://127.0.0.1:4432';
 const target='11111111-1111-4111-8111-000000000002';
 const screens=[['fleet','overview'],['server','health'],['activity','activity'],['queries','queries'],['deadlocks','deadlocks'],['health-checks','operations'],['alerts','alerts'],['resources','resources'],['waits','waits']];
 

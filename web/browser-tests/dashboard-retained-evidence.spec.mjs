@@ -15,7 +15,7 @@ const scope = page => new URLSearchParams(new URL(page.url()).hash.split('?')[1]
 const captures = page => page.getByRole('region', { name: 'Captured sessions by server wait category', exact: true });
 const timeline = page => page.getByRole('region', { name: 'Investigation timeline', exact: true });
 const alertAlign = (page, kind = 'fired') => timeline(page).getByRole('button', { name: `Align charts: Alert ${kind} · SYNTHETIC_BLOCKING_RULE`, exact: true }).first();
-const refresh = page => page.locator('.page-actions').getByRole('button', { name: /Refresh/ });
+const refresh = page => page.getByRole('button', { name: '↻ Refresh', exact: true });
 async function fixture(page, extra = {}) {
   await page.clock.install({ time: new Date(retainedEvidenceNow) });
   await page.context().addCookies(Object.entries({ dashboardRefactor: '1', chartReferenceRole: 'viewer', databaseScopeFixture: '1',

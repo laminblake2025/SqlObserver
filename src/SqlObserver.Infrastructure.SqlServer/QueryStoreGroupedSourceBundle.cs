@@ -16,7 +16,7 @@ namespace SqlObserver.Infrastructure.SqlServer;
 internal sealed class QueryStoreGroupedSourceBundle
 {
     internal const string ExpectedBundleChecksum =
-        "dd90330a342fd560535ea7ab74cc93928756018acd1ed0648c472d13ad825f04";
+        "b8b452a5a1822d7782c532fda76ce86ca1b572aa6ec11aa3df0d4ba19c5fd878";
     private const string ResourcePrefix = "SqlObserver.Infrastructure.SqlServer.QueryStoreGroupedSourceAssets.";
     private const string RuntimeName = "runtime.sqlserver16-windows.v1.sql";
     private const string WaitName = "waits.sqlserver16-windows.v1.sql";

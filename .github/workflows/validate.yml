@@ -16,9 +16,13 @@ permissions:
 
 jobs:
   browser:
-    name: Browser behavior and accessibility
+    name: Browser behavior and accessibility (${{ matrix.shard }}/8)
     runs-on: ubuntu-24.04
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4, 5, 6, 7, 8]
     steps:
       - name: Check out source
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -47,13 +51,13 @@ jobs:
       - name: Test browser behavior and accessibility
         run: |
           pnpm --dir web run build
-          pnpm --dir web exec playwright test --config playwright.ci.config.mjs
+          pnpm --dir web exec playwright test --config playwright.ci.config.mjs --shard=${{ matrix.shard }}/8
 
       - name: Publish browser evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: browser-validation
+          name: browser-validation-${{ matrix.shard }}
           path: artifacts/web-browser/
           if-no-files-found: warn
           retention-days: 14
@@ -122,7 +126,7 @@ jobs:
   postgresql:
     name: PostgreSQL 18 functional tests
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 90
     services:
       postgres:
         image: postgres:18.4-bookworm@sha256:7e6103cf85f88f7a0eddb3ec0b1ba8940eba098ed118ade25a729ca9daee5568

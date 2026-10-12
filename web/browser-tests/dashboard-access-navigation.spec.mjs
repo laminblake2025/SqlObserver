@@ -3,7 +3,7 @@ import AxeBuilder from '@axe-core/playwright';
 import { mkdir } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 
-const origin = 'http://127.0.0.1:4322', target = '11111111-1111-4111-8111-000000000001';
+const origin = 'http://127.0.0.1:4432', target = '11111111-1111-4111-8111-000000000001';
 const from = '2026-09-26T08:00:00.123456Z', to = '2026-09-26T12:00:00.654321Z';
 const name = 'SYNTHETIC Access Alpha';
 const record = { instanceId: target, instanceKey: 'synthetic-access', displayName: name, host: 'access.invalid',
@@ -41,14 +41,15 @@ test.afterEach(async ({ page }) => expect(sessions.get(page).errors).toEqual([])
 
 async function open(page, surface = 'reports', options) {
   await page.goto(href(surface, options)); await expect(refresh(page)).toBeEnabled();
+  if (surface === 'health') await page.getByText('Latest health, databases & configuration', { exact: true }).click();
   if (surface === 'reports') await expect(reports(page)).toBeVisible();
 }
 async function denied(page) {
   await expect(page.getByRole('alert').filter({ hasText: 'Received server labels and evidence have been cleared' })).toBeVisible();
   await expect(page.locator('body')).not.toContainText(name);
   await expect(reports(page)).toHaveCount(0);
-  await expect(page.getByRole('navigation', { name: 'Loaded server status', exact: true })).toHaveCount(0);
-  await expect(page.getByRole('button', { name: /Search.*Ctrl\+K/ })).toBeDisabled();
+  await expect(page.getByRole('combobox', { name: 'Target server', exact: true }).locator('option').filter({ hasText: name })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Search', exact: true })).toBeDisabled();
   await expect(refresh(page)).toBeEnabled();
 }
 
@@ -75,7 +76,10 @@ for (const surface of ['servers', 'reports', 'overview', 'alerts']) test(`catalo
   await expect(page.getByRole('alert').filter({ hasText: 'last successful read' })).toBeVisible();
   if (surface === 'servers') await expect(registrations).toContainText(name);
   else if (surface === 'reports') await expect(reports(page)).toBeVisible();
-  else await expect(page.getByRole('navigation', { name: 'Loaded server status', exact: true })).toBeVisible();
+  else {
+    await expect(page.getByRole('combobox', { name: 'Target server', exact: true })).toBeVisible();
+    await expect(page.getByRole('combobox', { name: 'Target server', exact: true }).locator('option').filter({ hasText: name })).toHaveCount(1);
+  }
   await expect(page.locator('body')).not.toContainText('PRIVATE_TRANSIENT_FAILURE');
 });
 
@@ -130,7 +134,7 @@ test('built Health Back/Forward and reload restore the bare route default', asyn
   await expect(summary).toHaveAttribute('aria-selected', 'true'); const saved = new URL(page.url()).hash;
   await collection.click(); await expect(collection).toHaveAttribute('aria-selected', 'true');
   await page.goBack(); await expect(summary).toHaveAttribute('aria-selected', 'true'); expect(new URL(page.url()).hash).toBe(saved);
-  await page.reload(); await expect(summary).toHaveAttribute('aria-selected', 'true');
+  await page.reload(); await page.getByText('Latest health, databases & configuration', { exact: true }).click(); await expect(summary).toHaveAttribute('aria-selected', 'true');
   await collection.click(); await page.goBack(); await expect(summary).toHaveAttribute('aria-selected', 'true');
   await page.goForward(); await expect(collection).toHaveAttribute('aria-selected', 'true');
 });

@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 // Each browser suite must use its own synthetic fixture origin. The native
 // collector journey has an explicit SQL Server/PostgreSQL qualification runner.
 const root = dirname(fileURLToPath(import.meta.url));
-const fixturePorts = new Set([4321, 4322, 4323, 4324, 4325, 4326, 4327, 4331, 4332, 4333, 4334, 4335, 4336, 4337, 4338, 4358]);
+const fixturePorts = new Set([4321, 4432, 4323, 4324, 4325, 4326, 4327, 4331, 4332, 4333, 4334, 4335, 4336, 4337, 4338, 4358]);
 const groups = new Map();
 for (const name of readdirSync(join(root, 'browser-tests')).filter(name => name.endsWith('.spec.mjs')).sort()) {
   if (name === 'redesign-native.spec.mjs') continue;
@@ -20,7 +20,7 @@ for (const name of readdirSync(join(root, 'browser-tests')).filter(name => name.
 }
 
 export default defineConfig({
-  testDir: './browser-tests', workers: 1, retries: 0, timeout: 45_000,
+  testDir: './browser-tests', fullyParallel: true, workers: 1, retries: 0, timeout: 45_000,
   outputDir: '../artifacts/web-browser/results',
   reporter: [['list'], ['json', { outputFile: '../artifacts/web-browser/results.json' }],
     ['html', { outputFolder: '../artifacts/web-browser/report', open: 'never' }]],

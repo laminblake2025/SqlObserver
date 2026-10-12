@@ -3,7 +3,7 @@ import AxeBuilder from '@axe-core/playwright';
 import {mkdir} from 'node:fs/promises';
 import {fileURLToPath} from 'node:url';
 import {cpuCaptureBinding as binding,cpuCaptureAlpha as alpha,cpuCaptureBeta as beta,cpuCaptureFixtureReceipt,installCpuCaptureHistoryFixture,cpuCaptureHistoryJson} from '../tools/cpu-capture-window-history-fixture.mjs';
-const origin='http://127.0.0.1:4322',sessions=new WeakMap(),panel=p=>p.getByRole('region',{name:'CPU paired capture history',exact:true}),detail=p=>panel(p).getByRole('region',{name:'Selected CPU capture receipt',exact:true}),receipts=p=>panel(p).getByRole('region',{name:'CPU capture receipts',exact:true});
+const origin='http://127.0.0.1:4432',sessions=new WeakMap(),panel=p=>p.getByRole('region',{name:'CPU paired capture history',exact:true}),detail=p=>panel(p).getByRole('region',{name:'Selected CPU capture receipt',exact:true}),receipts=p=>panel(p).getByRole('region',{name:'CPU capture receipts',exact:true});
 const button=(p,name)=>panel(p).getByRole('button',{name,exact:true}),params=p=>Object.fromEntries(new URLSearchParams(new URL(p.url()).hash.split('?')[1])),href=(extra={})=>'/#/resources?'+new URLSearchParams({target:alpha,range:'custom',from:binding.fromUtc,to:binding.toUtc,databaseId:'5',compare:'1',...extra});
 async function mount(page,extra={}){await page.goto(href(extra));await expect(detail(page)).toContainText('Source admission absent');}
 async function browse(page){await receipts(page).locator('summary').click();}

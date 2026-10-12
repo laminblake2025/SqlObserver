@@ -19,6 +19,10 @@ async function open(page, mode = 'normal', surface = 'resources') {
 }
 const cpuChart = page => page.locator('.server-dashboard-chart').filter({ has: page.getByRole('heading', { name: 'SQL scheduler CPU', exact: true }) });
 const memoryChart = page => page.locator('.server-dashboard-chart').filter({ has: page.getByRole('heading', { name: 'Memory pressure', exact: true }) });
+async function openChartReferences(chart) {
+  await chart.getByText('Chart semantics & references', { exact: true }).click();
+  await chart.getByText('View chart references', { exact: true }).click();
+}
 
 test('Resources binds all SQL reads to the target and historical window and scales memory bands to GiB', async ({ page }) => {
   const requests = [], errors = [];
@@ -26,7 +30,7 @@ test('Resources binds all SQL reads to the target and historical window and scal
   page.on('pageerror', error => errors.push(error.message));
   await open(page);
   await expect(cpuChart(page).locator('.chart-baseline-band')).toHaveCount(4);
-  await memoryChart(page).getByText('View chart references', { exact: true }).click();
+  await openChartReferences(memoryChart(page));
   await expect(memoryChart(page).getByRole('cell', { name: '8–14 / 10 GiB', exact: true })).toHaveCount(12);
   await expect.poll(() => requests.length).toBe(7);
   for (const url of requests) {
@@ -41,7 +45,7 @@ test('Resources binds all SQL reads to the target and historical window and scal
 
 test('Partial SQL history keeps coverage visible and missing reference hours remain gaps', async ({ page }) => {
   await open(page, 'partial');
-  await cpuChart(page).getByText('View chart references', { exact: true }).click();
+  await openChartReferences(cpuChart(page));
   await expect(cpuChart(page).getByRole('cell', { name: /SQL scheduler CPU baseline · partial.*coverage 25%/ })).toHaveCount(4);
   await page.context().addCookies([{ name: 'chartReferenceMode', value: 'gap', url: 'http://127.0.0.1:4321' }]);
   await page.reload();
@@ -87,7 +91,8 @@ test('The server dashboard renders SQL workload and memory reference bands for t
   await open(page, 'normal', 'health');
   const workload = page.locator('.server-dashboard-chart').filter({ has: page.getByRole('heading', { name: 'SQL workload', exact: true }) });
   await expect(workload.locator('.chart-baseline-band')).toHaveCount(4);
-  await workload.getByText('View chart references', { exact: true }).click();
+  await page.getByText('Resource charts, wait history & baselines', { exact: true }).click();
+  await openChartReferences(workload);
   await expect(workload.getByRole('cell', { name: '8–14 / 10 batches/sec', exact: true })).toHaveCount(4);
   await expect(memoryChart(page).locator('.chart-baseline-band')).toHaveCount(12);
 });

@@ -3,7 +3,7 @@ import AxeBuilder from '@axe-core/playwright';
 import { mkdir } from 'node:fs/promises';
 import { resolve } from 'node:path';
 
-const origin = 'http://127.0.0.1:4322';
+const origin = 'http://127.0.0.1:4432';
 const target = '11111111-1111-4111-8111-000000000001';
 const from = '2026-09-26T08:00:00.000Z', to = '2026-09-26T12:00:00.000Z';
 const at = '2026-09-26T10:00:00.123456Z';
@@ -34,7 +34,7 @@ async function settled(page) {
   await expect.poll(() => runs.get(page).pending.size).toBe(0);
 }
 async function open(page, surface, extra = {}) {
-  await page.goto(href(surface, extra)); await expect(field(page, surface)).toBeVisible();
+  await page.goto(href(surface, extra)); if(!('chartAt' in extra))await page.getByText(surface==='health'?'Align chart inspection':'Inspect charts at a specific time',{exact:true}).click(); await expect(field(page, surface)).toBeVisible();
   await expect(page.locator('.chart-plot-scroll svg').first()).toBeVisible(); await settled(page);
 }
 async function unchangedScope(page) {

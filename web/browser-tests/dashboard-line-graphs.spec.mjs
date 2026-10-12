@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { cpuObservationBinding, cpuObservationAlpha, installCpuObservationHistoryFixture } from '../tools/cpu-observation-history-fixture.mjs';
 
-const origin = 'http://127.0.0.1:4322';
+const origin = 'http://127.0.0.1:4432';
 const errors = new WeakMap();
 test.beforeEach(async ({ page }) => {
   const issues = []; errors.set(page, issues);

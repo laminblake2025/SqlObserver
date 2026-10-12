@@ -205,9 +205,14 @@ public sealed class CollectionRunIdentityBackfillTests(PostgreSql18Fixture fixtu
         }
         await using (NpgsqlTransaction missingIdentity = await admin.BeginTransactionAsync())
         {
+            // Admin-only corruption in a transaction rolled back below. The
+            // current canonical deletion guard is separately qualified by its
+            // retirement tests; this scenario needs an absent identity row.
             await using (var corrupt = new NpgsqlCommand("""
                 ALTER TABLE telemetry.collection_run_identity
                   DISABLE TRIGGER collection_run_identity_append_only;
+                ALTER TABLE telemetry.collection_run_identity
+                  DISABLE TRIGGER canonical_run_delete_guard;
                 DELETE FROM telemetry.collection_run_identity WHERE run_id=@run;
                 """, admin, missingIdentity))
             {

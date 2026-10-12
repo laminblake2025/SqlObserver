@@ -3,7 +3,7 @@ import AxeBuilder from '@axe-core/playwright';
 import {mkdir} from 'node:fs/promises';
 import {fileURLToPath} from 'node:url';
 import {backupAvailabilityBinding as binding,backupAvailabilityAlpha as alpha,backupAvailabilityBeta as beta,backupAvailabilityReceipt as receipt,backupAvailabilityMicro as micro,backupAvailabilityJson as json,backupAvailabilityHeld as held,installBackupAvailabilityFixture} from '../component-tests/backupAvailabilityWindowHistoryFixture.mjs';
-const origin='http://127.0.0.1:4322',sessions=new WeakMap();
+const origin='http://127.0.0.1:4432',sessions=new WeakMap();
 const root=(p,k)=>p.getByRole('region',{name:`Earlier ${k} receipt history`,exact:true}),detail=(p,k)=>root(p,k).getByRole('region',{name:`Selected earlier ${k} receipt`,exact:true});
 const sourceLabel=(k,s)=>`${k} ${s==='list'?'receipts':s==='backup'?'observations':s}`;
 const action=(p,k,name,s='list')=>root(p,k).getByRole('button',{name:`${name} earlier ${sourceLabel(k,s)}${['Retry','Cancel'].includes(name)?' read':['First','Previous','Next'].includes(name)?' page':''}`,exact:true});

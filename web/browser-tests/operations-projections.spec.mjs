@@ -3,7 +3,7 @@ import AxeBuilder from '@axe-core/playwright';
 import {mkdir} from 'node:fs/promises';
 import {fileURLToPath} from 'node:url';
 import {backupAvailabilityBackend,backupAvailabilityReceipt,backupAvailabilityHeld,backupAvailabilityJson,installBackupAvailabilityFixture,backupAvailabilityAlpha as first,backupAvailabilityBeta as second} from '../component-tests/backupAvailabilityWindowHistoryFixture.mjs';
-const origin='http://127.0.0.1:4322',from='2026-09-26T08:00:00.123456Z',to='2026-09-26T12:00:00.123456Z',sessions=new WeakMap();
+const origin='http://127.0.0.1:4432',from='2026-09-26T08:00:00.123456Z',to='2026-09-26T12:00:00.123456Z',sessions=new WeakMap();
 const binding=target=>({targetId:target,targetRevision:1,fromUtc:from,toUtc:to}),fp=n=>BigInt(n).toString(16).padStart(64,'0');
 const card=page=>page.getByRole('region',{name:'Earlier availability receipt history',exact:true}),detail=page=>card(page).getByRole('region',{name:'Selected earlier availability receipt',exact:true});
 const rows=page=>detail(page).getByRole('region',{name:'Received earlier availability databases',exact:true}).getByRole('table').locator('tbody tr');

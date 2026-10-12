@@ -4,7 +4,7 @@ import {mkdir} from 'node:fs/promises';
 import {resolve} from 'node:path';
 import {serverLifecycleBinding as binding,serverLifecycleFixtureEvent} from '../tools/server-lifecycle-history-fixture.mjs';
 
-const origin='http://127.0.0.1:4322';
+const origin='http://127.0.0.1:4432';
 const event=serverLifecycleFixtureEvent(0,binding);
 const identity=`server-lifecycle:${event.eventId}:${event.sampleTargetRevision}:${event.afterRunId}`;
 const panel=page=>page.getByRole('region',{name:'Server lifecycle history',exact:true});

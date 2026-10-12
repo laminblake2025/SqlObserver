@@ -3,7 +3,7 @@ import AxeBuilder from '@axe-core/playwright';
 import { mkdir } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { installRuleTemplatesFixture, ruleTemplateBackend, version, job, templateId, deploymentId, values } from '../component-tests/ruleTemplatesFixture.mjs';
-const origin='http://127.0.0.1:4322';
+const origin='http://127.0.0.1:4432';
 const region=page=>page.getByRole('region',{name:'Rule templates',exact:true});
 const button=(page,name)=>region(page).getByRole('button',{name,exact:true});
 async function json(route,body,status=200){await route.fulfill({status,contentType:'application/json',headers:{'cache-control':'no-store'},body:JSON.stringify(body)});}

@@ -41,6 +41,6 @@ Three owners implement backend contracts/HTTP, native storage/repository, and UI
 
 ## Delivered qualification
 
-Final evidence: [gallery](../../artifacts/dashboard-volume-window-history/index.html), [cases, hashes and provenance](../../artifacts/dashboard-volume-window-history/completion.json). 72 affected .NET checks, 45 native web checks and 131 browser checks pass against frozen final inputs. Native/HTTP qualification uses isolated PostgreSQL 18.4; browser evidence is synthetic. Eight captures cover 320/390/768/1440. No collector or physical-incarnation certification is claimed.
+Final evidence: gallery (local output: `artifacts/dashboard-volume-window-history/index.html`), cases, hashes and provenance (local output: `artifacts/dashboard-volume-window-history/completion.json`). 72 affected .NET checks, 45 native web checks and 131 browser checks pass against frozen final inputs. Native/HTTP qualification uses isolated PostgreSQL 18.4; browser evidence is synthetic. Eight captures cover 320/390/768/1440. No collector or physical-incarnation certification is claimed.
 
 Elapsed-gap classification uses the currently configured volume schedule (twice its interval, at least five minutes; ten-minute fallback); it is a conservative visibility signal, not reconstructed historical scheduler accounting. The UI additionally breaks lines over ten minutes without changing native coverage.

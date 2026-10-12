@@ -203,7 +203,16 @@ public sealed class BackupZoneQualificationTests(PostgreSql18Fixture fixture)
     private static SetBackupZoneQualificationRequest Request(MonitoredInstanceId target, long expected,
         Guid? operation = null, string? evidence = null, long targetRevision = 1) => new(new(target, new(targetRevision), expected,
         operation ?? Guid.NewGuid(), new(target, new(targetRevision), expected + 1,
-            TimeZoneInfo.FindSystemTimeZoneById("Eastern Standard Time"), "Eastern Standard Time",
+            FixtureEasternZone(), "Eastern Standard Time",
             new(2026, 1, 1, 0, 0, 0, TimeSpan.Zero), new(2027, 1, 1, 0, 0, 0, TimeSpan.Zero)),
         evidence ?? new string('a', 64)), Envelope(target), Timeout);
+
+    // Use the qualification window's deterministic US rules. Linux tzdata's
+    // historical rule expansion need not serialize like Windows registry rules.
+    private static TimeZoneInfo FixtureEasternZone() => TimeZoneInfo.CreateCustomTimeZone(
+        "Eastern Standard Time", TimeSpan.FromHours(-5), "Eastern", "Eastern Standard", "Eastern Daylight",
+        [TimeZoneInfo.AdjustmentRule.CreateAdjustmentRule(new DateTime(2026, 1, 1), new DateTime(2026, 12, 31),
+            TimeSpan.FromHours(1),
+            TimeZoneInfo.TransitionTime.CreateFloatingDateRule(new DateTime(1, 1, 1, 2, 0, 0), 3, 2, DayOfWeek.Sunday),
+            TimeZoneInfo.TransitionTime.CreateFloatingDateRule(new DateTime(1, 1, 1, 2, 0, 0), 11, 1, DayOfWeek.Sunday))]);
 }

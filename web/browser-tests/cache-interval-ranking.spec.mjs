@@ -158,3 +158,8 @@ test('cache drilldown restores from its URL and pages exact samples with compari
   await page.getByRole('combobox',{name:'Target server'}).selectOption(second);
   await expect(history).toHaveCount(0); await expect(page).not.toHaveURL(/cacheIncarnation=/);
 });
+
+
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('sqlobserver.timeDisplayMode', 'utc'));
+});

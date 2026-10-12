@@ -3,7 +3,7 @@ import AxeBuilder from '@axe-core/playwright';
 import {mkdir} from 'node:fs/promises';
 import {fileURLToPath} from 'node:url';
 import {agAlpha,agBeta,agRun,agNewRun,agFrom,agTo,agPage,agMicro,agHeld,agJson,installAgAccessFixture} from '../component-tests/availabilityEvidenceAccessFixture.mjs';
-const origin='http://127.0.0.1:4322',sessions=new WeakMap();
+const origin='http://127.0.0.1:4432',sessions=new WeakMap();
 const root=p=>p.getByRole('region',{name:'Per-replica availability evidence',exact:true});
 const stream=(p,s)=>root(p).getByRole('article',{name:s==='replicas'?'AG replicas':'AG database replicas',exact:true});
 const next=(p,s)=>stream(p,s).getByRole('button',{name:s==='replicas'?'Next ag replicas page':'Next ag database replicas page',exact:true});

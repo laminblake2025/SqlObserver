@@ -4,7 +4,7 @@ import { mkdir } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { evidence, database, collector } from '../component-tests/healthFixture.mjs';
 
-const origin = 'http://127.0.0.1:4322';
+const origin = 'http://127.0.0.1:4432';
 const target = '11111111-1111-4111-8111-000000000002';
 const from = '2026-09-26T08:00:00.123456Z', to = '2026-09-26T12:00:00.654321Z';
 const run = '33333333-3333-4333-8333-333333333333';

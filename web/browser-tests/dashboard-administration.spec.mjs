@@ -105,7 +105,7 @@ test('calendar restores later-page identity and delayed old-target evidence neve
     started = true; await gate; await route.continue().catch(() => {}); returned = true;
   });
   try {
-    await page.locator('.page-actions').getByRole('button', { name: /Refresh/ }).click();
+    await page.getByRole('button', { name: '↻ Refresh', exact: true }).click();
     await expect.poll(() => started).toBe(true);
     await page.goto(href(second, windowId(103)));
     await expect(page.getByRole('complementary', { name: 'Maintenance window', exact: true })).toContainText('SYNTHETIC SQL 02 multi-day');
@@ -231,7 +231,7 @@ test('permission generator requires target administrator access and revocation h
   await page.context().addCookies([{ name: 'maintenanceCalendarRole', value: 'administrator', url: origin }]); await page.reload();
   await generateScript(page);
   await page.context().addCookies([{ name: 'maintenanceCalendarRole', value: 'viewer', url: origin }]);
-  await page.locator('.page-actions').getByRole('button', { name: /Refresh/ }).click();
+  await page.getByRole('button', { name: '↻ Refresh', exact: true }).click();
   await expect(generatedSql(page)).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Generate SQL', exact: true })).toHaveCount(0);
 });

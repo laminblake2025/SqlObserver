@@ -222,7 +222,7 @@ public sealed partial class M5ActivityPostgreSqlIntegrationTests
         {
             await using NpgsqlDataReader row=await inspect.ExecuteReaderAsync(); Assert.True(await row.ReadAsync());
             Assert.True(row.GetBoolean(0)); Assert.True(row.GetBoolean(1)); Assert.Equal("sqlobserver_migrator",row.GetString(2));
-            Assert.False(row.GetBoolean(3)); Assert.Equal(4,row.GetInt32(4)); Assert.Equal(4L,row.GetInt64(5));
+            Assert.False(row.GetBoolean(3)); Assert.Equal(5,row.GetInt32(4)); Assert.Equal(4L,row.GetInt64(5));
         }
         await using var denied=collector.CreateCommand("SELECT alerting.reconcile_blocking_alert_evaluations(@target,@key,@owner,@fence,1);");
         AddBlockingQueueParameters(denied,target,lease,1);

@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 import { mkdir } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
-const origin = 'http://127.0.0.1:4322', target = '11111111-1111-4111-8111-000000000001';
+const origin = 'http://127.0.0.1:4432', target = '11111111-1111-4111-8111-000000000001';
 const from = '2026-09-26T08:00:00.123456Z', to = '2026-09-26T12:00:00.654321Z';
 const href = options => `/#/deadlocks?${new URLSearchParams({ target, range: 'custom', from, to, compare: '1', ...options })}`;
 const events = page => page.getByRole('complementary', { name: 'Captured deadlock events', exact: true });

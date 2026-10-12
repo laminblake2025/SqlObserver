@@ -1,11 +1,12 @@
 import { test, expect } from '@playwright/test';
+import { revealHealthSupport } from './redesign-controls.mjs';
 import AxeBuilder from '@axe-core/playwright';
 import { evidence, database, collector } from '../component-tests/healthFixture.mjs';
 import { cpuObservationBinding, cpuObservationAlpha, cpuObservationFixtureReceipt, installCpuObservationHistoryFixture } from '../tools/cpu-observation-history-fixture.mjs';
 import { agentActivityHistoryBinding, agentActivityHistoryAlpha, installAgentActivityHistoryFixture } from '../tools/agent-activity-history-fixture.mjs';
 import { agAlpha, agFrom, agTo, installAgAccessFixture } from '../component-tests/availabilityEvidenceAccessFixture.mjs';
 
-const origin = 'http://127.0.0.1:4322';
+const origin = 'http://127.0.0.1:4432';
 const target = '11111111-1111-4111-8111-000000000001';
 const from = '2026-09-26T08:00:00.123456Z', to = '2026-09-26T12:00:00.654321Z';
 const failures = new WeakMap();
@@ -38,11 +39,12 @@ async function geometryAndAxe(page) {
 for (const width of [320, 390, 768, 1440]) test(`bounded Health screenshot and keyboard context at ${width}px`, async ({ page }, info) => {
   await page.setViewportSize({ width, height: 1000 });
   await page.goto('/#/health?' + new URLSearchParams({ target, range: 'custom', from, to, databaseId: '6', compare: '1' }));
-  const frame = page.getByRole('region', { name: 'Workspace server and database context', exact: true });
+  const frame = page.getByRole('banner', { name: 'Workspace context', exact: true });
   await expect(frame.getByRole('combobox', { name: 'Workspace database', exact: true })).toHaveValue('6');
+  await revealHealthSupport(page);
   await expect(page.getByRole('tab', { name: 'Dashboard', exact: true })).toHaveAttribute('aria-selected', 'true');
   await expect(page.locator('.server-dashboard-kpis')).toBeVisible();
-  const summary = page.locator('summary').filter({ hasText: /^Context details$/ });
+  const summary = page.locator('summary').filter({ hasText: /^Database scope details$/ });
   await summary.focus(); await summary.press('Enter'); await expect(summary).toBeFocused();
   await expect(summary.locator('..')).toHaveAttribute('open', '');
   await expect(page.getByTestId('database-context-notice')).toContainText('server-wide');

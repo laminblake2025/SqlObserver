@@ -56,7 +56,8 @@ public sealed partial class M9OperationalHealthPostgreSqlIntegrationFixtureTests
         Assert.Equal(registry, await ReadAgentSourceRegistryAsync(database));
         Assert.Equal(history, await ReadAgentSourceStateAsync(database, target, omitSource: true));
         await using (var pins = database.DataSource.CreateCommand("SELECT array_agg(encode(asset_bundle_sha256,'hex') ORDER BY execution_order) FROM control.collector_contract WHERE collector_id IN ('backups.status','sql-agent.failures','tempdb.health','availability-groups.health') AND collector_version=1;"))
-            Assert.Equal(Enumerable.Repeat(SqlServerOperationalHealthAssetCatalog.LoadEmbedded().BundleChecksum, 4), Assert.IsType<string[]>(await pins.ExecuteScalarAsync()));
+            // This upgrade stops at 0087; later bundle publications have not run.
+            Assert.Equal(Enumerable.Repeat("8fa22b58b193640b94e1290fc48820f3d68afdfda9076809f4e9b4fc3b2fa593", 4), Assert.IsType<string[]>(await pins.ExecuteScalarAsync()));
 
         Assert.Equal("replayed", await ExecuteAgentSourceCommitAsync(collector, firstCommit, payloadOverride: legacyJson));
         var runtime = new PostgreSqlCollectorRuntimeRepositoryPort(collector);

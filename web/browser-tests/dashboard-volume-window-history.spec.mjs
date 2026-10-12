@@ -3,7 +3,7 @@ import AxeBuilder from '@axe-core/playwright';
 import { mkdir } from 'node:fs/promises';
 import { resolve } from 'node:path';
 
-const origin = 'http://127.0.0.1:4322';
+const origin = 'http://127.0.0.1:4432';
 const target = '11111111-1111-4111-8111-000000000001';
 const other = '11111111-1111-4111-8111-000000000002';
 const key = 'a'.repeat(64), absentKey = 'e'.repeat(64);

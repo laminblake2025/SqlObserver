@@ -40,7 +40,13 @@ public sealed class ActiveM9RetentionDefaultsTests(PostgreSql18Fixture fixture)
                 reader.IsDBNull(3) ? null : reader.GetFieldValue<TimeSpan>(3),
                 reader.GetInt64(4), reader.GetString(5), reader.GetBoolean(6)));
         }
-        Assert.Equal(8, rows.Count);
+        Assert.Equal(11, rows.Count);
+        Assert.Equal(("availability_replica_evidence", true, TimeSpan.FromDays(30), 1L,
+            "migration-0266", false), rows["m9_ag_replica_evidence"]);
+        Assert.Equal(("availability_database_replica_evidence", true, TimeSpan.FromDays(30), 1L,
+            "migration-0266", false), rows["m9_ag_database_evidence"]);
+        Assert.Equal(("backup_v2_scan", true, TimeSpan.FromDays(30), 1L,
+            "migration-0272", false), rows["m9_backup_evidence"]);
         Assert.Equal(("backup_status_snapshot", true, TimeSpan.FromDays(90), 2L,
             "migration-0162", true), rows["m9_backup_status"]);
         Assert.Equal(("sql_agent_failure_scan_snapshot", true, TimeSpan.FromDays(30), 2L,

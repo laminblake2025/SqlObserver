@@ -131,6 +131,10 @@ export function TargetHealthPanel({ embedded = false, instanceId, displayName, o
   // Route-owned sections are resolved during render, including an absent URL
   // selection restored by Back. Local state remains available to standalone consumers.
   const tab = onSelectSection ? selectedSection ?? "summary" : localTab;
+  const [healthDetailsOpen, setHealthDetailsOpen] = useState(!embedded || tab !== "summary" || selectedConfigurationRunId !== undefined);
+  useEffect(() => {
+    if (!embedded || tab !== "summary" || selectedConfigurationRunId !== undefined) setHealthDetailsOpen(true);
+  }, [embedded, tab, selectedConfigurationRunId]);
   useEffect(() => { if (!onSelectSection && selectedSection) setTab(selectedSection); }, [selectedSection, onSelectSection]);
   const snapshot = evidence?.target;
   const recoveryContext: RecoveryContext = { instanceId, scope, canGeneratePermissions: canManageConfiguration };
@@ -221,7 +225,7 @@ export function TargetHealthPanel({ embedded = false, instanceId, displayName, o
           blockingRefresh={blockingRefresh}
           configurationCollectorState={snapshot?.collectors.find(item => item.collectorId === "engine.configurations")?.state} />
       </div>}
-      <details className="supporting-evidence latest-health-disclosure" open={!embedded||tab!=="summary"||selectedConfigurationRunId!==undefined?true:undefined}><summary>Latest health, databases & configuration</summary>
+      <details className="supporting-evidence latest-health-disclosure" open={healthDetailsOpen} onToggle={event => setHealthDetailsOpen(event.currentTarget.open)}><summary>Latest health, databases & configuration</summary>
       <div className="health-navigation-frame">
         <Tabs
             label="Server summary sections"

@@ -10,13 +10,13 @@ export default defineConfig({
   outputDir: '../artifacts/dashboard-refactor/results',
   reporter: [['list'], ['json', { outputFile: '../artifacts/dashboard-refactor/results.json' }],
     ['html', { outputFolder: '../artifacts/dashboard-refactor/report', open: 'never' }]],
-  use: { baseURL: 'http://127.0.0.1:4322', trace: 'retain-on-failure', screenshot: 'only-on-failure' },
+  use: { baseURL: 'http://127.0.0.1:4432', trace: 'retain-on-failure', screenshot: 'only-on-failure' },
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
   webServer: {
     command: 'node tools/overview-fixture-server.mjs',
-    url: 'http://127.0.0.1:4322',
+    url: 'http://127.0.0.1:4432',
     reuseExistingServer: false,
-    env: { SQLOBSERVER_OVERVIEW_FIXTURE_PORT: '4322' },
+    env: { SQLOBSERVER_OVERVIEW_FIXTURE_PORT: '4432' },
     timeout: 15_000,
   },
 });

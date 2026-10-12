@@ -291,7 +291,8 @@ public sealed class AvailabilityGroupV2RolloutTests(PostgreSql18Fixture fixture)
     {
         await using var command = source.CreateCommand("""
             WITH catalog AS MATERIALIZED (SELECT * FROM control.collector_contract
-             WHERE collector_version=CASE WHEN collector_id IN ('database.inventory','availability-groups.health') THEN 2 ELSE 1 END)
+             WHERE execution_order BETWEEN 1 AND 19
+               AND collector_version=CASE WHEN collector_id IN ('database.inventory','availability-groups.health') THEN 2 ELSE 1 END)
             SELECT * FROM control.reconcile_collector_catalog_ag_v2(
              ARRAY(SELECT collector_id FROM catalog ORDER BY execution_order),
              ARRAY(SELECT collector_version FROM catalog ORDER BY execution_order),

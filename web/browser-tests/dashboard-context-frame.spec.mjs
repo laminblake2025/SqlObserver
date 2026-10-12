@@ -1,13 +1,14 @@
+import { revealHealthSupport } from './redesign-controls.mjs';
 import { test, expect } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 import { mkdir } from 'node:fs/promises';
 import { resolve } from 'node:path';
 
-const origin = 'http://127.0.0.1:4322', target = '11111111-1111-4111-8111-000000000001';
+const origin = 'http://127.0.0.1:4432', target = '11111111-1111-4111-8111-000000000001';
 const from = '2026-09-26T08:00:00.123456Z', to = '2026-09-26T12:00:00.654321Z';
 const href = options => '/#/health?' + new URLSearchParams({ target, range: 'custom', from, to, databaseId: '6', compare: '1', ...options });
 const scope = page => Object.fromEntries(new URLSearchParams(new URL(page.url()).hash.split('?')[1]));
-const frame = page => page.getByRole('region', { name: 'Workspace server and database context', exact: true });
+const frame = page => page.locator('.workspace');
 const summary = (page, name) => page.locator('summary').filter({ hasText: new RegExp(`^${name}$`) });
 const attempts = new WeakMap();
 test.beforeEach(async ({ page }) => {
@@ -40,21 +41,21 @@ async function toggle(page, name, opened) {
 }
 
 for (const width of [320, 390, 768, 1440]) test(`the compact context frame keeps dashboard answers and optional tools accessible at ${width}px`, async ({ page }, info) => {
-  await page.setViewportSize({ width, height: 1000 }); await page.goto(href());
+  await page.setViewportSize({ width, height: 1000 }); await page.goto(href()); await revealHealthSupport(page);
   const database = frame(page).getByRole('combobox', { name: 'Workspace database', exact: true });
   await expect(database).toHaveValue('6');
   await expect(frame(page).locator('.database-scope-status')).toContainText('2 databases loaded');
-  await expect(frame(page).locator('.workspace-context-scope')).toContainText('Database ID 6');
+  await expect(frame(page).locator('[data-testid=database-context-notice]')).toContainText('Database ID 6');
   await expect(page.getByRole('tab', { name: 'Dashboard', exact: true })).toHaveAttribute('aria-selected', 'true');
   await expect(page.locator('.server-dashboard-kpis')).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Server summary for SYNTHETIC SQL 01', exact: true })).toHaveCount(0);
   await expect(page.locator('.health-screen').getByRole('button', { name: 'Close', exact: true })).toHaveCount(0);
-  for (const name of ['Context details', 'Inventory details', 'Investigation workspace']) await expect(summary(page, name).locator('..')).not.toHaveAttribute('open', '');
+  for (const name of ['Database scope details', 'Inventory details', 'Investigation workspace']) await expect(summary(page, name).locator('..')).not.toHaveAttribute('open', '');
   await settled(page); const count = attempts.get(page).requests.length, hash = new URL(page.url()).hash;
-  await toggle(page, 'Context details', true);
+  await toggle(page, 'Database scope details', true);
   await expect(page.getByTestId('database-context-notice')).toBeVisible();
   await expect(page.getByTestId('database-context-notice')).toContainText('server-wide metrics, waits, blocking history, deadlocks, alerts and health checks remain server-wide.');
-  await toggle(page, 'Context details', false);
+  await toggle(page, 'Database scope details', false);
   await toggle(page, 'Inventory details', true);
   await expect(frame(page).getByText(/^Repository snapshot:/)).toBeVisible();
   await expect(frame(page).getByText(/missing entries do not mean a database is absent/)).toBeVisible();
@@ -78,7 +79,7 @@ for (const width of [320, 390, 768, 1440]) test(`the compact context frame keeps
 
 for (const status of [401, 403]) test(`database inventory HTTP ${status} remains visible while the filter requires explicit clearing`, async ({ page }) => {
   await page.route(`**/observation-targets/${target}/health/databases?*`, route => route.fulfill({ status, contentType: 'application/json', body: '{"detail":"PRIVATE_INVENTORY_DENIAL"}' }));
-  await page.goto(href({ healthSection: 'collection' }));
+  await page.goto(href({ healthSection: 'collection' })); await revealHealthSupport(page);
   const database = frame(page).getByRole('combobox', { name: 'Workspace database', exact: true });
   await expect(database).toBeDisabled(); await expect(database).toHaveValue('6');
   await expect(frame(page).getByRole('alert')).toHaveText("Your access to this server's database inventory could not be verified. Refresh after access is restored.");
@@ -97,21 +98,21 @@ for (const status of [401, 403]) test(`database inventory HTTP ${status} remains
 });
 
 test('a missing database warning stays outside routine details and an explicit section survives reload and history', async ({ page }) => {
-  await page.goto(href({ databaseId: '99' }));
+  await page.goto(href({ databaseId: '99' })); await revealHealthSupport(page);
   await expect(frame(page).locator('.database-scope-selection-note')).toBeVisible();
   await expect(frame(page).locator('.database-scope-selection-note')).toHaveText('Selected database ID 99 has not been received in inventory; its filter remains selected.');
   await expect(summary(page, 'Inventory details').locator('..')).not.toHaveAttribute('open', '');
   await expect(page.getByRole('tab', { name: 'Dashboard', exact: true })).toHaveAttribute('aria-selected', 'true');
   await page.getByRole('tab', { name: 'Databases', exact: true }).click();
   await expect.poll(() => scope(page).healthSection).toBe('databases');
-  await page.reload(); await expect(page.getByRole('tab', { name: 'Databases', exact: true })).toHaveAttribute('aria-selected', 'true');
+  await page.reload(); await revealHealthSupport(page); await expect(page.getByRole('tab', { name: 'Databases', exact: true })).toHaveAttribute('aria-selected', 'true');
   await page.getByRole('tab', { name: 'Collection health', exact: true }).click();
   await page.goBack(); await expect(page.getByRole('tab', { name: 'Databases', exact: true })).toHaveAttribute('aria-selected', 'true');
   expect(scope(page).databaseId).toBe('99');
 });
 
 for (const kind of ['timeline rail', 'SQL workload chart']) test(`changing Health section cancels a held ${kind} gesture and preserves the mounted evidence`, async ({ page }) => {
-  await page.setViewportSize({ width: 1440, height: 1000 }); await page.goto(href());
+  await page.setViewportSize({ width: 1440, height: 1000 }); await page.goto(href()); await revealHealthSupport(page);
   const dashboard = page.locator('.health-dashboard-pane'), plot = kind === 'timeline rail'
     ? dashboard.locator('.dashboard-timeline-rail') : dashboard.getByRole('region', { name: 'SQL workload plot', exact: true }).locator('svg');
   await expect(plot).toBeVisible();

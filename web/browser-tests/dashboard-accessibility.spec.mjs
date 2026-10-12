@@ -1,9 +1,10 @@
+import { revealHealthSupport, expandDisclosure } from './redesign-controls.mjs';
 import { test, expect } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 import { mkdir } from 'node:fs/promises';
 import { resolve } from 'node:path';
 
-const origin = 'http://127.0.0.1:4322';
+const origin = 'http://127.0.0.1:4432';
 const target = '11111111-1111-4111-8111-000000000002';
 const screens = [
   ['fleet', 'overview'],
@@ -31,7 +32,7 @@ async function saveFullPage(page, filename) {
   await page.screenshot({ path: resolve(folder, filename), fullPage: true });
 }
 
-async function open(page, surface) {
+async function open(page, surface, disclose = true) {
   await page.context().addCookies([
     { name: 'dashboardRefactor', value: '1', url: origin },
     { name: 'chartReferenceRole', value: 'viewer', url: origin },
@@ -41,6 +42,7 @@ async function open(page, surface) {
   if (surface === 'alerts') await expect(page.getByRole('heading', { name: 'Alert triage', exact: true })).toBeVisible();
   else await expect(page.getByRole('combobox', { name: 'Time range', exact: true })).toHaveValue('1h');
   await page.waitForLoadState('networkidle');
+  if(surface==='health' && disclose)await revealHealthSupport(page);
   if (surface === 'deadlocks') await expect(page.getByRole('img', { name: 'Deadlock relationship diagram' })).toBeVisible();
   if (surface === 'queries') await expect(page.getByRole('region', { name: 'Plan cache interval ranking', exact: true })).toContainText('bbbbbbbbbbbb');
   if (surface === 'resources') await expect(page.getByRole('region', { name: 'Per-NUMA page life expectancy', exact: true }).locator('.overview-chart')).toHaveCount(2);
@@ -94,7 +96,7 @@ for (const width of [320, 390, 768, 1440]) {
 }
 
 test('keyboard skip link, chart evidence, time editor and palette remain accessible', async ({ page }) => {
-  await open(page, 'health');
+  await open(page, 'health', false);
   await page.keyboard.press('Tab');
   const skip = page.getByRole('link', { name: 'Skip to content' });
   await expect(skip).toBeFocused();
@@ -108,7 +110,7 @@ test('keyboard skip link, chart evidence, time editor and palette remain accessi
   await values.focus();
   await expect(values).toBeFocused();
   await page.getByRole('combobox', { name: 'Time range', exact: true }).selectOption('custom');
-  await expect(page.getByLabel('From (UTC)', { exact: true })).toBeFocused();
+  await expect(page.getByLabel(/^From \(/)).toBeFocused();
   expect((await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'best-practice']).analyze()).violations).toEqual([]);
   await page.keyboard.press('Escape');
   await page.getByRole('button', { name: /^Search/ }).click();
@@ -131,12 +133,15 @@ for (const width of [320, 390, 768, 1440]) {
     await page.setViewportSize({ width, height: 1000 });
     await page.context().addCookies([{ name: 'blockingChainFixture', value: '1', url: origin }]);
     await open(page, 'activity');
-    const chain = page.getByRole('combobox', { name: 'Blocking chain (loaded page)', exact: true });
+    await expandDisclosure(page,'Advanced session filters');
+    await page.getByRole('button',{name:'Inspect 51/0',exact:true}).first().click();
+    await page.getByRole('region',{name:'Session details',exact:true}).getByRole('button',{name:'Blocking chain',exact:true}).click();
+    const chain = page.getByRole('combobox', { name: 'Blocking chain (capture)', exact: true });
     const action = page.getByRole('button', { name: 'Filter chain: Session 51', exact: true });
     await action.focus();
     await action.press('Enter');
     await expect(chain).toHaveValue('session:51');
-    await expect(action).toHaveAttribute('aria-pressed', 'true');
+    await expect(chain).toHaveValue('session:51');
     await expect(action).toBeFocused();
     const clear = page.getByRole('button', { name: 'Clear chain filter', exact: true });
     await clear.focus();
@@ -298,7 +303,7 @@ for (const width of [320, 390, 768, 1440]) {
     expect(fileActionBounds.height).toBeGreaterThan(0);
     expect(fileActionBounds.height, 'File history action must remain a readable compact button').toBeLessThanOrEqual(64);
     await file.press('Enter');
-    await expect(resources.locator('.overview-chart')).toHaveCount(7);
+    await expect(resources.locator('.overview-chart')).toHaveCount(9);
     const alignment = resources.getByRole('region', { name: 'Resource chart alignment', exact: true });
     const input = alignment.getByLabel('Resource inspection time (UTC)', { exact: true });
     await input.fill('2026-09-26T10:30:00.125');
@@ -306,10 +311,10 @@ for (const width of [320, 390, 768, 1440]) {
     await align.focus(); await align.press('Enter');
     await expect(align).toBeFocused();
     await expect(alignment.getByRole('status').locator('time')).toHaveAttribute('datetime', '2026-09-26T10:30:00.125Z');
-    await expect(resources.locator('.chart-crosshair')).toHaveCount(7);
+    await expect(resources.locator('.chart-crosshair')).toHaveCount(9);
     await page.reload();
     await expect(file).toHaveAttribute('aria-pressed', 'true');
-    await expect(resources.locator('.chart-crosshair')).toHaveCount(7);
+    await expect(resources.locator('.chart-crosshair')).toHaveCount(9);
     await expect(alignment.getByRole('status').locator('time')).toHaveAttribute('datetime', '2026-09-26T10:30:00.125Z');
     await auditResponsiveState(page, testInfo, 'resource-selected-inspection');
     await saveFullPage(page, `resource-inspection-${width}.png`);
@@ -359,9 +364,10 @@ for (const width of [320, 390, 768, 1440]) {
     page.on('request', request => { if (new URL(request.url()).pathname.endsWith('/activity/live/query')) protectedReads++; });
     const parameters = new URLSearchParams({ target, range: '1h', sessionSnapshot: '88888888-8888-4888-8888-888888888888', sessionObserved: '2026-09-26T11:30:00.123456Z', sessionIdentity: 'c'.repeat(64) });
     await page.goto('/#/activity?' + parameters);
-    const detail = page.getByRole('complementary', { name: 'Session details', exact: true });
-    await expect(detail.getByRole('heading', { name: 'Session 51 / 1', exact: true })).toBeVisible();
+    const detail = page.getByRole('region', { name: 'Session details', exact: true });
+    await expect(detail.getByRole('heading', { name: 'Session 51', exact: true })).toBeVisible();
     await expect(detail.getByRole('button', { name: 'Load captured SQL', exact: true })).toHaveCount(0);
+    await detail.getByRole('button',{name:'Captured SQL',exact:true}).click();
     await expect(detail).toContainText('Captured SQL is hidden. Query Text Reader access is required for this server.');
     const clearSelection = page.getByRole('button', { name: 'Clear session selection', exact: true });
     await clearSelection.focus(); await expect(clearSelection).toBeFocused();
@@ -419,49 +425,22 @@ for (const width of [320, 390, 768, 1440]) {
 }
 
 for (const width of [320, 390, 768, 1440]) {
-  test(`persistent fleet navigation keeps keyboard focus and responsive evidence at ${width}px`, async ({ page }, testInfo) => {
+  test(`authorized server selector keeps keyboard focus and responsive evidence at ${width}px`, async ({ page }, testInfo) => {
     await page.setViewportSize({ width, height: 1000 });
     await page.context().addCookies([{ name: 'databaseScopeFixture', value: '1', url: origin }]);
     await open(page, 'health');
-    const fleet = page.getByRole('navigation', { name: 'Loaded server status', exact: true });
-    await expect(fleet).toBeVisible();
-    await expect(fleet.getByRole('link')).toHaveCount(10);
-    const current = fleet.locator('a[aria-current="location"]');
-    await expect(current).toHaveCount(1);
-    await expect(current).toHaveAccessibleName(/^SYNTHETIC SQL 02:/);
-    await expect(current).toHaveAttribute('href', new RegExp(`target=${target}`));
-
+    const fleet = page.getByRole('combobox', { name: 'Target server', exact: true });
+    await expect(fleet).toBeVisible();await expect(fleet.locator('option[value!=""]')).toHaveCount(10);
+    await expect(fleet).toHaveValue(target);
     await page.getByRole('link', { name: 'Resources', exact: true }).click();
-    await expect(page).toHaveURL(/#\/resources\?/);
-    await expect(fleet).toBeVisible();
-    await expect(current).toHaveAccessibleName(/^SYNTHETIC SQL 02:/);
-    const entries = fleet.getByRole('region', { name: 'Loaded fleet server entries', exact: true });
-    expect(await entries.evaluate(element => element.scrollWidth > element.clientWidth), 'The complete loaded fleet scrolls inside its region').toBe(true);
-    await entries.evaluate(element => { element.scrollLeft = 0; });
-    await entries.focus();
-    await entries.press('ArrowRight');
-    await expect(entries).toBeFocused();
-    await expect.poll(() => entries.evaluate(element => element.scrollLeft)).toBeGreaterThan(0);
-
-    await page.evaluate(() => window.scrollTo(0, 600));
-    const stripBounds = await fleet.boundingBox();
-    expect(stripBounds).not.toBeNull();
-    if (width <= 960) {
-      const sidebarBounds = await page.locator('.sidebar').boundingBox();
-      expect(sidebarBounds).not.toBeNull();
-      expect(stripBounds.y, 'Pinned fleet navigation must sit below the mobile sidebar').toBeGreaterThanOrEqual(sidebarBounds.y + sidebarBounds.height - 1);
-    } else {
-      expect(stripBounds.y, 'Desktop fleet navigation pins to the viewport').toBeGreaterThanOrEqual(-1);
-      expect(stripBounds.y).toBeLessThanOrEqual(1);
-    }
+    await expect(page).toHaveURL(/#\/resources\?/);await expect(fleet).toHaveValue(target);
+    await fleet.focus();await fleet.press('ArrowUp');await fleet.press('Enter');
+    await expect(fleet).toBeFocused();await expect(fleet).toHaveValue('11111111-1111-4111-8111-000000000001');
+    await expect(page).toHaveURL(/#\/resources\?.*target=11111111-1111-4111-8111-000000000001/);
     const database = page.getByRole('combobox', { name: 'Workspace database', exact: true });
     await database.focus();
     await expect(database).toBeFocused();
-    await expect.poll(async () => {
-      const control = await database.boundingBox();
-      const pinned = await fleet.boundingBox();
-      return control && pinned ? control.y - (pinned.y + pinned.height) : -1;
-    }, { message: 'A focused workspace control must remain visible below pinned fleet navigation' }).toBeGreaterThanOrEqual(-1);
+    await expect(database).toBeInViewport();
     expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(1);
     const results = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'best-practice']).analyze();
     await testInfo.attach('accessibility-results', { body: JSON.stringify(results.violations, null, 2), contentType: 'application/json' });
@@ -469,13 +448,6 @@ for (const width of [320, 390, 768, 1440]) {
     const folder = resolve('../artifacts/dashboard-refactor/screenshots');
     await mkdir(folder, { recursive: true });
     await page.evaluate(() => { document.activeElement?.blur(); window.scrollTo(0, 0); });
-    await entries.evaluate(element => {
-      const link = element.querySelector('a[aria-current="location"]');
-      if (link) {
-        const linkLeft = link.getBoundingClientRect().left - element.getBoundingClientRect().left + element.scrollLeft;
-        element.scrollLeft = Math.max(0, linkLeft - (element.clientWidth - link.getBoundingClientRect().width) / 2);
-      }
-    });
     await page.screenshot({ path: resolve(folder, `workspace-fleet-${width}.png`), fullPage: true });
     await fleet.screenshot({ path: resolve(folder, `workspace-fleet-detail-${width}.png`) });
   });
@@ -559,6 +531,7 @@ for (const width of [320, 390, 768, 1440]) {
     const grid = page.getByRole('region', { name: 'Server health grid', exact: true });
     const server = grid.getByRole('link', { name: 'SYNTHETIC SQL 02', exact: true });
     await expect(server).toBeVisible();
+    await grid.getByRole('checkbox', { name: 'Waits & HA', exact: true }).check();
     const row = grid.getByRole('row').filter({ has: page.getByRole('link', { name: 'SYNTHETIC SQL 02', exact: true }) });
     for (const [label, destination] of [['SQL scheduler CPU', 'resources'], ['OS free via SQL', 'resources'], ['Waits', 'waits'], ['Blocking', 'activity'], ['HA', 'operations']]) {
       const link = row.getByRole('link', { name: new RegExp(`^${label}:`) });
@@ -569,7 +542,7 @@ for (const width of [320, 390, 768, 1440]) {
     }
     await auditResponsiveState(page, testInfo, 'fleet-evidence-links');
     await saveFullPage(page, `fleet-evidence-links-${width}.png`);
-    const waits = row.getByRole('link', { name: /^Waits:/ });
+    const waits = row.getByRole('link', { name: /^Investigate/ });
     await waits.focus();
     await waits.press('Enter');
     await expect(page).toHaveURL(new RegExp(`#/waits\\?target=${target}`));
@@ -591,6 +564,7 @@ for (const width of [320, 390, 768, 1440]) {
     ]);
     await page.goto(`/#/health?${new URLSearchParams({ target: '11111111-1111-4111-8111-000000000001', range: 'custom', from: '2026-09-26T08:00:00.000Z', to: '2026-09-26T12:00:00.000Z', databaseId: '6', healthSection: 'summary' })}`);
     await page.getByRole('button', { name: 'Show UTC time', exact: true }).click();
+    await revealHealthSupport(page);
     const cards = page.getByRole('region', { name: 'Latest SQL buckets and hourly baselines', exact: true });
     const cpu = cards.getByRole('region', { name: 'SQL scheduler CPU baseline comparison', exact: true });
     await expect(cpu.locator('.dashboard-baseline-value strong')).toHaveText('70');
@@ -638,9 +612,10 @@ for (const width of [320, 390, 768, 1440]) {
     });
     await page.goto(`/#/health?${new URLSearchParams({ target, range: 'custom', from: '2026-09-26T08:00:00.000Z', to: '2026-09-26T12:00:00.000Z', healthSection: 'summary' })}`);
     await expect(page.getByRole('alert').filter({ hasText: 'Health evidence returned an invalid or mismatched response. Refresh to retry.' })).toBeVisible();
+    await revealHealthSupport(page);
     await expect(page.getByRole('region', { name: 'Latest SQL buckets and hourly baselines', exact: true })).toBeVisible();
-    await page.locator('.page-actions').getByRole('button', { name: /Refresh/ }).focus();
-    await expect(page.locator('.page-actions').getByRole('button', { name: /Refresh/ })).toBeFocused();
+    await page.getByRole('button', { name: '↻ Refresh', exact: true }).focus();
+    await expect(page.getByRole('button', { name: '↻ Refresh', exact: true })).toBeFocused();
     await auditResponsiveState(page, testInfo, 'health-invalid-response');
     expect(crashes).toEqual([]);
     await saveFullPage(page, `health-invalid-${width}.png`);

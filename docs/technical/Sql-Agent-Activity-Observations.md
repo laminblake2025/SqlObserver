@@ -34,15 +34,15 @@ The new retention policy defaults off, with a minimum 90-day lifetime and three 
 
 Final owning groups pass **487 unit**, **100 HTTP**, **78 PostgreSQL integration** and **1 isolated retention** cases, all with zero skips. The failed accounting attempt and its correction are retained in the evidence.
 
-The [qualification record](../../artifacts/dashboard-agent-activity-observations-2026-10-06/completion.json) records the final owning groups, source archive, failed attempts and independent review. PostgreSQL tests use synthetic Agent captures against disposable pinned PostgreSQL18.4. The earlier actual-monitor reader qualification is separate; this slice does not constitute a new native SQL capture, live migration, persistent installation, opt-in, deployment, or connected collector-to-dashboard acceptance.
+The qualification record (local output: `artifacts/dashboard-agent-activity-observations-2026-10-06/completion.json`) records the final owning groups, source archive, failed attempts and independent review. PostgreSQL tests use synthetic Agent captures against disposable pinned PostgreSQL18.4. The earlier actual-monitor reader qualification is separate; this slice does not constitute a new native SQL capture, live migration, persistent installation, opt-in, deployment, or connected collector-to-dashboard acceptance.
 
 The qualified [activity window history slice](Sql-Agent-Activity-Window-History.md) now supplies scoped completion-window summaries and independent exact run/sample-revision detail, with an observations panel alongside existing Agent failure history. Failed and missing receipts remain explicit; a selected run never substitutes an older success. Historical reads remain available after enrollment revocation and do not resolve authority to perform a new capture. Existing failure history retains its seven-day first-observed window semantics. Running/session/time qualification, persistent provisioning and connected collector-to-dashboard acceptance remain separate work.
 
-The [later connected acceptance](../../artifacts/dashboard-agent-deny-connected-2026-10-07/local-qualification-v1.json) exercises the production collector through its internal test-only synthetic source delegate, real collector-role enrollment resolution, sealed canonical repository, scoped root HTTP and built UI without API interception. Synthetic capability evidence and test authentication are explicit. Success, sanitized permission failure, committed replay, revocation disabling the schedule and historical reads pass; public source clocks remain exact and admission/association flags remain false with qualification `Absent`. It is a disposable connected fixture, separate from the [four passing Run16 actual-monitor cases](../../artifacts/dashboard-agent-deny-connected-2026-10-07/native-qualification-v1.json). Native-source canonical replay and continuous deployed acceptance remain unqualified.
+The later connected acceptance (local output: `artifacts/dashboard-agent-deny-connected-2026-10-07/local-qualification-v1.json`) exercises the production collector through its internal test-only synthetic source delegate, real collector-role enrollment resolution, sealed canonical repository, scoped root HTTP and built UI without API interception. Synthetic capability evidence and test authentication are explicit. Success, sanitized permission failure, committed replay, revocation disabling the schedule and historical reads pass; public source clocks remain exact and admission/association flags remain false with qualification `Absent`. It is a disposable connected fixture, separate from the four passing Run16 actual-monitor cases (local output: `artifacts/dashboard-agent-deny-connected-2026-10-07/native-qualification-v1.json`). Native-source canonical replay and continuous deployed acceptance remain unqualified.
 
 ## Finite native-source replay — 2026-10-07
 
-The [Run17 replay record](../../artifacts/dashboard-agent-native-replay-2026-10-07/completion-v1.json) subsequently qualifies one original restored-phase native capture through restricted canonical PostgreSQL18.4 admission, root HTTP and the built Operations UI. The actual monitor passes the four signed/DENY/restored cases again, with normal baseline cleanup. Before the first monitor launch, the exporter preserves the full original enrollment and validated installed snapshot in a bounded, protected private sidecar. The portable parser links the unchanged raw artifact hashes, original target/revision/run, authority window, SID and pins, exact TRX identity, four native results and cleanup evidence. It does not repeat live DBA validation.
+The Run17 replay record (local output: `artifacts/dashboard-agent-native-replay-2026-10-07/completion-v1.json`) subsequently qualifies one original restored-phase native capture through restricted canonical PostgreSQL18.4 admission, root HTTP and the built Operations UI. The actual monitor passes the four signed/DENY/restored cases again, with normal baseline cleanup. Before the first monitor launch, the exporter preserves the full original enrollment and validated installed snapshot in a bounded, protected private sidecar. The portable parser links the unchanged raw artifact hashes, original target/revision/run, authority window, SID and pins, exact TRX identity, four native results and cleanup evidence. It does not repeat live DBA validation.
 
 The restored source bracket is `2026-10-07T06:21:33.4340334Z` through `2026-10-07T06:21:33.4355773Z`. Fresh repository completion at `2026-10-07T06:24:19.392235Z` meets the unchanged five-minute source fence and original authorization window. No source timestamp or authority is reconstructed, extended or backdated. Canonical committed replay, revocation disabling collection, historical list/exact reads, all 12 retained jobs and their local source dates, private-field exclusion and browser query bindings pass. Admission/association flags remain false and qualification `Absent`.
 
@@ -50,7 +50,7 @@ The final groups pass **137 portable contracts**, **one explicitly synthetic dow
 
 ## Finite native repository resolution — 2026-10-07
 
-The later [Run20 checkpoint](../../artifacts/dashboard-agent-repository-native-2026-10-07/completion-v1.json) qualifies the actual Windows monitor's public reader and observations collector with the concrete `PostgreSqlSqlAgentModuleEnrollmentPort`. Eight cases pass with zero skips across signed, explicit-DENY, restored and repository-revoked phases. The repository-backed DENY case exercises the public reader; signed/restored capture and revoked refusal exercise the observations collector. The four repository cases obtain three, two, three and one fresh authoritative answers respectively; the original authorization is used only for independent comparison. Its exact validity window, revision, enrollment ID and evidence digest are retained in the protected original sidecar. Revocation refuses a new capture while that original window is still active.
+The later Run20 checkpoint (local output: `artifacts/dashboard-agent-repository-native-2026-10-07/completion-v1.json`) qualifies the actual Windows monitor's public reader and observations collector with the concrete `PostgreSqlSqlAgentModuleEnrollmentPort`. Eight cases pass with zero skips across signed, explicit-DENY, restored and repository-revoked phases. The repository-backed DENY case exercises the public reader; signed/restored capture and revoked refusal exercise the observations collector. The four repository cases obtain three, two, three and one fresh authoritative answers respectively; the original authorization is used only for independent comparison. Its exact validity window, revision, enrollment ID and evidence digest are retained in the protected original sidecar. Revocation refuses a new capture while that original window is still active.
 
 The repository is a dedicated loopback PostgreSQL18.6 cluster restored from a blank, owner/ACL-preserving PostgreSQL18.4 archive with all372 migrations and sealed canonical routes. Private collector/server login roles use only their corresponding safe fixed group. Both the session login and effective collector role lack direct control-table and column mutation privileges. The existing guest PostgreSQL cluster is unchanged. Relation ACL comparison preserves raw inventories and independently compares PostgreSQL-expanded grantor, grantee, privilege and grant-option tuples; all1,621 relations match despite309 equivalent raw representations. All other state sections, including644 function definitions/raw ACLs, retain their original comparison. Seven real ACL mutations in a separate private probe are refused and each restoration passes. Column and future-object default-creation ACLs are explicitly outside that inventory comparison.
 
@@ -67,7 +67,7 @@ The existing harness emits the receipt only after all final identity and metadat
 
 The new **55** portable contracts and **76** existing repository contracts pass without skips.
 The SQL fixture/journal tooling suite passes **578** cases. These are managed proofs; the two
-new native facts have not run. The [read-only guest baseline](../../artifacts/dashboard-agent-running-job-2026-10-07/baseline-probe-03/guest-baseline-20261007T084743815Z.json)
+new native facts have not run. The read-only guest baseline (local output: `artifacts/dashboard-agent-running-job-2026-10-07/baseline-probe-03/guest-baseline-20261007T084743815Z.json`)
 verified the target and unchanged stopped Agent state, but found **11 enabled existing jobs**.
 Starting Agent remains gated until a reviewed isolation strategy is available. No existing job,
 database, service configuration or Agent state changed. The earlier failed diagnostic attempts
@@ -80,35 +80,35 @@ stay null.
 
 ## Running-job source-readiness checkpoint — 2026-10-07
 
-The later [completion-v2 record](../../artifacts/dashboard-agent-running-job-2026-10-07/completion-v2.json)
-binds the [source-readiness-v2 freeze](../../artifacts/dashboard-agent-running-job-2026-10-07/source-readiness-v2.json),
+The later completion-v2 record (local output: `artifacts/dashboard-agent-running-job-2026-10-07/completion-v2.json`)
+binds the source-readiness-v2 freeze (local output: `artifacts/dashboard-agent-running-job-2026-10-07/source-readiness-v2.json`),
 **313** passing pure managed receipt/coordinator/worker contracts with zero failures/skips,
 and a coordinator build with zero warnings/errors. **Zero native running/completed cases**
 have executed. These results prepare the witness and cleanup protocol without admitting source
 association or execution/time semantics.
 
-[Probe05](../../artifacts/dashboard-agent-running-job-2026-10-07/baseline-probe-05/guest-baseline-20261007T093858172Z.json)
+Probe05 (local output: `artifacts/dashboard-agent-running-job-2026-10-07/baseline-probe-05/guest-baseline-20261007T093858172Z.json`)
 adds three unfinished all-history activity rows in older Agent session2 to the existing eleven
 enabled foreign jobs. Latest session4 has no unfinished row, but that does not satisfy the
 all-history gate. Two retained rows have starts and one is requested without a start; NULL stop
 and history IDs do not prove completion or cancellation. Agent remains stopped with SCM PID
 zero. Both gates refuse the current trial; original job flags and msdb history remain unchanged.
 
-The preservation-compatible [clean-lab plan v2](../../artifacts/dashboard-agent-running-job-2026-10-07/clean-lab-plan-v2.json)
+The preservation-compatible clean-lab plan v2 (local output: `artifacts/dashboard-agent-running-job-2026-10-07/clean-lab-plan-v2.json`)
 proposes a fresh SQL17 default-instance destination. Destination and installation scope remain
 pending; named instances are not supported by the current controller. Fresh physical identity,
 TLS, integrated monitor SID/configuration, deployed target/CPU host binding, revision and
 original authority must be qualified independently. A fresh-lab finite proof would not complete
 acceptance for the original selected target or continuously deployed collection.
 
-The separate [signature/journal tooling suite](../../artifacts/dashboard-agent-attached-invalid-2026-10-07/managed/trial-signature-contracts-attempt1.trx)
+The separate signature/journal tooling suite (local output: `artifacts/dashboard-agent-attached-invalid-2026-10-07/managed/trial-signature-contracts-attempt1.trx`)
 passes **709** pure managed cases with zero failures/skips, comprising the previous **578**
 plus **131** new signature-construction and rollback-journal contracts. This supersedes the
 earlier tooling count; it is not an additional 709 cases. The separate 313-case coordinator group
 is not an aggregate unique-test total with that suite.
 
-The later [Probe06 construction report](../../artifacts/dashboard-agent-attached-invalid-2026-10-07/construction-probe-06/guest-signature-construction-20261007T111503590Z.json)
-and [completion record](../../artifacts/dashboard-agent-attached-invalid-2026-10-07/completion-v1.json)
+The later Probe06 construction report (local output: `artifacts/dashboard-agent-attached-invalid-2026-10-07/construction-probe-06/guest-signature-construction-20261007T111503590Z.json`)
+and completion record (local output: `artifacts/dashboard-agent-attached-invalid-2026-10-07/completion-v1.json`)
 record rollback-only module mutations on SQL Server build 17.0.1000.7, rather than a read-only probe. The signed
 image and distinct genuine 392-byte target/donor signatures passed verification. Importing the
 donor signature through `ADD SIGNATURE` was refused with SQL error 15299, state 1, and outcome
@@ -138,7 +138,7 @@ process birth must fall between the independently held supervisor birth and the 
 The expanded whole tooling suite passes **833** cases with zero failures or skips: **709** prior
 contracts plus **124** audit/journal contracts. Definitions, results, execution IDs and test entries
 link uniquely. Build validation reports zero warnings or errors. The independently reviewed
-[frozen evidence](../../artifacts/dashboard-agent-interruption-2026-10-07/audit-source-freeze-v3.json) records the exact source and test hashes.
+frozen evidence (local output: `artifacts/dashboard-agent-interruption-2026-10-07/audit-source-freeze-v3.json`) records the exact source and test hashes.
 These totals supersede the earlier whole-suite count; they do not add to it.
 
 This is managed preparation only. Selection can return `EligibleForIndependentSqlValidation`;
@@ -166,7 +166,7 @@ its own actual 192-file payload and repaired Windows PowerShell 5.1 bounded outp
 were verified and independently reviewed. These are separate preparation groups, not additions
 to the 833-case tooling suite. Source packages and failed SDK-shape checks remain preserved.
 
-The [first watchdog VM report](../../artifacts/dashboard-agent-interruption-2026-10-07/watchdog-native-01/guest-harmless-watchdog-20261007T123815783Z.json)
+The first watchdog VM report (local output: `artifacts/dashboard-agent-interruption-2026-10-07/watchdog-native-01/guest-harmless-watchdog-20261007T123815783Z.json`)
 observes a freshly created harmless Administrator supervisor assigned before resume. Its deadline
 expired, termination of the held private Job was accepted, the original supervisor exited with
 code76, and the queried Job had zero active members. The original watchdog driver also exited
@@ -174,7 +174,7 @@ and was joined. Qualification nevertheless refused: lifetime `TotalProcesses` wa
 the reviewed gate requires **1**. The additional historical member has no identity/held-exit
 provenance. An empty current scope does not establish that missing provenance.
 
-The [reviewed refusal evidence](../../artifacts/dashboard-agent-interruption-2026-10-07/watchdog-native-refusal-v1.json) preserves raw duplicate-free
+The reviewed refusal evidence (local output: `artifacts/dashboard-agent-interruption-2026-10-07/watchdog-native-refusal-v1.json`) preserves raw duplicate-free
 output, exact package/source pins, original process epochs and the fresh nonce. The original
 candidate must not be rerun unchanged, and its count gate must not be loosened. The next fresh
 diagnostic must observe suspended supervisor membership in any existing Job before assignment,

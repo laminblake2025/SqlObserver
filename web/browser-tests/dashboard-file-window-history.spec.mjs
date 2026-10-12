@@ -4,7 +4,7 @@ import {mkdir} from 'node:fs/promises';
 import {resolve} from 'node:path';
 import {databaseFileWindowHistoryBackend,fileHistoryBinding,fileHistoryAlpha as alpha,fileHistoryBeta as beta,fileHistoryFixtureReceipt} from '../tools/database-file-window-history-fixture.mjs';
 
-const origin='http://127.0.0.1:4322';
+const origin='http://127.0.0.1:4432';
 const contexts=new WeakMap();
 const panel=page=>page.getByRole('region',{name:'Database file allocation and autogrowth history',exact:true});
 const snapshot=page=>panel(page).getByRole('region',{name:'Selected file snapshot',exact:true});

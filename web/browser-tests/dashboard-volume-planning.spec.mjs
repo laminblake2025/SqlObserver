@@ -3,7 +3,7 @@ import AxeBuilder from '@axe-core/playwright';
 import {mkdir} from 'node:fs/promises';
 import {fileURLToPath} from 'node:url';
 import {sqlVolumePlanningBinding as binding,sqlVolumePlanningAlpha as alpha,sqlVolumePlanningBeta as beta,sqlVolumePlanningReceipt,sqlVolumePlanningJson,sqlVolumePlanningHeld,installSqlVolumePlanningFixture} from '../component-tests/sqlVolumePlanningFixture.mjs';
-const origin='http://127.0.0.1:4322',sessions=new WeakMap(),panel=page=>page.getByRole('region',{name:'SQL volume capacity planning',exact:true}),detail=page=>panel(page).getByRole('region',{name:'Selected volume planning receipt',exact:true});
+const origin='http://127.0.0.1:4432',sessions=new WeakMap(),panel=page=>page.getByRole('region',{name:'SQL volume capacity planning',exact:true}),detail=page=>panel(page).getByRole('region',{name:'Selected volume planning receipt',exact:true});
 const button=(page,name)=>panel(page).getByRole('button',{name,exact:true}),scope=page=>Object.fromEntries(new URLSearchParams(new URL(page.url()).hash.split('?')[1]));
 const href=(extra={})=>'/#/resources?'+new URLSearchParams({target:alpha,range:'custom',from:binding.fromUtc,to:binding.toUtc,...extra});
 const response=(session,read)=>read.selection?session.backend.snapshot(read.binding,read.selection,read.cursor,read.limit):session.backend.read(read.binding,read.cursor,read.limit);

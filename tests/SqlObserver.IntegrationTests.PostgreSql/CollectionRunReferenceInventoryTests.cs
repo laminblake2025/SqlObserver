@@ -492,6 +492,7 @@ public sealed class CollectionRunReferenceInventoryTests(PostgreSql18Fixture fix
             telemetry.collection_run_identity.run_id
             telemetry.collection_run_outcome.run_id
             telemetry.collection_run_v2.run_id
+            telemetry.cpu_component_receipt.run_id
             telemetry.cpu_paired_capture_receipt.run_id
             telemetry.database_file_snapshot.collection_run_id
             telemetry.database_file_snapshot_v2.collection_run_id
@@ -506,6 +507,7 @@ public sealed class CollectionRunReferenceInventoryTests(PostgreSql18Fixture fix
             telemetry.server_lifecycle_receipt.run_id
             telemetry.server_wait_snapshot.collection_run_id
             telemetry.server_wait_snapshot_v2.collection_run_id
+            telemetry.sql_agent_activity_receipt.run_id
             telemetry.sql_agent_failure.run_id
             telemetry.sql_agent_failure_occurrence.run_id
             telemetry.sql_agent_failure_occurrence_v2.run_id

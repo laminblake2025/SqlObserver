@@ -289,3 +289,30 @@
  .app-layout .overview-issue > small { grid-column:2; font-size:10px; }
  .app-layout .overview-issue > .secondary-button { justify-self:start; }
 }
+
+@media (max-width:850px) {
+ .app-layout .server-dashboard-chart .overview-chart { max-height:none; min-height:180px; }
+}
+
+/* Keep the shared system-color palette authoritative after the redesign palette. */
+@media (forced-colors: active) {
+  :root {
+    --navy: Canvas; --navy-deep: Canvas; --navy-soft: Canvas;
+    --canvas: Canvas; --surface: Canvas; --surface-soft: Canvas;
+    --surface-hover: Canvas; --surface-table: Canvas;
+    --surface-teal: Canvas; --surface-warning: Canvas;
+    --teal-soft: Canvas; --amber-soft: Canvas; --red-soft: Canvas; --slate-soft: Canvas;
+    --text: CanvasText; --muted: CanvasText; --muted-deep: CanvasText;
+    --teal: CanvasText; --teal-deep: CanvasText; --amber: CanvasText;
+    --red: CanvasText; --slate: CanvasText; --footer-muted: CanvasText;
+    --border: CanvasText; --border-strong: CanvasText; --border-teal: CanvasText;
+    --border-warning: CanvasText; --amber-border: CanvasText; --gridline: CanvasText;
+    --placeholder: GrayText; --focus: Highlight; --focus-on-dark: Highlight;
+    --action-background: ButtonFace; --action-hover: ButtonFace; --action-text: ButtonText;
+    --series-1: CanvasText; --series-2: CanvasText; --series-3: CanvasText;
+    --series-4: CanvasText; --series-5: CanvasText; --series-6: CanvasText;
+    --series-7: CanvasText; --series-8: CanvasText; --series-9: CanvasText; --series-10: CanvasText;
+  }
+  .app-layout .time-mode-pill, .app-layout .time-mode-pill.frozen { color:CanvasText; border-color:CanvasText; background:Canvas; }
+  .app-layout .sidebar nav a[aria-current=page] { color:CanvasText; background:Canvas; border-left-color:Highlight; }
+}

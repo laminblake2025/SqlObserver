@@ -110,7 +110,7 @@ test('verified registration access loss cancels the form and regrant does not re
   await held.delivered;
   await expect(page.getByRole('link', { name: 'SYNTHETIC cancelled receipt', exact: true })).toHaveCount(0);
   const reads = context.accessReads; context.admin = true;
-  await page.locator('.page-actions').getByRole('button', { name: /Refresh/ }).click();
+  await page.getByRole('button', { name: '↻ Refresh', exact: true }).click();
   await expect.poll(() => context.accessReads).toBeGreaterThan(reads);
   await expect(page.getByRole('button', { name: '+ Add server', exact: true })).toBeVisible();
   await expect(drawer(page)).not.toBeVisible();

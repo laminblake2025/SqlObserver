@@ -65,3 +65,8 @@ test('viewer sees the required role and cannot trigger a content request',async(
  const history=await openHistory(page);await expect(history.getByText('Opening captured query text and plan XML requires the QueryTextReader role and a read role on this server.')).toBeVisible();
  await expect(history.getByRole('button',{name:'Open text',exact:true})).toHaveCount(0);await expect(history.getByRole('button',{name:'Open plan XML',exact:true})).toHaveCount(0);expect(reads).toBe(0);
 });
+
+
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('sqlobserver.timeDisplayMode', 'utc'));
+});

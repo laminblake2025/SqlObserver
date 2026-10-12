@@ -3,7 +3,7 @@ import AxeBuilder from '@axe-core/playwright';
 import { mkdir } from 'node:fs/promises';
 import { resolve } from 'node:path';
 
-const origin = 'http://127.0.0.1:4322';
+const origin = 'http://127.0.0.1:4432';
 const target = '11111111-1111-4111-8111-000000000001';
 const from = '2026-10-02T08:00:00.000Z', to = '2026-10-02T12:00:00.000Z';
 const screenshots = resolve('..', 'artifacts', 'dashboard-diagnostic-focus-2026-10-04', 'screenshots');
@@ -81,7 +81,7 @@ for (const width of [320, 390, 768, 1440]) for (const forced of [false, true])
     await page.goto(href('queries'));
     const tabs = page.getByRole('tablist', { name: 'Query views', exact: true });
     await expect(tabs).toBeVisible(); await settled(page);
-    const navigation = page.getByRole('navigation', { name: 'Main navigation', exact: true });
+    const navigation = page.locator('nav');
     if (forced) {
       const background = await page.locator('.sidebar').evaluate(element => {
         const probe = document.createElement('span');

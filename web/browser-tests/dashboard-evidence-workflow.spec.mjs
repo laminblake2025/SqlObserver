@@ -3,7 +3,7 @@ import AxeBuilder from '@axe-core/playwright';
 import { mkdir } from 'node:fs/promises';
 import { resolve } from 'node:path';
 
-const origin = 'http://127.0.0.1:4322', target = '11111111-1111-4111-8111-000000000001';
+const origin = 'http://127.0.0.1:4432', target = '11111111-1111-4111-8111-000000000001';
 const from = '2026-09-26T08:00:00.123456Z', to = '2026-09-26T12:00:00.654321Z';
 const attempts = new WeakMap();
 test.beforeEach(async ({ page }) => {
