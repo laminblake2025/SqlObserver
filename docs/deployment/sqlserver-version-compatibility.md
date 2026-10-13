@@ -1,22 +1,21 @@
-# SQL Server 2014 / 2019 compatibility checks
+# SQL Server 2016 and newer compatibility checks
 
-The current code recognizes SQL Server 2014 (12) and retains SQL Server 2019 (15). SQL Server 2014 has the reduced capability set listed in the [support matrix](../architecture/support-matrix.md). Neither version is newly native-certified by these source changes.
+The active minimum is SQL Server 2016 (major 13). Explicit engine selections are 2016 (13), 2017 (14), 2019 (15), 2022 (16), and 2025 (17). SQL Server 2014 assets and migration 0373 remain historical inputs; production discovery rejects major 12. Database compatibility level does not change the native engine version.
 
-Apply forward migration `0373_sqlserver_2014_collector_contracts.sql`, then deploy the rebuilt Collector and API from the same source revision. The migration binds the exact extended core/activity asset digests and inventory activation digests; it preserves schedules, limits, output schemas, and historical migration bytes, and rejects prior contract drift atomically. Public API shapes remain unchanged. Older lab deployments do not gain compatibility merely because the local dashboard assets were rebuilt.
+Apply forward migration `0374_sqlserver_2016_2017_collector_contracts.sql`, then deploy Collector and API from the same source revision. It binds eight exact core/activity contracts and inventory activation digests, preserves schedules and evidence schemas, and rejects prior digest drift atomically. Historical migrations and release receipts remain immutable.
 
-Provision a pre-existing Windows monitoring login using the offline permission generator, with major `12` or `15` as appropriate. Review and execute the generated SQL independently as the authorized DBA. Select logical-file metadata explicitly if file collection is needed. For 2014, Query Store and replication options are rejected and msdb history grants are omitted.
+The additive 2016/2017 bundle provides engine counters (including scheduler CPU), database inventory/files, sessions/requests, server waits, blocking, and protected live snapshots. Advanced collectors retain their separate version qualification limits; Query Store, deadlock, host, operational-health, and replication coverage is not established by this bundle. Missing or unsupported evidence remains explicit. See the [support matrix](../architecture/support-matrix.md).
 
-The native smoke test requires the logical-file grant as well as base monitoring. Use a SQL Server 2014 build with TLS 1.2 support (included in SP2/SP3), a trusted server certificate, and a compatible Windows TLS configuration. The product retains mandatory encryption and certificate validation. See [Microsoft's TLS compatibility guidance](https://learn.microsoft.com/en-us/troubleshoot/sql/database-engine/connect/tls-1-2-support-microsoft-sql-server).
+Use actual Windows engines with trusted TLS certificates and a non-sysadmin monitoring identity. SQL 2016 and 2017 use `VIEW SERVER STATE`, as does 2019; 2022 and 2025 retain performance-state permissions. The offline permission generator rejects versions below 13 and unqualified advanced options on 13/14. Optional logical-file metadata requires `VIEW ANY DEFINITION`. Register each exact endpoint and certificate name through server settings, then rediscover its capabilities.
 
-Use the server's existing settings surface to register its DNS name and instance/port, validated certificate name, and collector identity, then request capability rediscovery. Require verified Windows authentication and TLS, a non-sysadmin collector, and the required version-specific permission evidence. SQL Server 2014 must appear as Windows, major 12; SQL Server 2019 as major 15. Authentication/transport failures or permission denials remain diagnostic failures rather than a version fallback.
-
-For a bounded, passive native source smoke test under the intended monitoring identity:
+Run the bounded native source verification under the intended monitoring identity:
 
 ```powershell
-./tools/test-sqlserver-version-compatibility.ps1 -HostName sql2014.lab.example -Port 1433 -ExpectedMajor 12
-./tools/test-sqlserver-version-compatibility.ps1 -HostName sql2019.lab.example -Port 1433 -ExpectedMajor 15
+./tools/test-sqlserver-version-compatibility.ps1 -HostName sqlcompat.lab.example -Port 51416 -ExpectedMajor 13
+./tools/test-sqlserver-version-compatibility.ps1 -HostName sqlcompat.lab.example -Port 51417 -ExpectedMajor 14
+./tools/test-sqlserver-version-compatibility.ps1 -HostName sqlcompat.lab.example -Port 51419 -ExpectedMajor 15
 ```
 
-The test reads the compiled, checksum-verified assets through the product's strict integrated connection factory. It checks actual major version, required permissions, seven core/activity sources, and protected live-session metadata without loading SQL text. It does not create workloads, change permissions/configuration, or permit trusted-certificate bypass. An absent server, wrong version, denied permission, or invalid certificate fails. Its receipt is a native source smoke result, not release or full-stack acceptance.
+The runner verifies actual engine identity, permissions, seven bounded sources, and protected snapshot metadata without loading SQL text. Missing servers, wrong majors, denied permissions, and invalid certificates fail. Its receipt is a source smoke result; full-stack acceptance additionally requires the collector → PostgreSQL → API → dashboard path, coherent retained snapshots and exact session identities, bounded blocking with rollback, deliberate SQL-text access and revocation, and least-privilege checks against the final build inputs.
 
-Then verify repository ingestion and dashboard reads from that exact target: fresh health samples, inventory/file evidence, snapshots with session counts and lifetimes, blocking relationships, and deliberate Query Text Reader access. Capture bounded blocking activity only in an authorized isolated lab, with rollback. Confirm unknown scheduler CPU and unsupported collectors remain explicit on 2014. Repeat permission denial/revocation and least-privilege checks. Save receipts against the final build inputs before claiming native acceptance.
+Windows Server 2019 supports all three older native engines; Windows Server 2025 does not support SQL Server 2016/2017. Provision them in a separate Windows Server 2019 lab and use SQL 2016 SP3 plus applicable servicing updates. [Microsoft's Windows/SQL support matrix](https://learn.microsoft.com/en-us/troubleshoot/sql/database-engine/install/windows/use-sql-server-in-windows).

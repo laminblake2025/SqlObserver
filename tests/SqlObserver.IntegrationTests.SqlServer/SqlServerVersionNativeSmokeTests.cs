@@ -20,7 +20,7 @@ public sealed class SqlServerVersionNativeSmokeTests
     {
         string host = Required("SQLOBSERVER_VERSION_TEST_HOST");
         int major = int.Parse(Required("SQLOBSERVER_VERSION_TEST_MAJOR"), CultureInfo.InvariantCulture);
-        Assert.True(major is 12 or 15);
+        Assert.True(SqlServerVersionSupport.IsSupportedMajor(major));
         string? instance = Environment.GetEnvironmentVariable("SQLOBSERVER_VERSION_TEST_INSTANCE");
         var endpoint = string.IsNullOrEmpty(instance)
             ? new SqlServerEndpoint(new SqlServerHostName(host), tcpPort: int.Parse(Required("SQLOBSERVER_VERSION_TEST_PORT"), CultureInfo.InvariantCulture))
@@ -38,7 +38,8 @@ public sealed class SqlServerVersionNativeSmokeTests
         Assert.False(profile.IsSysAdmin);
         Assert.True(profile.TransportEncrypted);
         Assert.True(profile.Outcome is CapabilityDiscoveryOutcome.Supported or CapabilityDiscoveryOutcome.Degraded);
-        Assert.Contains(profile.Permissions, item => item.PermissionId.Value == "server.view-state" && item.Outcome == PermissionEvidenceOutcome.Granted);
+        string statePermission = SqlServerVersionSupport.UsesViewServerState(major) ? "server.view-state" : "server.view-performance-state";
+        Assert.Contains(profile.Permissions, item => item.PermissionId.Value == statePermission && item.Outcome == PermissionEvidenceOutcome.Granted);
         Assert.Contains(profile.Permissions, item => item.PermissionId.Value == "server.view-any-database" && item.Outcome == PermissionEvidenceOutcome.Granted);
         Assert.Contains(profile.Permissions, item => item.PermissionId.Value == "server.view-any-definition" && item.Outcome == PermissionEvidenceOutcome.Granted);
 
@@ -49,8 +50,8 @@ public sealed class SqlServerVersionNativeSmokeTests
             ["engine.core"] = 3, ["database.inventory"] = 9, ["database.files"] = 16,
             ["activity.sessions"] = 12, ["activity.requests"] = 13, ["waits.server"] = 6, ["blocking.current"] = 6,
         };
-        var assets = SqlServerCollectorAssetCatalog.LoadVersion2WithSqlServer2014Support().Collectors
-            .Concat(SqlServerActivityCollectorAssetCatalog.LoadWithSqlServer2014Support().Collectors);
+        var assets = SqlServerCollectorAssetCatalog.LoadVersion2WithSqlServer2016Support().Collectors
+            .Concat(SqlServerActivityCollectorAssetCatalog.LoadWithSqlServer2016Support().Collectors);
         foreach (SqlServerCollectorAsset asset in assets)
         {
             await using var command = new SqlCommand(asset.GetQuery(major), connection) { CommandTimeout = 5 };

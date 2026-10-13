@@ -46,6 +46,11 @@ public sealed class SqlServer2014CollectorContractPostgreSqlTests(PostgreSql18Fi
             Assert.Equal(item.Asset.ManifestChecksum, row.GetString(0));
             Assert.Equal(item.Bundle, row.GetString(1));
         }
+        // The production composition has moved forward; qualify reconciliation
+        // after applying its additive contract without changing the 2014 receipt above.
+        var current = await new PostgreSqlMigrationPort(database.DataSource).ApplyPendingAsync(new(1, Timeout), default);
+        Assert.False(current.HasFailures);
+        Assert.Equal(374, Assert.Single(current.Results).Migration.Number.Value);
         await ServerLifecycleAdmissionPostgreSqlTests.ReconcileAsync(database);
         Assert.True(await AppendOnlyTriggerEnabledAsync(database));
     }

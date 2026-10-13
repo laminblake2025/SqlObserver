@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory = $true)]
-    [ValidateSet(12, 15, 16, 17)]
+    [ValidateSet(13, 14, 15, 16, 17)]
     [int] $SqlServerMajorVersion,
 
     [Parameter(Mandatory = $true)]
@@ -57,8 +57,8 @@ function Assert-WindowsPrincipal {
 
 Assert-WindowsPrincipal -Value $Principal
 
-if ($SqlServerMajorVersion -eq 12 -and ($Replication -or $PSBoundParameters.ContainsKey('QueryStoreDatabase'))) {
-    throw 'SQL Server 2014 does not support Query Store or the replication collector. Choose base monitoring or logical files.'
+if ($SqlServerMajorVersion -in @(13, 14) -and ($Replication -or $PSBoundParameters.ContainsKey('QueryStoreDatabase'))) {
+    throw 'SQL Server 2016/2017 advanced collector contracts are not yet qualified. Choose base monitoring or logical files.'
 }
 
 if ($PSBoundParameters.ContainsKey('QueryStoreDatabase')) {
@@ -86,7 +86,7 @@ if ($Replication) {
 
 $principalLiteral = $Principal.Replace("'", "''", [StringComparison]::Ordinal)
 $principalIdentifier = $Principal.Replace(']', ']]', [StringComparison]::Ordinal)
-$permissionName = if ($SqlServerMajorVersion -in @(12, 15)) {
+$permissionName = if ($SqlServerMajorVersion -in @(13, 14, 15)) {
     'VIEW SERVER STATE'
 }
 
@@ -130,7 +130,7 @@ $replicationGrantSection = if ($Replication) {
 "@
 } else { '' }
 
-$grantStatement = if ($SqlServerMajorVersion -in @(12, 15)) {
+$grantStatement = if ($SqlServerMajorVersion -in @(13, 14, 15)) {
 @"
     IF NOT EXISTS
     (
@@ -165,7 +165,7 @@ else {
 "@
 }
 
-$removeStatement = if ($SqlServerMajorVersion -in @(12, 15)) {
+$removeStatement = if ($SqlServerMajorVersion -in @(13, 14, 15)) {
 @"
     IF EXISTS
     (
@@ -200,7 +200,7 @@ else {
 "@
 }
 
-$historyGrantSection = if ($SqlServerMajorVersion -eq 12) { '' } else {
+$historyGrantSection = if ($SqlServerMajorVersion -in @(13, 14)) { '' } else {
 @"
     -- M9 read-only history permissions; this plan never adds an Agent server role.
     -- The database principal is created only when it is absent and must map to
@@ -277,7 +277,7 @@ BEGIN
     THROW 51000, 'SqlObserver permission plan does not support this SQL Server engine edition.', 1;
 END;
 
-IF CONVERT(nvarchar(1), CASE WHEN CONVERT(int, PARSENAME(CONVERT(nvarchar(128), SERVERPROPERTY(N'ProductVersion')), 4)) = 12 AND CONVERT(int, SERVERPROPERTY(N'EngineEdition')) IN (2, 3, 4) THEN N'\' ELSE SERVERPROPERTY(N'PathSeparator') END) <> N'\'
+IF CONVERT(nvarchar(1), CASE WHEN CONVERT(int, PARSENAME(CONVERT(nvarchar(128), SERVERPROPERTY(N'ProductVersion')), 4)) = 13 AND CONVERT(int, SERVERPROPERTY(N'EngineEdition')) IN (2, 3, 4) THEN N'\' ELSE SERVERPROPERTY(N'PathSeparator') END) <> N'\'
 BEGIN
     THROW 51000, 'SqlObserver permission plan supports SQL Server on Windows only.', 1;
 END;
@@ -330,7 +330,7 @@ GRANT VIEW ANY DEFINITION TO [$principalIdentifier];
 if ($PSBoundParameters.ContainsKey('QueryStoreDatabase')) {
     $queryStoreLiteral = $QueryStoreDatabase.Replace("'", "''", [StringComparison]::Ordinal)
     $queryStoreIdentifier = $QueryStoreDatabase.Replace(']', ']]', [StringComparison]::Ordinal)
-    $queryStorePermission = if ($SqlServerMajorVersion -in @(12, 15)) { 'VIEW DATABASE STATE' } else { 'VIEW DATABASE PERFORMANCE STATE' }
+    $queryStorePermission = if ($SqlServerMajorVersion -in @(13, 14, 15)) { 'VIEW DATABASE STATE' } else { 'VIEW DATABASE PERFORMANCE STATE' }
     $script += @"
 
 -- Explicit Query Store observation access for one operator-selected database.

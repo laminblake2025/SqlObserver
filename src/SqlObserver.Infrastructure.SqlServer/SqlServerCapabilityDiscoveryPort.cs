@@ -36,7 +36,7 @@ public sealed class SqlServerCapabilityDiscoveryPort : ISqlServerCapabilityDisco
     private static readonly SqlServerPermissionId SysjobhistorySelectPermissionId = new("msdb.sysjobhistory.select");
 
     private readonly ISqlServerConnectionFactory _connectionFactory;
-    private readonly SqlServer2014AssetCatalog _compatibility = SqlServer2014AssetCatalog.LoadEmbedded();
+    private readonly SqlServer2016AssetCatalog _compatibility = SqlServer2016AssetCatalog.LoadEmbedded();
     private readonly SqlServerCapabilityAssetCatalog _assets;
     private readonly SqlServerCapabilityV2AssetCatalog? _assetsV2;
     private readonly SqlServerCapabilityV3AssetCatalog? _assetsV3;
@@ -167,7 +167,7 @@ public sealed class SqlServerCapabilityDiscoveryPort : ISqlServerCapabilityDisco
             {
                 detail = await ExecuteDetailAsync(
                         connection,
-                        bootstrap.ProductMajorVersion == 12 ? _compatibility.CapabilitySql :
+                        bootstrap.ProductMajorVersion is 13 or 14 ? _compatibility.GetCapabilitySql(bootstrap.ProductMajorVersion) :
                         _assetsV4?.GetSupportedQuery(bootstrap.ProductMajorVersion) ??
                             _assetsV3?.GetSupportedQuery(bootstrap.ProductMajorVersion) ??
                             _assetsV2?.Get($"capability.connection.sqlserver{bootstrap.ProductMajorVersion}-windows.v2.sql") ??
@@ -175,13 +175,13 @@ public sealed class SqlServerCapabilityDiscoveryPort : ISqlServerCapabilityDisco
                         commandTimeout,
                         budget,
                         usedPermissionFallback: false,
-                        contractVersion: bootstrap.ProductMajorVersion == 12 || _assetsV4 is not null ? 4 : _assetsV3 is not null ? 3 : _assetsV2 is not null ? 2 : 1,
+                        contractVersion: bootstrap.ProductMajorVersion is 13 or 14 || _assetsV4 is not null ? 4 : _assetsV3 is not null ? 3 : _assetsV2 is not null ? 2 : 1,
                         timeout.Token)
                     .ConfigureAwait(false);
             }
             catch (SqlException exception) when (IsPermissionDenied(exception))
             {
-                if (bootstrap.ProductMajorVersion == 12 || _assetsV4 is not null || _assetsV3 is not null || _assetsV2 is not null)
+                if (bootstrap.ProductMajorVersion is 13 or 14 || _assetsV4 is not null || _assetsV3 is not null || _assetsV2 is not null)
                 {
                     // Versioned contracts must not silently downgrade to the
                     // historical v1 fallback while retaining a newer profile version.

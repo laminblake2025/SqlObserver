@@ -120,6 +120,22 @@ public sealed class SqlServerCollectorAssetCatalog
             : throw new KeyNotFoundException("The collector is not in the verified SQL Server asset catalog.");
     }
 
+    public static SqlServerCollectorAssetCatalog LoadWithSqlServer2016Support()
+    {
+        SqlServerCollectorAssetCatalog current = LoadEmbedded();
+        SqlServer2016AssetCatalog compatibility = SqlServer2016AssetCatalog.LoadEmbedded();
+        return new SqlServerCollectorAssetCatalog(current.Collectors.Select(compatibility.Extend).ToArray(),
+            SqlServer2016AssetCatalog.ComposeBundleChecksum(current.BundleChecksum));
+    }
+
+    public static SqlServerCollectorAssetCatalog LoadVersion2WithSqlServer2016Support()
+    {
+        SqlServerCollectorAssetCatalog current = LoadVersion2Embedded();
+        SqlServer2016AssetCatalog compatibility = SqlServer2016AssetCatalog.LoadEmbedded();
+        return new SqlServerCollectorAssetCatalog(current.Collectors.Select(compatibility.Extend).ToArray(),
+            SqlServer2016AssetCatalog.ComposeBundleChecksum(current.BundleChecksum));
+    }
+
     public static SqlServerCollectorAssetCatalog LoadWithSqlServer2014Support()
     {
         SqlServerCollectorAssetCatalog current = LoadEmbedded();

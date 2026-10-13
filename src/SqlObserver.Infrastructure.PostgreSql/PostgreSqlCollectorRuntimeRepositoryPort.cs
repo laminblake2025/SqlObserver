@@ -461,6 +461,34 @@ public sealed partial class PostgreSqlCollectorRuntimeRepositoryPort : ICollecto
         return (inventoryV2 || (entry.Manifest.ManifestVersion.Value == 1 && entry.Manifest.OutputSchemaVersion.Value == 1)) &&
             entry.ManifestDigest.Value == manifest && entry.AssetBundleDigest.Value == bundle;
     }
+    private static readonly string[] SqlServer2016ManifestDigests =
+    [
+        "8c7bfe0d84b5e7f1b4ad1eeeccd2b2771712b6b1b447f9f715851fc6c428c71e",
+        "d03709630b6534bf4900c33efd7dfa4ec66acc46cb56ca8ce7aac2d2286eb127",
+        "7d0c6ea09d85e571e1c270969f345273c6d635ca7d8ae037c2faacc70186ff81",
+        "db29e106b7574564444c37111e5a9ed20b2d1f12d871b245734ef9b2d78d3ad9",
+        "bc4bc47b0d3f49ea4458b5bd0abd3a4e3af85db4f215ba46c89b8678a7b537c1",
+        "486700b0776a94682dc7ba75b00dfed06dad48c53d60296c75de0c70b5c0168c",
+        "3f51ff60ad5df1765505d9871ecf16b4238c02c9edf43a162fd282e4bfb15941",
+    ];
+
+    private static bool IsSqlServer2016Contract(CollectorCatalogEntry entry, int index, int catalogCount)
+    {
+        if (index >= SqlServer2016ManifestDigests.Length) return false;
+        bool inventoryV2 = index == 1 && catalogCount >= 19 &&
+            entry.Manifest.ManifestVersion.Value == 2 && entry.Manifest.OutputSchemaVersion.Value == 2;
+        string manifest = inventoryV2
+            ? "faed58531a4f4e456c2f6bb423a0759f9e8c14a9017850a9c602508529e50fd2"
+            : SqlServer2016ManifestDigests[index];
+        string bundle = inventoryV2
+            ? "c3bf957086c5d0f0381c8a438f32b115c2249baacda29eaa9a4edad04045cc8c"
+            : index < 3
+                ? "1d94fc2f35240d7b796a7b7aa90416bc026938a29fc43cf9e5898ea108cce4eb"
+                : "c0457f5a05488c9ed05daf01cffc05f4dd01594dbb3051e772ce11ff8b8d2d84";
+        return (inventoryV2 || (entry.Manifest.ManifestVersion.Value == 1 && entry.Manifest.OutputSchemaVersion.Value == 1)) &&
+            entry.Manifest.SupportedVersions.MinimumMajor == 13 && entry.Manifest.SupportedVersions.MaximumMajor == 17 &&
+            entry.ManifestDigest.Value == manifest && entry.AssetBundleDigest.Value == bundle;
+    }
     private static readonly string ReconcileM7Sql = ReconcileSql.Replace("control.reconcile_collector_catalog(", "control.reconcile_collector_catalog_m7(", StringComparison.Ordinal);
 
     private readonly NpgsqlDataSource _dataSource;
@@ -1734,7 +1762,7 @@ public sealed partial class PostgreSqlCollectorRuntimeRepositoryPort : ICollecto
                 entry.AssetBundleDigest.Value == "8fe71e27b59e2d9dc0ae79786a5680853835c2f7530c85dd1fdc7af3b035d208";
             if (entry.ExecutionOrder != index + 1 ||
                 entry.Manifest.Id.Value != RequiredCollectorIds[index] ||
-                (!IsSqlServer2014Contract(entry, index, entries.Count) &&
+                (!IsSqlServer2016Contract(entry, index, entries.Count) && !IsSqlServer2014Contract(entry, index, entries.Count) &&
                  !inventoryV2 && !deadlocksV2 && !backupsV2 && !availabilityV2 &&
                     (entry.Manifest.ManifestVersion.Value != 1 ||
                      entry.Manifest.OutputSchemaVersion.Value != 1 ||

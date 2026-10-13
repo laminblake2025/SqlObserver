@@ -9,13 +9,13 @@ namespace SqlObserver.UnitTests;
 public sealed class SqlServer2014CompatibilityTests
 {
     [Theory]
-    [InlineData(12, true, true)]
+    [InlineData(12, false, false)]
     [InlineData(15, true, true)]
     [InlineData(16, true, false)]
     [InlineData(17, true, false)]
     [InlineData(11, false, false)]
-    [InlineData(13, false, false)]
-    [InlineData(14, false, false)]
+    [InlineData(13, true, true)]
+    [InlineData(14, true, true)]
     [InlineData(18, false, false)]
     public void EngineCoverageIsExplicit(int major, bool supported, bool statePermission)
     {

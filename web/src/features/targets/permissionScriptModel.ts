@@ -22,15 +22,15 @@ const forbidden = (value: unknown): boolean => typeof value !== "string" || valu
 const systemDatabases = new Set(["master", "model", "msdb", "tempdb"]);
 
 export function validatePermissionScriptValues(values: PermissionScriptValues): PermissionScriptValues {
-  if (!values || ![12, 15, 16, 17].includes(values.sqlServerMajorVersion)) throw new Error("Choose SQL Server 2014, 2019, 2022, or 2025.");
+  if (!values || ![13, 14, 15, 16, 17].includes(values.sqlServerMajorVersion)) throw new Error("Choose SQL Server 2016, 2017, 2019, 2022, or 2025.");
   if (forbidden(values.principal) || !/^[^\\@]+\\[^\\]+$/u.test(values.principal) &&
       !/^[^@\\\p{Zs}\u0009-\u000d\u0085\u2028\u2029]+@[^@\\\p{Zs}\u0009-\u000d\u0085\u2028\u2029]+$/u.test(values.principal))
     throw new Error("Enter an existing Windows DOMAIN\\name or user@domain principal, trimmed and at most 128 characters without control characters.");
   if (values.operation !== "Grant" && values.operation !== "Remove") throw new Error("Choose Grant or Remove.");
   if (values.logicalFiles !== undefined && typeof values.logicalFiles !== "boolean" ||
       values.replication !== undefined && typeof values.replication !== "boolean") throw new Error("Choose explicit optional permissions.");
-  if (values.sqlServerMajorVersion === 12 && (values.queryStoreDatabase !== undefined || values.replication))
-    throw new Error("SQL Server 2014 does not support Query Store or the replication collector.");
+  if ([13, 14].includes(values.sqlServerMajorVersion) && (values.queryStoreDatabase !== undefined || values.replication))
+    throw new Error("SQL Server 2016/2017 advanced collector contracts are not yet qualified.");
   if (values.operation === "Remove" && (values.logicalFiles || values.replication || values.queryStoreDatabase !== undefined || values.distributionDatabase !== undefined))
     throw new Error("Remove supports only the base capability permission. Database and metadata removal requires DBA provenance review.");
   if (values.queryStoreDatabase !== undefined && (forbidden(values.queryStoreDatabase) || systemDatabases.has(values.queryStoreDatabase.toLowerCase())))
@@ -52,7 +52,7 @@ function readCatalog(value: unknown): PermissionTemplateCatalog {
   const catalog = value as PermissionTemplateCatalog;
   if (catalog.schema !== 1 || !/^[a-f0-9]{64}$/u.test(catalog.sourceSha256) || !/^[a-f0-9]{64}$/u.test(catalog.templatesSha256) ||
       !catalog.templates || typeof catalog.templates !== "object" || Array.isArray(catalog.templates)) return fail();
-  const expected = ["12:remove", "12:grant:0", "12:grant:1", ...[15, 16, 17].flatMap(major => [`${major}:remove`, ...Array.from({ length: 8 }, (_, mask) => `${major}:grant:${mask}`)])];
+  const expected = [...[13, 14].flatMap(major => [`${major}:remove`, `${major}:grant:0`, `${major}:grant:1`]), ...[15, 16, 17].flatMap(major => [`${major}:remove`, ...Array.from({ length: 8 }, (_, mask) => `${major}:grant:${mask}`)])];
   if (Object.keys(catalog.templates).length !== expected.length || expected.some(key => !Object.hasOwn(catalog.templates, key))) return fail();
   for (const key of expected) {
     const script = catalog.templates[key];

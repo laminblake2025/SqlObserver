@@ -1,4 +1,29 @@
 <Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <EmbeddedResource Include="../../collectors/manifests/sqlserver2016.compatibility.v1.json" LogicalName="SqlObserver.Infrastructure.SqlServer.SqlServer2016Assets.sqlserver2016.compatibility.v1.json" />
+    <EmbeddedResource Include="../../collectors/manifests/collector-manifest.sqlserver2016.core.v1.schema.json" LogicalName="SqlObserver.Infrastructure.SqlServer.SqlServer2016Assets.collector-manifest.sqlserver2016.core.v1.schema.json" />
+    <EmbeddedResource Include="../../collectors/manifests/collector-manifest.sqlserver2016.activity.v1.schema.json" LogicalName="SqlObserver.Infrastructure.SqlServer.SqlServer2016Assets.collector-manifest.sqlserver2016.activity.v1.schema.json" />
+    <EmbeddedResource Include="../../collectors/sql/capability.connection.bootstrap-2016-compatible.v1.sql" LogicalName="SqlObserver.Infrastructure.SqlServer.SqlServer2016Assets.capability.connection.bootstrap-2016-compatible.v1.sql" />
+    <EmbeddedResource Include="../../collectors/sql/capability.connection.sqlserver13-windows.v4.sql" LogicalName="SqlObserver.Infrastructure.SqlServer.SqlServer2016Assets.capability.connection.sqlserver13-windows.v4.sql" />
+    <EmbeddedResource Include="../../collectors/sql/capability.connection.sqlserver14-windows.v4.sql" LogicalName="SqlObserver.Infrastructure.SqlServer.SqlServer2016Assets.capability.connection.sqlserver14-windows.v4.sql" />
+    <EmbeddedResource Include="../../collectors/sql/engine.core.sqlserver13-windows.v1.sql" LogicalName="SqlObserver.Infrastructure.SqlServer.SqlServer2016Assets.engine.core.sqlserver13-windows.v1.sql" />
+    <EmbeddedResource Include="../../collectors/sql/engine.core.sqlserver14-windows.v1.sql" LogicalName="SqlObserver.Infrastructure.SqlServer.SqlServer2016Assets.engine.core.sqlserver14-windows.v1.sql" />
+    <EmbeddedResource Include="../../collectors/sql/database.inventory.sqlserver13-windows.v1.sql" LogicalName="SqlObserver.Infrastructure.SqlServer.SqlServer2016Assets.database.inventory.sqlserver13-windows.v1.sql" />
+    <EmbeddedResource Include="../../collectors/sql/database.inventory.sqlserver14-windows.v1.sql" LogicalName="SqlObserver.Infrastructure.SqlServer.SqlServer2016Assets.database.inventory.sqlserver14-windows.v1.sql" />
+    <EmbeddedResource Include="../../collectors/sql/database.inventory.sqlserver13-windows.v2.sql" LogicalName="SqlObserver.Infrastructure.SqlServer.SqlServer2016Assets.database.inventory.sqlserver13-windows.v2.sql" />
+    <EmbeddedResource Include="../../collectors/sql/database.inventory.sqlserver14-windows.v2.sql" LogicalName="SqlObserver.Infrastructure.SqlServer.SqlServer2016Assets.database.inventory.sqlserver14-windows.v2.sql" />
+    <EmbeddedResource Include="../../collectors/sql/database.files.sqlserver13-windows.v1.sql" LogicalName="SqlObserver.Infrastructure.SqlServer.SqlServer2016Assets.database.files.sqlserver13-windows.v1.sql" />
+    <EmbeddedResource Include="../../collectors/sql/database.files.sqlserver14-windows.v1.sql" LogicalName="SqlObserver.Infrastructure.SqlServer.SqlServer2016Assets.database.files.sqlserver14-windows.v1.sql" />
+    <EmbeddedResource Include="../../collectors/sql/activity.sessions.sqlserver13-windows.v1.sql" LogicalName="SqlObserver.Infrastructure.SqlServer.SqlServer2016Assets.activity.sessions.sqlserver13-windows.v1.sql" />
+    <EmbeddedResource Include="../../collectors/sql/activity.sessions.sqlserver14-windows.v1.sql" LogicalName="SqlObserver.Infrastructure.SqlServer.SqlServer2016Assets.activity.sessions.sqlserver14-windows.v1.sql" />
+    <EmbeddedResource Include="../../collectors/sql/activity.requests.sqlserver13-windows.v1.sql" LogicalName="SqlObserver.Infrastructure.SqlServer.SqlServer2016Assets.activity.requests.sqlserver13-windows.v1.sql" />
+    <EmbeddedResource Include="../../collectors/sql/activity.requests.sqlserver14-windows.v1.sql" LogicalName="SqlObserver.Infrastructure.SqlServer.SqlServer2016Assets.activity.requests.sqlserver14-windows.v1.sql" />
+    <EmbeddedResource Include="../../collectors/sql/waits.server.sqlserver13-windows.v1.sql" LogicalName="SqlObserver.Infrastructure.SqlServer.SqlServer2016Assets.waits.server.sqlserver13-windows.v1.sql" />
+    <EmbeddedResource Include="../../collectors/sql/waits.server.sqlserver14-windows.v1.sql" LogicalName="SqlObserver.Infrastructure.SqlServer.SqlServer2016Assets.waits.server.sqlserver14-windows.v1.sql" />
+    <EmbeddedResource Include="../../collectors/sql/blocking.current.sqlserver13-windows.v1.sql" LogicalName="SqlObserver.Infrastructure.SqlServer.SqlServer2016Assets.blocking.current.sqlserver13-windows.v1.sql" />
+    <EmbeddedResource Include="../../collectors/sql/blocking.current.sqlserver14-windows.v1.sql" LogicalName="SqlObserver.Infrastructure.SqlServer.SqlServer2016Assets.blocking.current.sqlserver14-windows.v1.sql" />
+    <EmbeddedResource Include="../../collectors/manifests/sqlserver2016.compatibility.assets-v1.sha256" LogicalName="SqlObserver.Infrastructure.SqlServer.SqlServer2016Assets.sqlserver2016.compatibility.assets-v1.sha256" />
+  </ItemGroup>
   <PropertyGroup>
     <RootNamespace>SqlObserver.Infrastructure.SqlServer</RootNamespace>
     <AssemblyName>SqlObserver.Infrastructure.SqlServer</AssemblyName>

@@ -3,7 +3,7 @@ param(
     [Parameter(Mandatory = $true)][ValidateNotNullOrEmpty()][string] $HostName,
     [Parameter(ParameterSetName = 'Tcp')][ValidateRange(1, 65535)][int] $Port = 1433,
     [Parameter(Mandatory = $true, ParameterSetName = 'Instance')][ValidateNotNullOrEmpty()][string] $InstanceName,
-    [Parameter(Mandatory = $true)][ValidateSet(12, 15)][int] $ExpectedMajor,
+    [Parameter(Mandatory = $true)][ValidateSet(13, 14, 15, 16, 17)][int] $ExpectedMajor,
     [string] $CertificateHostName
 )
 Set-StrictMode -Version Latest
@@ -31,7 +31,7 @@ try {
     $counts = $result.TestRun.ResultSummary.Counters
     if ($counts.total -ne '1' -or $counts.passed -ne '1' -or $counts.failed -ne '0') { throw 'Native smoke receipt must contain exactly one passed test.' }
     $inputs = @{}
-    foreach ($relative in @('src/SqlObserver.Infrastructure.SqlServer/bin/Debug/net10.0/SqlObserver.Infrastructure.SqlServer.dll', 'collectors/manifests/sqlserver2014.compatibility.assets-v1.sha256', 'collectors/manifests/activity.live.v1.sha256', 'tests/SqlObserver.IntegrationTests.SqlServer/bin/Debug/net10.0/SqlObserver.IntegrationTests.SqlServer.dll')) {
+    foreach ($relative in @('src/SqlObserver.Infrastructure.SqlServer/bin/Debug/net10.0/SqlObserver.Infrastructure.SqlServer.dll', 'collectors/manifests/sqlserver2016.compatibility.assets-v1.sha256', 'collectors/manifests/activity.live.v1.sha256', 'tests/SqlObserver.IntegrationTests.SqlServer/bin/Debug/net10.0/SqlObserver.IntegrationTests.SqlServer.dll')) {
         $inputs[$relative] = (Get-FileHash -LiteralPath (Join-Path $repositoryRoot $relative) -Algorithm SHA256).Hash.ToLowerInvariant()
     }
     $receipt = [ordered]@{ kind = 'native-source-smoke'; expectedMajor = $ExpectedMajor; hostName = $HostName; completedAtUtc = [DateTimeOffset]::UtcNow.ToString('O'); status = 'passed'; fullStackQualification = 'pending'; inputs = $inputs }

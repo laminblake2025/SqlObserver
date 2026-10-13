@@ -21,7 +21,7 @@ public sealed partial class PassiveCollectorBundleMigrationTests(PostgreSql18Fix
     private const string PriorBundle = "86b049c90409e157c06612ebd48c36435213122636c9a84637e1d79029cc959e";
     private const string M80Bundle = "56bef6e01c8d826a120c1e5edd81db6fccf448fd686400322d69240618ae9191";
     private const string UpdatedBundle = "d233698a8b350ebdf805cbb65b085b0a93b64fc66f57f8f21d354c3445ee00c8";
-    private const string CompatibilityBundle = "bd28cd2f37e2e2219154124ddc1f73894f1396f0411586b5e23699389979ea8a";
+    private const string CompatibilityBundle = "c0457f5a05488c9ed05daf01cffc05f4dd01594dbb3051e772ce11ff8b8d2d84";
     private const string PriorReplicationBundle = "8fa9d8d4c8f3a8fdfb17ffe675f7642220ada826719136d5b7338372866c2b9a";
     private const string UpdatedReplicationBundle = "e9d52f49d1c728ed6968867a1caee11d6a5f288c5326da585b68a9bed0060f36";
     private static readonly RepositoryCallTimeout Timeout = new(TimeSpan.FromSeconds(30));
@@ -43,7 +43,7 @@ public sealed partial class PassiveCollectorBundleMigrationTests(PostgreSql18Fix
         CollectorCatalogEntry[] entries = application.GetRequiredService<CollectorRegistry>().CatalogEntries.Take(count).ToArray();
         if (count < 19) entries = WithLegacyInventoryAndDeadlocks(entries);
         Assert.Equal(UpdatedBundle, SqlServerActivityCollectorAssetCatalog.LoadEmbedded().BundleChecksum);
-        Assert.Equal(CompatibilityBundle, SqlServerActivityCollectorAssetCatalog.LoadWithSqlServer2014Support().BundleChecksum);
+        Assert.Equal(CompatibilityBundle, SqlServerActivityCollectorAssetCatalog.LoadWithSqlServer2016Support().BundleChecksum);
         Assert.All(entries.Skip(3).Take(4), entry => Assert.Equal(CompatibilityBundle, entry.AssetBundleDigest.Value));
         if (count == 15)
         {
@@ -331,7 +331,7 @@ public sealed partial class PassiveCollectorBundleMigrationTests(PostgreSql18Fix
 
     private static CollectorCatalogEntry[] WithLegacyInventoryAndDeadlocks(CollectorCatalogEntry[] entries)
     {
-        SqlServerCollectorAssetCatalog catalog = SqlServerCollectorAssetCatalog.LoadWithSqlServer2014Support();
+        SqlServerCollectorAssetCatalog catalog = SqlServerCollectorAssetCatalog.LoadWithSqlServer2016Support();
         SqlServerCollectorAsset inventory = catalog.Get(new SqlObserver.Domain.Capabilities.CollectorId("database.inventory"));
         CollectorCatalogEntry[] copy = entries.ToArray();
         copy[1] = new CollectorCatalogEntry(2, inventory.Manifest,

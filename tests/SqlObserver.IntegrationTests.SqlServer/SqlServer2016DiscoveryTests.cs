@@ -3,10 +3,11 @@ using SqlObserver.Infrastructure.SqlServer;
 
 namespace SqlObserver.IntegrationTests.SqlServer;
 
-public sealed class SqlServer2014DiscoveryTests
+public sealed class SqlServer2016DiscoveryTests
 {
     [Theory]
-    [InlineData(12)]
+    [InlineData(13)]
+    [InlineData(14)]
     [InlineData(15)]
     public void LegacyStatePermissionVersionsCanBeDiscovered(int major)
     {
@@ -30,8 +31,7 @@ public sealed class SqlServer2014DiscoveryTests
 
     [Theory]
     [InlineData(11)]
-    [InlineData(13)]
-    [InlineData(14)]
+    [InlineData(12)]
     [InlineData(18)]
     public void VersionsWithoutExactCoverageRemainUnsupported(int major)
     {

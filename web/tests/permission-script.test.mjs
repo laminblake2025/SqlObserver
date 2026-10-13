@@ -57,7 +57,7 @@ test('principal validation follows Windows syntax, UTF-16 limit and authoritativ
     assert.throws(() => validatePermissionScriptValues({ ...values, principal }), /Windows/u, principal);
   for (const principal of ['DOMAIN\\svc$', 'svc@domain.example', 'DOMAIN\\name@domain', 'D\\' + 'a'.repeat(126), 'D\\' + '💻'.repeat(63), 'D\\\ufeffname'])
     assert.equal(validatePermissionScriptValues({ ...values, principal }).principal, principal);
-  for (const sqlServerMajorVersion of [0, 14, 18, 16.1, '16', NaN]) assert.throws(() => generatePermissionScript({ ...values, sqlServerMajorVersion }), /Choose SQL/u);
+  for (const sqlServerMajorVersion of [0, 12, 18, 16.1, '16', NaN]) assert.throws(() => generatePermissionScript({ ...values, sqlServerMajorVersion }), /Choose SQL/u);
 });
 
 test('optional database access rejects malformed/system names and provenance-free removal', () => {
@@ -90,8 +90,9 @@ test('browser output is byte-for-byte canonical PowerShell output for escaped op
     for (const input of [...[15, 16, 17].map(sqlServerMajorVersion => ({ ...values, sqlServerMajorVersion,
       logicalFiles: true, queryStoreDatabase: database, replication: true, distributionDatabase: 'distribution_01' })),
       { ...values, operation: 'Remove' },
-      ...[false, true].map(logicalFiles => ({ ...values, sqlServerMajorVersion: 12, logicalFiles })),
-      { ...values, sqlServerMajorVersion: 12, operation: 'Remove' }]) {
+      ...[13, 14].flatMap(sqlServerMajorVersion => [
+        ...[false, true].map(logicalFiles => ({ ...values, sqlServerMajorVersion, logicalFiles })),
+        { ...values, sqlServerMajorVersion, operation: 'Remove' }])]) {
       const args = ['-NoProfile', '-File', scriptPath, '-SqlServerMajorVersion', String(input.sqlServerMajorVersion),
         '-Principal', input.principal, '-Operation', input.operation];
       if (input.logicalFiles) args.push('-LogicalFiles');
@@ -104,8 +105,8 @@ test('browser output is byte-for-byte canonical PowerShell output for escaped op
     }
   });
 
-test('SQL Server 2014 grants core state without newer roles, Query Store or unused history access', () => {
-  const input = { ...values, sqlServerMajorVersion: 12 };
+for (const sqlServerMajorVersion of [13, 14]) test(`SQL Server ${sqlServerMajorVersion} grants core state without unqualified advanced access`, () => {
+  const input = { ...values, sqlServerMajorVersion };
   const sql = generatePermissionScript(input);
   assert.ok(sql.includes('GRANT VIEW SERVER STATE'));
   assert.ok(sql.includes('REVOKE VIEW SERVER STATE'));
@@ -113,6 +114,10 @@ test('SQL Server 2014 grants core state without newer roles, Query Store or unus
   assert.ok(!sql.includes('USE [msdb]'));
   assert.ok(!sql.includes('ADD MEMBER'));
   assert.ok(generatePermissionScript({ ...input, logicalFiles: true }).includes('GRANT VIEW ANY DEFINITION'));
-  assert.throws(() => generatePermissionScript({ ...input, queryStoreDatabase: database }), /2014 does not support/u);
-  assert.throws(() => generatePermissionScript({ ...input, replication: true, distributionDatabase: 'distribution' }), /2014 does not support/u);
+  assert.throws(() => generatePermissionScript({ ...input, queryStoreDatabase: database }), /not yet qualified/u);
+  assert.throws(() => generatePermissionScript({ ...input, replication: true, distributionDatabase: 'distribution' }), /not yet qualified/u);
+});
+
+test('SQL Server 2014 is below the active minimum', () => {
+  assert.throws(() => generatePermissionScript({ ...values, sqlServerMajorVersion: 12 }), /Choose SQL Server 2016/u);
 });

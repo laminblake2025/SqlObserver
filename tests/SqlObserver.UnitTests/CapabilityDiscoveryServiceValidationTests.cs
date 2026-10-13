@@ -14,7 +14,8 @@ public sealed class CapabilityDiscoveryServiceValidationTests
         new(2026, 8, 23, 18, 0, 0, TimeSpan.Zero);
 
     [Theory]
-    [InlineData(12)]
+    [InlineData(13)]
+    [InlineData(14)]
     [InlineData(15)]
     [InlineData(16)]
     [InlineData(17)]
@@ -30,7 +31,8 @@ public sealed class CapabilityDiscoveryServiceValidationTests
     }
 
     [Theory]
-    [InlineData(12)]
+    [InlineData(13)]
+    [InlineData(14)]
     [InlineData(15)]
     public async Task V4LegacyStatePermissionProfilesAreRecordedWithExplicitOptionalEvidence(int majorVersion)
     {

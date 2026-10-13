@@ -15,6 +15,7 @@ No platform is production-supported before M12 certification. A platform becomes
 | --- | --- | --- | --- |
 | Application host | Windows Server 2022 and 2025 | Initial-release scope | Separately deployable Windows-hosted .NET processes |
 | Application repository | PostgreSQL 18.x | Initial-release scope | Stores SqlObserver data; it is not a monitored engine |
+| Monitored database | SQL Server 2016 and 2017 on Windows | Implemented, qualification pending | Core/activity coverage; advanced collectors retain separate qualification limits |
 | Monitored database | SQL Server 2019 on Windows | Initial-release scope | Uses version-aware least-privilege grants |
 | Monitored database | SQL Server 2022 on Windows | Initial-release scope | Prefer supported performance-reader roles and performance-state permissions |
 | Monitored database | SQL Server 2025 on Windows | Initial-release scope | Prefer supported performance-reader roles and performance-state permissions |
@@ -29,7 +30,6 @@ No platform is production-supported before M12 certification. A platform becomes
 
 | Area | Planned entry | Qualification note |
 | --- | --- | --- |
-| Monitored database | SQL Server 2016 and 2017 | Requires permission fallbacks, DMV/query variants, and a full compatibility suite |
 | Monitored database platform | SQL Server on Linux | Requires authentication, host-metric, packaging, and operational redesign/validation |
 | Managed database | Azure SQL Database | Requires service-tier capability and identity matrices |
 | Managed database | Azure SQL Managed Instance | Requires a distinct capability and permission matrix |
@@ -39,28 +39,15 @@ No platform is production-supported before M12 certification. A platform becomes
 
 Planned entries must not silently use the nearest initial-release implementation. Capability discovery fails closed, reports unsupported or degraded status, and chooses only an explicitly tested fallback.
 
-## SQL Server 2014 and 2019 implementation
+## SQL Server 2016 minimum
 
-SQL Server 2019 (major 15) retains its existing collector variants and `VIEW SERVER STATE` permission plan. Its full initial-release scope remains subject to native certification.
+The active engine allowlist is 13, 14, 15, 16, and 17. SQL Server 2014 is outside current support and native qualification scope. Its historical assets and migration receipts remain intact for upgrade verification; they are not loaded by the production composition.
 
-SQL Server 2014 (major 12) on Windows is **implemented, qualification pending**, with a reduced, passive capability set:
+SQL Server 2016/2017 have explicit, independently checksum-pinned core/activity query variants. They provide engine workload and memory counters, scheduler CPU with valid interval baselines, database inventory and logical-file I/O, sessions/requests/waits/blocking, protected live snapshots, and deliberate captured SQL access. Both use VIEW SERVER STATE. SQL 2016 discovery avoids the later host DMV; 2017 uses native platform evidence.
 
-| Surface | SQL Server 2014 behavior |
-| --- | --- |
-| Engine health | Batch/compilation counters, memory, PLE, connections, grants, runnable tasks, scheduler count, and startup epoch |
-| Database inventory / files | Database state and log reuse wait, logical file metadata and cumulative file I/O |
-| Activity | All captured sessions and requests, waits, blocking, exact session lifetimes, and protected captured SQL |
-| Scheduler CPU rate | Unavailable; the missing scheduler counter is omitted, never reported as zero |
-| Query Store / query-performance history | Unavailable; no newer Query Store objects or permissions are used |
-| Deadlock, host, operational-health, replication collectors | Unavailable in this compatibility bundle |
+Advanced Query Store, deadlock, host, operational-health, and replication collectors retain their existing version contracts and are unavailable on 13/14 in this bundle. They must not run newer queries through a nearby-version fallback. SQL 2019/2022/2025 retain their existing query assets and feature-specific limits.
 
-The additive bundle is checksum-pinned independently of the historical 2019/2022/2025 assets. Runtime core/activity catalogs compose both digests. Version selection is explicit: 2016/2017 remain unsupported, even though they lie between the stored range bounds. Public APIs, telemetry output contracts, and persisted schemas are unchanged.
-
-The 2014 variants avoid [scheduler CPU counters introduced in SQL Server 2016](https://learn.microsoft.com/en-us/sql/relational-databases/system-dynamic-management-objects/sys-dm-os-schedulers-transact-sql) and [DATEDIFF_BIG](https://learn.microsoft.com/en-us/sql/t-sql/functions/datediff-big-transact-sql). [Query Store starts with SQL Server 2016](https://learn.microsoft.com/en-us/sql/relational-databases/performance/monitoring-performance-by-using-the-query-store), so it remains unavailable on 2014.
-
-Generate a reviewed permission script with `tools/generate-permissions.ps1 -SqlServerMajorVersion 12 -Principal 'DOMAIN\collector'` or the server administration permission page. Base grants are `VIEW SERVER STATE` and `VIEW ANY DATABASE`; optional logical-file visibility adds `VIEW ANY DEFINITION`. The 2014 plan omits unused msdb history grants and rejects Query Store and replication options. SQL Server 2014's Windows identity is established only for boxed engine editions 2/3/4; newer versions continue to use their platform evidence. TLS certificate validation, integrated authentication, non-sysadmin collection, query-text RBAC, and capture bounds remain required.
-
-Native acceptance requires actual 2014 and 2019 instances with the intended Windows collector identity and trusted TLS, followed by the collector → PostgreSQL → API → dashboard journey. Local unit, source-contract, browser, and permission-parity tests do not substitute for that qualification. See [version compatibility checks](../deployment/sqlserver-version-compatibility.md).
+Native qualification requires actual engines, strict integrated authentication and TLS, a non-sysadmin monitoring identity, and the complete collector → PostgreSQL → API → dashboard journey. Compatibility-mode databases supplement query-behavior tests and do not replace that evidence. See [version compatibility checks](../deployment/sqlserver-version-compatibility.md). Local CI and source smoke receipts are not production certification.
 
 ## Compatibility dimensions
 
