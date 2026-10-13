@@ -50,7 +50,7 @@ public sealed class LabBootstrapReaderProvisioningTests(PostgreSql18Fixture fixt
             await using (var attributes = source.CreateCommand("SELECT rolsuper OR rolbypassrls FROM pg_roles WHERE rolname=current_user"))
                 Assert.False(Assert.IsType<bool>(await attributes.ExecuteScalarAsync()));
             var port = new PostgreSqlMigrationPort(source);
-            foreach ((int first, int count) in new[] { (325, 22), (347, 27) })
+            foreach ((int first, int count) in new[] { (325, 22), (347, 28) })
             {
                 MigrationBatchResult denied = await port.ApplyPendingAsync(new(1, timeout), default);
                 MigrationExecutionResult failure = Assert.Single(denied.Results);
@@ -63,6 +63,7 @@ public sealed class LabBootstrapReaderProvisioningTests(PostgreSql18Fixture fixt
                 Assert.False(applied.HasFailures);
                 Assert.Equal(count, applied.Results.Count);
                 Assert.Equal(first, applied.Results[0].Migration.Number.Value);
+                Assert.Equal(first + count - 1, applied.Results[^1].Migration.Number.Value);
                 // The administrator is the grantor. Its finally cleanup must
                 // remove that grant even when migration-local REVOKE cannot.
                 await using (var revoke = database.DataSource.CreateCommand($"""
