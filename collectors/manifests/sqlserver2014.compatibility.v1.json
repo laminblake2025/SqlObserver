@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "engineMajor": 12,
+  "platform": "Windows",
+  "mode": "passive",
+  "capabilityContractVersion": 4,
+  "collectors": [
+    "engine.core",
+    "database.inventory",
+    "database.files",
+    "activity.sessions",
+    "activity.requests",
+    "waits.server",
+    "blocking.current"
+  ],
+  "unavailable": [
+    "queries.performance",
+    "deadlocks.events",
+    "Query Store",
+    "engine.scheduler_cpu_milliseconds_total",
+    "host.metrics",
+    "operational-health",
+    "replication.health"
+  ]
+}

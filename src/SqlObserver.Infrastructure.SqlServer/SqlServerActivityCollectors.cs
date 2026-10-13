@@ -52,7 +52,7 @@ public abstract class SqlServerActivityCollectorBase : ISqlServerCollector
         }
 
         int majorVersion = request.CapabilityProfile.ServerIdentity.Version.Major;
-        if (!Manifest.SupportedVersions.Contains(majorVersion))
+        if (!SqlServerVersionSupport.IsSupportedMajor(majorVersion) || !Manifest.SupportedVersions.Contains(majorVersion))
         {
             return Failure(request, CollectorRunOutcome.Unsupported, CollectorRunReason.TargetVersionUnsupported);
         }

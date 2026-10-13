@@ -6,6 +6,7 @@ using System.Text;
 using Microsoft.Data.SqlClient;
 using SqlObserver.Collector.Abstractions;
 using SqlObserver.Domain.Collection;
+using SqlObserver.Domain.Capabilities;
 using SqlObserver.Domain.Repository;
 using SqlObserver.Domain.Targets;
 using SqlObserver.Domain.Telemetry;
@@ -58,7 +59,7 @@ public abstract class SqlServerHealthCollector : ISqlServerCollector
         }
 
         int majorVersion = request.CapabilityProfile.ServerIdentity.Version.Major;
-        if (!Manifest.SupportedVersions.Contains(majorVersion))
+        if (!SqlServerVersionSupport.IsSupportedMajor(majorVersion) || !Manifest.SupportedVersions.Contains(majorVersion))
         {
             return Failure(
                 request,

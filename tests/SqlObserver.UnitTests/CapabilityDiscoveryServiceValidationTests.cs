@@ -14,6 +14,7 @@ public sealed class CapabilityDiscoveryServiceValidationTests
         new(2026, 8, 23, 18, 0, 0, TimeSpan.Zero);
 
     [Theory]
+    [InlineData(12)]
     [InlineData(15)]
     [InlineData(16)]
     [InlineData(17)]
@@ -25,6 +26,29 @@ public sealed class CapabilityDiscoveryServiceValidationTests
         CapabilityDiscoveryRunResult result = await harness.RunAsync();
 
         Assert.Equal(1, result.RecordedCount);
+        Assert.Equal(1, harness.Repository.RecordCalls);
+    }
+
+    [Theory]
+    [InlineData(12)]
+    [InlineData(15)]
+    public async Task V4LegacyStatePermissionProfilesAreRecordedWithExplicitOptionalEvidence(int majorVersion)
+    {
+        PermissionEvidence[] permissions =
+        [
+            new(new SqlServerPermissionId("server.view-state"), PermissionEvidenceScope.Server, PermissionEvidenceOutcome.Granted),
+            new(new SqlServerPermissionId("server.view-any-database"), PermissionEvidenceScope.Server, PermissionEvidenceOutcome.Granted),
+            new(new SqlServerPermissionId("server.view-any-definition"), PermissionEvidenceScope.Server, PermissionEvidenceOutcome.Denied),
+            new(new SqlServerPermissionId("msdb.backupset.select"), PermissionEvidenceScope.Database, PermissionEvidenceOutcome.Denied),
+            new(new SqlServerPermissionId("msdb.sysjobhistory.select"), PermissionEvidenceScope.Database, PermissionEvidenceOutcome.Denied),
+            new(new SqlServerPermissionId("replication.replmonitor"), PermissionEvidenceScope.Database, PermissionEvidenceOutcome.NotApplicable),
+        ];
+        CapabilityEvidence[] capabilities = [.. CreateCapabilities(),
+            new(new CapabilityId("feature.replication"), CapabilityAvailability.Unavailable, CapabilityEvidenceReason.FeatureDisabled),
+            new(new CapabilityId("feature.host-binding"), CapabilityAvailability.Unavailable, CapabilityEvidenceReason.FeatureDisabled)];
+        TestHarness harness = CreateHarness(request => CreateConnectedProfile(request, majorVersion: majorVersion,
+            manifestVersion: 4, outputSchemaVersion: 4, capabilities: capabilities, permissions: permissions));
+        Assert.Equal(1, (await harness.RunAsync()).RecordedCount);
         Assert.Equal(1, harness.Repository.RecordCalls);
     }
 
@@ -470,7 +494,7 @@ public sealed class CapabilityDiscoveryServiceValidationTests
     [
         new PermissionEvidence(
             new SqlServerPermissionId(
-                majorVersion == 15
+                SqlServerVersionSupport.UsesViewServerState(majorVersion)
                     ? "server.view-state"
                     : "server.view-performance-state"),
             PermissionEvidenceScope.Server,
@@ -482,7 +506,7 @@ public sealed class CapabilityDiscoveryServiceValidationTests
         new(
             new SqlServerPermissionId("server.performance-reader-role-membership"),
             PermissionEvidenceScope.Server,
-            majorVersion == 15
+            SqlServerVersionSupport.UsesViewServerState(majorVersion)
                 ? PermissionEvidenceOutcome.NotApplicable
                 : PermissionEvidenceOutcome.Denied);
 

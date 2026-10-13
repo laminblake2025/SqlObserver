@@ -109,8 +109,6 @@ public sealed class CapabilityDiscoveryService : ICapabilityDiscoveryService
     private const int CapabilityConnectionManifestVersion = 1;
     private const int CapabilityConnectionOutputSchemaVersion = 1;
     private const int CapabilityConnectionMaximumResponseBytes = 16_384;
-    private const int MinimumSupportedMajorVersion = 15;
-    private const int MaximumSupportedMajorVersion = 17;
     private const string ConnectionCapabilityId = "connection.tds";
     private const string WindowsAuthenticationCapabilityId = "authentication.windows-integrated";
     private const string ValidatedTlsCapabilityId = "transport.tls-validated";
@@ -284,8 +282,7 @@ public sealed class CapabilityDiscoveryService : ICapabilityDiscoveryService
     private static void ValidateConnectedDisposition(CapabilityProfile profile)
     {
         SqlServerIdentity identity = profile.ServerIdentity!;
-        bool versionSupported = identity.Version.Major is >= MinimumSupportedMajorVersion and
-            <= MaximumSupportedMajorVersion;
+        bool versionSupported = SqlServerVersionSupport.IsSupportedMajor(identity.Version.Major);
         bool platformSupported = identity.Platform == SqlServerPlatform.Windows;
         bool editionSupported = identity.EngineEdition is
             SqlServerEngineEdition.Standard or
@@ -465,7 +462,7 @@ public sealed class CapabilityDiscoveryService : ICapabilityDiscoveryService
                 throw new InvalidDataException("Capability discovery v3 omitted required permission evidence.");
             }
 
-            PermissionEvidence required = permissions[majorVersion == 15
+            PermissionEvidence required = permissions[SqlServerVersionSupport.UsesViewServerState(majorVersion)
                 ? ViewServerStatePermissionId
                 : ViewServerPerformanceStatePermissionId];
             if (profile.Outcome == CapabilityDiscoveryOutcome.Supported &&
@@ -477,7 +474,7 @@ public sealed class CapabilityDiscoveryService : ICapabilityDiscoveryService
             return;
         }
 
-        if (majorVersion == 15)
+        if (SqlServerVersionSupport.UsesViewServerState(majorVersion))
         {
             ValidateVersionPermissions(
                 profile,

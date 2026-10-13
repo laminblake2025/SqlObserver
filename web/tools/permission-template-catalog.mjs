@@ -26,11 +26,11 @@ export function verifyPermissionTemplates() {
   const catalog = JSON.parse(readFileSync(output, 'utf8'));
   if (catalog.schema !== 1 || catalog.sourceSha256 !== sourceDigest() ||
       catalog.templatesSha256 !== digest(JSON.stringify(catalog.templates)) ||
-      Object.keys(catalog.templates ?? {}).length !== 27) {
+      Object.keys(catalog.templates ?? {}).length !== 30) {
     throw new Error('Permission templates are stale. Run node tools/permission-template-catalog.mjs --generate from web.');
   }
-  for (const major of [15, 16, 17]) {
-    for (let mask = 0; mask < 8; mask++) {
+  for (const major of [12, 15, 16, 17]) {
+    for (let mask = 0; mask < (major === 12 ? 2 : 8); mask++) {
       if (typeof catalog.templates[`${major}:grant:${mask}`] !== 'string') throw new Error('Permission template is missing.');
     }
     if (typeof catalog.templates[`${major}:remove`] !== 'string') throw new Error('Permission removal template is missing.');
@@ -44,8 +44,9 @@ function generate() {
   const templates = {};
   const files = [];
   try {
-    for (const major of [15, 16, 17]) {
+    for (const major of [12, 15, 16, 17]) {
       for (let mask = 0; mask <= 8; mask++) {
+        if (major === 12 && ![0, 1, 8].includes(mask)) continue;
         const remove = mask === 8;
         const key = remove ? `${major}:remove` : `${major}:grant:${mask}`;
         const filename = path.join(scratch, `${major}-${mask}.sql`);
@@ -68,7 +69,7 @@ function generate() {
     const catalog = { schema: 1, sourceSha256: sourceDigest(), templatesSha256: digest(JSON.stringify(templates)), templates };
     writeFileSync(output, JSON.stringify(catalog, null, 2) + '\n', 'utf8');
     verifyPermissionTemplates();
-    console.log('Generated and verified 27 permission templates from tools/generate-permissions.ps1.');
+    console.log('Generated and verified 30 permission templates from tools/generate-permissions.ps1.');
   } finally {
     // Delete only the individual files we created, then the empty task directory.
     for (const file of files) rmSync(file, { force: true });

@@ -89,7 +89,9 @@ test('browser output is byte-for-byte canonical PowerShell output for escaped op
     const scriptPath = fileURLToPath(new URL('../../tools/generate-permissions.ps1', import.meta.url));
     for (const input of [...[15, 16, 17].map(sqlServerMajorVersion => ({ ...values, sqlServerMajorVersion,
       logicalFiles: true, queryStoreDatabase: database, replication: true, distributionDatabase: 'distribution_01' })),
-      { ...values, operation: 'Remove' }]) {
+      { ...values, operation: 'Remove' },
+      ...[false, true].map(logicalFiles => ({ ...values, sqlServerMajorVersion: 12, logicalFiles })),
+      { ...values, sqlServerMajorVersion: 12, operation: 'Remove' }]) {
       const args = ['-NoProfile', '-File', scriptPath, '-SqlServerMajorVersion', String(input.sqlServerMajorVersion),
         '-Principal', input.principal, '-Operation', input.operation];
       if (input.logicalFiles) args.push('-LogicalFiles');
@@ -101,3 +103,16 @@ test('browser output is byte-for-byte canonical PowerShell output for escaped op
       assert.equal(generatePermissionScript(input), expected);
     }
   });
+
+test('SQL Server 2014 grants core state without newer roles, Query Store or unused history access', () => {
+  const input = { ...values, sqlServerMajorVersion: 12 };
+  const sql = generatePermissionScript(input);
+  assert.ok(sql.includes('GRANT VIEW SERVER STATE'));
+  assert.ok(sql.includes('REVOKE VIEW SERVER STATE'));
+  assert.ok(sql.includes('PARSENAME'));
+  assert.ok(!sql.includes('USE [msdb]'));
+  assert.ok(!sql.includes('ADD MEMBER'));
+  assert.ok(generatePermissionScript({ ...input, logicalFiles: true }).includes('GRANT VIEW ANY DEFINITION'));
+  assert.throws(() => generatePermissionScript({ ...input, queryStoreDatabase: database }), /2014 does not support/u);
+  assert.throws(() => generatePermissionScript({ ...input, replication: true, distributionDatabase: 'distribution' }), /2014 does not support/u);
+});
