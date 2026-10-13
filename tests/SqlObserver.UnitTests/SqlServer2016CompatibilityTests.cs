@@ -9,6 +9,26 @@ namespace SqlObserver.UnitTests;
 
 public sealed class SqlServer2016CompatibilityTests
 {
+    [Fact]
+    public void LiveSnapshotEngineAndPermissionGuardsMatchDeclaredSupport()
+    {
+        var assembly = typeof(SqlServerLiveActivityCollector).Assembly;
+        using var resource = assembly.GetManifestResourceStream("SqlObserver.LiveActivity.sql")!;
+        using var reader = new StreamReader(resource);
+        string sql = reader.ReadToEnd();
+        using var pin = assembly.GetManifestResourceStream("SqlObserver.LiveActivity.sha256")!;
+        using var pinReader = new StreamReader(pin);
+        Assert.Equal(pinReader.ReadToEnd().Trim(), Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(sql))).ToLowerInvariant());
+        var supported = System.Text.RegularExpressions.Regex.Match(sql, @"NOT IN \((?<majors>[0-9,]+)\)");
+        var state = System.Text.RegularExpressions.Regex.Match(sql, @"\)IN \((?<majors>[0-9,]+)\) AND HAS_PERMS_BY_NAME\(NULL,NULL,'VIEW SERVER STATE'\)");
+        static int[] Majors(System.Text.RegularExpressions.Match match) => match.Groups["majors"].Value.Split(',').Select(value => int.Parse(value, System.Globalization.CultureInfo.InvariantCulture)).ToArray();
+        int[] declared = Enumerable.Range(12, 7).Where(SqlServerVersionSupport.IsSupportedMajor).ToArray();
+        Assert.Equal(declared, Majors(supported));
+        Assert.Equal(declared.Where(SqlServerVersionSupport.UsesViewServerState), Majors(state));
+        Assert.Contains("ISNULL(IS_SRVROLEMEMBER('sysadmin'),1) <> 0", sql, StringComparison.Ordinal);
+        Assert.Contains("'VIEW SERVER PERFORMANCE STATE')<>1", sql, StringComparison.Ordinal);
+    }
+
     [Theory]
     [InlineData(13)]
     [InlineData(14)]
