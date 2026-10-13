@@ -18,7 +18,7 @@ The verifier checks bounded ZIP members, traversal, duplicate paths, prohibited 
 
 Use **`sqlobserver_lab`** for this first deployment. Preserve the current `sqlobserver` repository, service configuration, keys, and port 5443. Do not rewrite an existing migration ledger or run the migration utility against a repository with drift.
 
-Follow [the single-host lab guide](lab-single-host.md) to provision the bootstrap account, separate runtime accounts/roles, and fixed NOLOGIN expiry owners. In the repository-creation command, substitute `sqlobserver_lab` for `sqlobserver`; leave the approved role and permission boundaries intact. Create the database only if it does not already exist; inspect any existing database before proceeding. PostgreSQL is local at `127.0.0.1:5432` for this bounded migration utility.
+Follow [the single-host lab guide](lab-single-host.md) to provision the bootstrap account, separate runtime accounts/roles, fixed NOLOGIN expiry owners, and the run dependency reader. In the repository-creation command, substitute `sqlobserver_lab` for `sqlobserver`; leave the approved role and permission boundaries intact. Create the database only if it does not already exist; inspect any existing database before proceeding. PostgreSQL is local at `127.0.0.1:5432` for this bounded migration utility.
 
 Run the following under the authorized bootstrap operator after the guide's prerequisites are complete:
 

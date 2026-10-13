@@ -21,6 +21,7 @@ public sealed partial class PassiveCollectorBundleMigrationTests(PostgreSql18Fix
     private const string PriorBundle = "86b049c90409e157c06612ebd48c36435213122636c9a84637e1d79029cc959e";
     private const string M80Bundle = "56bef6e01c8d826a120c1e5edd81db6fccf448fd686400322d69240618ae9191";
     private const string UpdatedBundle = "d233698a8b350ebdf805cbb65b085b0a93b64fc66f57f8f21d354c3445ee00c8";
+    private const string CompatibilityBundle = "bd28cd2f37e2e2219154124ddc1f73894f1396f0411586b5e23699389979ea8a";
     private const string PriorReplicationBundle = "8fa9d8d4c8f3a8fdfb17ffe675f7642220ada826719136d5b7338372866c2b9a";
     private const string UpdatedReplicationBundle = "e9d52f49d1c728ed6968867a1caee11d6a5f288c5326da585b68a9bed0060f36";
     private static readonly RepositoryCallTimeout Timeout = new(TimeSpan.FromSeconds(30));
@@ -42,7 +43,8 @@ public sealed partial class PassiveCollectorBundleMigrationTests(PostgreSql18Fix
         CollectorCatalogEntry[] entries = application.GetRequiredService<CollectorRegistry>().CatalogEntries.Take(count).ToArray();
         if (count < 19) entries = WithLegacyInventoryAndDeadlocks(entries);
         Assert.Equal(UpdatedBundle, SqlServerActivityCollectorAssetCatalog.LoadEmbedded().BundleChecksum);
-        Assert.All(entries.Skip(3).Take(4), entry => Assert.Equal(UpdatedBundle, entry.AssetBundleDigest.Value));
+        Assert.Equal(CompatibilityBundle, SqlServerActivityCollectorAssetCatalog.LoadWithSqlServer2014Support().BundleChecksum);
+        Assert.All(entries.Skip(3).Take(4), entry => Assert.Equal(CompatibilityBundle, entry.AssetBundleDigest.Value));
         if (count == 15)
         {
             Assert.Equal(UpdatedReplicationBundle, SqlServerReplicationAssetCatalog.LoadEmbedded().BundleChecksum);
@@ -185,7 +187,7 @@ public sealed partial class PassiveCollectorBundleMigrationTests(PostgreSql18Fix
             .Where(migration => migration.Descriptor.Number.Value > 80)
             .Select(migration => migration.Descriptor.Number.Value),
             remaining.Results.Select(result => result.Migration.Number.Value));
-        Assert.Equal(Enumerable.Repeat(UpdatedBundle, 4).Append(UpdatedReplicationBundle), await ReadRepairedBundlesAsync(database));
+        Assert.Equal(Enumerable.Repeat(CompatibilityBundle, 4).Append(UpdatedReplicationBundle), await ReadRepairedBundlesAsync(database));
         Assert.Equal(Enumerable.Repeat(SqlServerOperationalHealthAssetCatalog.LoadEmbedded().BundleChecksum, 4), await ReadBackupBundlesAsync(database));
         var runtime = new PostgreSqlCollectorRuntimeRepositoryPort(collector);
         Assert.Equal(15, (await runtime.ReconcileCatalogAsync(new ReconcileCollectorCatalogRequest(entries, lease, Timeout), CancellationToken.None)).UnchangedCount);
@@ -296,10 +298,19 @@ public sealed partial class PassiveCollectorBundleMigrationTests(PostgreSql18Fix
         return services.BuildServiceProvider(new ServiceProviderOptions { ValidateOnBuild = true, ValidateScopes = true });
     }
 
-    private static CollectorCatalogEntry[] WithActivityBundle(CollectorCatalogEntry[] entries, string bundle) =>
-        entries.Select(entry => entry.ExecutionOrder is >= 4 and <= 7
-            ? new CollectorCatalogEntry(entry.ExecutionOrder, entry.Manifest, entry.ManifestDigest, new CollectorSha256Digest(bundle))
-            : entry).ToArray();
+    private static CollectorCatalogEntry[] WithActivityBundle(CollectorCatalogEntry[] entries, string bundle)
+    {
+        // Bounded pre-373 fixtures require the historical manifests as well as
+        // the historical bundle. Never import a future compatibility contract.
+        var catalog = SqlServerActivityCollectorAssetCatalog.LoadEmbedded();
+        return entries.Select(entry =>
+        {
+            if (entry.ExecutionOrder is < 4 or > 7) return entry;
+            var asset = catalog.Get(entry.Manifest.Id);
+            return new CollectorCatalogEntry(entry.ExecutionOrder, asset.Manifest,
+                new CollectorSha256Digest(asset.ManifestChecksum), new CollectorSha256Digest(bundle));
+        }).ToArray();
+    }
 
     // Migration 0062 pins the v1 deadlock bytes through migration 0308.
     // Migration 0309 changes only those bytes; using the current legacy catalog
@@ -320,7 +331,7 @@ public sealed partial class PassiveCollectorBundleMigrationTests(PostgreSql18Fix
 
     private static CollectorCatalogEntry[] WithLegacyInventoryAndDeadlocks(CollectorCatalogEntry[] entries)
     {
-        SqlServerCollectorAssetCatalog catalog = SqlServerCollectorAssetCatalog.LoadEmbedded();
+        SqlServerCollectorAssetCatalog catalog = SqlServerCollectorAssetCatalog.LoadWithSqlServer2014Support();
         SqlServerCollectorAsset inventory = catalog.Get(new SqlObserver.Domain.Capabilities.CollectorId("database.inventory"));
         CollectorCatalogEntry[] copy = entries.ToArray();
         copy[1] = new CollectorCatalogEntry(2, inventory.Manifest,
