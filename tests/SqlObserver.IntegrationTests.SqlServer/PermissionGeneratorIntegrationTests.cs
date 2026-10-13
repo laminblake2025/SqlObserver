@@ -6,6 +6,33 @@ namespace SqlObserver.IntegrationTests.SqlServer;
 public sealed class PermissionGeneratorIntegrationTests
 {
     [Theory]
+    [InlineData(13)]
+    [InlineData(14)]
+    public async Task MinimumVersionPermissionsAreOfflineAndOmitUnqualifiedAdvancedGrants(int major)
+    {
+        ScriptResult result = await RunGeneratorAsync(major, "LAB\\sqlobserver", "Grant");
+        Assert.Equal(0, result.ExitCode);
+        Assert.Empty(result.StandardError);
+        Assert.Contains("GRANT VIEW SERVER STATE", result.StandardOutput, StringComparison.Ordinal);
+        Assert.Contains("REVOKE VIEW SERVER STATE", result.StandardOutput, StringComparison.Ordinal);
+        Assert.Contains("GRANT VIEW ANY DATABASE", result.StandardOutput, StringComparison.Ordinal);
+        Assert.DoesNotContain("ADD MEMBER", result.StandardOutput, StringComparison.Ordinal);
+        Assert.DoesNotContain("USE [msdb]", result.StandardOutput, StringComparison.Ordinal);
+        Assert.DoesNotContain("CREATE LOGIN", result.StandardOutput, StringComparison.Ordinal);
+        ScriptResult queryStore = await RunGeneratorAsync(major, "LAB\\sqlobserver", "Grant", "Accounting");
+        Assert.NotEqual(0, queryStore.ExitCode);
+        Assert.Empty(queryStore.StandardOutput);
+    }
+
+    [Fact]
+    public async Task BelowMinimumVersionIsRejectedBeforeProducingSql()
+    {
+        ScriptResult result = await RunGeneratorAsync(12, "LAB\\sqlobserver", "Grant");
+        Assert.NotEqual(0, result.ExitCode);
+        Assert.Empty(result.StandardOutput);
+    }
+
+    [Theory]
     [InlineData(15)]
     [InlineData(16)]
     [InlineData(17)]

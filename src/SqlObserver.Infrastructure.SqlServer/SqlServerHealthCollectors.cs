@@ -6,6 +6,7 @@ using System.Text;
 using Microsoft.Data.SqlClient;
 using SqlObserver.Collector.Abstractions;
 using SqlObserver.Domain.Collection;
+using SqlObserver.Domain.Capabilities;
 using SqlObserver.Domain.Repository;
 using SqlObserver.Domain.Targets;
 using SqlObserver.Domain.Telemetry;
@@ -58,7 +59,7 @@ public abstract class SqlServerHealthCollector : ISqlServerCollector
         }
 
         int majorVersion = request.CapabilityProfile.ServerIdentity.Version.Major;
-        if (!Manifest.SupportedVersions.Contains(majorVersion))
+        if (!SqlServerVersionSupport.IsSupportedMajor(majorVersion) || !Manifest.SupportedVersions.Contains(majorVersion))
         {
             return Failure(
                 request,
@@ -538,6 +539,10 @@ public sealed class SqlServerDatabaseInventoryCollector : SqlServerHealthCollect
                 string state = reader.GetString(3);
                 string access = reader.GetString(4);
                 string recovery = reader.GetString(5);
+                // SequentialAccess requires ascending ordinals, including the
+                // v2 log-reuse field that follows the two v1 scalar fields.
+                bool readOnly = reader.GetBoolean(6);
+                byte compatibilityLevel = reader.GetByte(7);
                 string? logReuseWaitDescription = Manifest.ManifestVersion.Value >= 2 &&
                     !reader.IsDBNull(8) ? reader.GetString(8) : null;
                 int rowBytes = checked(
@@ -557,8 +562,8 @@ public sealed class SqlServerDatabaseInventoryCollector : SqlServerHealthCollect
                     ParseDatabaseState(state),
                     ParseRecoveryModel(recovery),
                     ParseUserAccess(access),
-                    reader.GetBoolean(6),
-                    reader.GetByte(7),
+                    readOnly,
+                    compatibilityLevel,
                     observedAt,
                     logReuseWaitDescription));
             }

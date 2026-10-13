@@ -94,7 +94,7 @@
     },
     {
       "path": "src/SqlObserver.Infrastructure.SqlServer/SqlObserver.Infrastructure.SqlServer.csproj",
-      "sha256": "ca2514918082785b0a849710cefb4cf34be8607eaa2dc939dfd9a5815ca1b569"
+      "sha256": "2ffaf7fdaf57ded7d9183b0382a8aa5acc382522c81baebcc72ff9c0884f183a"
     },
     {
       "path": "src/SqlObserver.Infrastructure.SqlServer/packages.lock.json",

@@ -36,7 +36,9 @@ public sealed partial class PassiveCollectorBundleMigrationTests
         var lease = await AcquireCatalogLeaseAsync(collector);
         // This repository stops at 0243; the current v1 deadlock bytes are from
         // 0309 and must not be imported into the historical reconciliation.
-        Assert.Equal(15, await ReconcileDirectAsync(collector, WithPre309DeadlockBundle(entries), lease));
+        Assert.Equal(15, await ReconcileDirectAsync(collector, WithPre309DeadlockBundle(
+            WithActivityBundle(WithCoreBundle(entries,
+                SqlServerCollectorAssetCatalog.LoadEmbedded().BundleChecksum), UpdatedBundle)), lease));
     }
 
     private const string PriorBackupBundle = "5697aaf35aee3f30f339de5fd973041978b6a0d767759e30cd223eb829e74484";
@@ -212,10 +214,17 @@ public sealed partial class PassiveCollectorBundleMigrationTests
             ? new CollectorCatalogEntry(entry.ExecutionOrder, entry.Manifest, entry.ManifestDigest, new CollectorSha256Digest(bundle))
             : entry).ToArray();
 
-    private static CollectorCatalogEntry[] WithCoreBundle(CollectorCatalogEntry[] entries, string bundle) =>
-        entries.Select(entry => entry.ExecutionOrder is >= 1 and <= 3
-            ? new CollectorCatalogEntry(entry.ExecutionOrder, entry.Manifest, entry.ManifestDigest, new CollectorSha256Digest(bundle))
-            : entry).ToArray();
+    private static CollectorCatalogEntry[] WithCoreBundle(CollectorCatalogEntry[] entries, string bundle)
+    {
+        var catalog = SqlServerCollectorAssetCatalog.LoadEmbedded();
+        return entries.Select(entry =>
+        {
+            if (entry.ExecutionOrder is < 1 or > 3) return entry;
+            var asset = catalog.Get(entry.Manifest.Id);
+            return new CollectorCatalogEntry(entry.ExecutionOrder, asset.Manifest,
+                new CollectorSha256Digest(asset.ManifestChecksum), new CollectorSha256Digest(bundle));
+        }).ToArray();
+    }
 
     private static CollectorCatalogEntry[] WithBackupManifest(CollectorCatalogEntry[] entries, string digest) =>
         entries.Select(entry => entry.Manifest.Id.Value == "backups.status"

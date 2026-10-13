@@ -35,7 +35,7 @@
     "src/SqlObserver.Server/SqlObserver.Server.csproj": "168a9680121046f74bc64e2baa9e4313ba4c8279bf3bde89762da30d6385be93",
     "src/SqlObserver.Server/packages.lock.json": "f398f1863d3a8164d26059be0b6e82b3c48ebe6f856d675d6d20034452e512fd",
     "src/SqlObserver.Collector/Program.cs": "a267f4428236dc0755ce31dac75576175c0190fe685865fd2cbe468726a76090",
-    "src/SqlObserver.Collector/CollectorServiceRegistration.cs": "308414fb6b64d260fc082d6be56db67e74b28df3032db1cd83e98b17628843c2",
+    "src/SqlObserver.Collector/CollectorServiceRegistration.cs": "0d5bfd96004e37ab7c23a0da1dc1a541ec491716f9a0a176bdaf2206f4557371",
     "src/SqlObserver.Collector/SqlObserver.Collector.csproj": "0896fbf3a2b5bd0cfa6bf67ad8d89f6b78cb0c2de1dec4a225825fc3714c54d5",
     "src/SqlObserver.Collector/packages.lock.json": "be84e9538e32ca205ecb96713a33d1fccbe8fbab5c47f514e33c847c4e1f22bf",
     "src/SqlObserver.Collectors/CollectorExecutionEngine.cs": "2d2058a969ac0363d90112a61128c10858d6fdae8e45de1d3a89e247a9863601",

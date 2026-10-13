@@ -77,25 +77,26 @@ function PermissionForm({ targetId }: { readonly targetId: string }) {
       <h3>Choose the intended permission plan</h3>
       <p id={explanationId}>Version and principal are explicit inputs. The registered target does not supply either value; your signed-in account is not assumed to be the collector identity. The script requires a pre-existing Windows login and checks SQL Server version, edition, platform, and absence of sysadmin membership before changing permissions.</p>
       <div className="permission-fields">
-        <label>SQL Server version<select required value={draft.version} aria-describedby={explanationId} onChange={event => update({ version: event.target.value })}>
-          <option value="">Choose a version</option><option value="15">SQL Server 2019 (15)</option><option value="16">SQL Server 2022 (16)</option><option value="17">SQL Server 2025 (17)</option>
+        <label>SQL Server version<select required value={draft.version} aria-describedby={explanationId} onChange={event => update({ version: event.target.value, queryStore: false, database: "", replication: false, distribution: "" })}>
+          <option value="">Choose a version</option><option value="13">SQL Server 2016 (13)</option><option value="14">SQL Server 2017 (14)</option><option value="15">SQL Server 2019 (15)</option><option value="16">SQL Server 2022 (16)</option><option value="17">SQL Server 2025 (17)</option>
         </select></label>
         <label>Existing Windows principal<input required autoComplete="off" spellCheck={false} maxLength={128} value={draft.principal} placeholder="DOMAIN\collector or collector@domain" onChange={event => update({ principal: event.target.value })} /></label>
         <label>Operation<select value={draft.operation} onChange={event => update(event.target.value === "Remove"
           ? { operation: "Remove", logicalFiles: false, queryStore: false, database: "", replication: false, distribution: "" }
           : { operation: "Grant" })}><option value="Grant">Grant</option><option value="Remove">Remove</option></select></label>
       </div>
+      {["13", "14"].includes(draft.version) && <p role="status">SQL Server 2016 and 2017 support sessions, blocking, waits, engine counters, database inventory, and file I/O. Advanced collectors have separate qualification limits. Base permissions omit msdb history grants. Native version qualification is pending.</p>}
       {draft.operation === "Grant" ? <fieldset className="permission-options"><legend>Optional access · choose explicitly</legend>
         <label className="permission-check"><input type="checkbox" checked={draft.logicalFiles} onChange={event => update({ logicalFiles: event.target.checked })} />Logical file metadata</label>
         <p>Logical file metadata adds VIEW ANY DEFINITION. Review this broader metadata visibility before applying it.</p>
-        <label className="permission-check"><input type="checkbox" checked={draft.queryStore} onChange={event => update({ queryStore: event.target.checked, database: "" })} />Query Store access for one database</label>
+        <label className="permission-check"><input type="checkbox" disabled={["13", "14"].includes(draft.version)} checked={draft.queryStore} onChange={event => update({ queryStore: event.target.checked, database: "" })} />Query Store access for one database</label>
         {draft.queryStore && <label>Query Store database<input required autoComplete="off" spellCheck={false} maxLength={128} value={draft.database} onChange={event => update({ database: event.target.value })} /></label>}
         <p>Query Store access maps the existing login in one named online user database and grants its versioned read permission. It does not enable Query Store or alter its settings.</p>
-        <label className="permission-check"><input type="checkbox" checked={draft.replication} onChange={event => update({ replication: event.target.checked, distribution: "" })} />Replication monitoring</label>
+        <label className="permission-check"><input type="checkbox" disabled={["13", "14"].includes(draft.version)} checked={draft.replication} onChange={event => update({ replication: event.target.checked, distribution: "" })} />Replication monitoring</label>
         {draft.replication && <label>Distribution database<input required autoComplete="off" spellCheck={false} maxLength={128} value={draft.distribution} onChange={event => update({ distribution: event.target.value })} /></label>}
         <p>Replication monitoring requires the explicit distribution database and Standard or Enterprise edition. It adds read access and replmonitor membership without changing replication topology.</p>
       </fieldset> : <p className="permission-removal-note">Remove undoes only the base capability permission. It does not revoke existing msdb, database, logical-file metadata, or replication grants; those require DBA review of grant provenance.</p>}
-      <p className="table-note">Base Grant includes SQL performance visibility, VIEW ANY DATABASE, and backup/Agent history object read access in msdb. It may create a database user mapped to the pre-existing login; it never creates a login.</p>
+      <p className="table-note">Base Grant includes SQL performance visibility and VIEW ANY DATABASE. SQL Server 2019 and later also receive backup/Agent history object read access in msdb. It may create a database user mapped to the pre-existing login; it never creates a login.</p>
       {error && <p role="alert">{error}</p>}
       <button className="primary" type="submit">Generate SQL</button>
     </form>

@@ -19,7 +19,7 @@ namespace SqlObserver.IntegrationTests.PostgreSql;
 [Trait("Category", "RequiresPostgreSql")]
 public sealed partial class M4CollectorPersistenceIntegrationTests
 {
-    private const string BundleDigest = "10ef6cb84001d6a3f34889cb8c2d96d51c247289582ef3fa25c3f63862399a17";
+    private const string BundleDigest = "1d94fc2f35240d7b796a7b7aa90416bc026938a29fc43cf9e5898ea108cce4eb";
     private static readonly string[] EngineCoreMetricIds =
     [
         "engine.batch_requests_total",
@@ -1612,11 +1612,11 @@ public sealed partial class M4CollectorPersistenceIntegrationTests
     private static IReadOnlyList<CollectorCatalogEntry> CreateCatalog() =>
     [
         CreateCatalogEntry(1, "engine.core", CollectorOutputKind.Metrics,
-            "f062ab816cdbb56e7ea9f77ed0042bf00df2bb9b0e6c08b907710f468d8755a1"),
+            "8c7bfe0d84b5e7f1b4ad1eeeccd2b2771712b6b1b447f9f715851fc6c428c71e"),
         CreateCatalogEntry(2, "database.inventory", CollectorOutputKind.DatabaseInventory,
-            "ec1cbfea68854d111d11aab48b476addbf2416e99e639bf97ea58545d78af484"),
+            "d03709630b6534bf4900c33efd7dfa4ec66acc46cb56ca8ce7aac2d2286eb127"),
         CreateCatalogEntry(3, "database.files", CollectorOutputKind.DatabaseFiles,
-            "06c9353fe554f737f933c0fa4938fef19f5c6c0dd6af8832c4671160f5af0dcd"),
+            "7d0c6ea09d85e571e1c270969f345273c6d635ca7d8ae037c2faacc70186ff81"),
     ];
 
     private static CollectorCatalogEntry CreateCatalogEntry(
@@ -1638,7 +1638,7 @@ public sealed partial class M4CollectorPersistenceIntegrationTests
             new CollectorManifestVersion(1),
             requiredCapabilities: [],
             requiredPermissions: [],
-            new SqlServerMajorVersionRange(15, 17),
+            new SqlServerMajorVersionRange(13, 17),
             [SqlServerPlatform.Windows],
             new CollectorIntervalPolicy(
                 id == "engine.core" ? TimeSpan.FromSeconds(30) : TimeSpan.FromMinutes(1),
@@ -1773,9 +1773,9 @@ public sealed partial class M4CollectorPersistenceIntegrationTests
                 ARRAY['engine.core', 'database.inventory', 'database.files']::text[],
                 ARRAY[1, 1, 1]::integer[],
                 ARRAY[
-                    decode('f062ab816cdbb56e7ea9f77ed0042bf00df2bb9b0e6c08b907710f468d8755a1', 'hex'),
-                    decode('ec1cbfea68854d111d11aab48b476addbf2416e99e639bf97ea58545d78af484', 'hex'),
-                    decode('06c9353fe554f737f933c0fa4938fef19f5c6c0dd6af8832c4671160f5af0dcd', 'hex')
+                    decode('8c7bfe0d84b5e7f1b4ad1eeeccd2b2771712b6b1b447f9f715851fc6c428c71e', 'hex'),
+                    decode('d03709630b6534bf4900c33efd7dfa4ec66acc46cb56ca8ce7aac2d2286eb127', 'hex'),
+                    decode('7d0c6ea09d85e571e1c270969f345273c6d635ca7d8ae037c2faacc70186ff81', 'hex')
                 ]::bytea[],
                 array_fill(decode(@bundle_digest, 'hex'), ARRAY[3]),
                 ARRAY[1, 2, 3]::integer[],

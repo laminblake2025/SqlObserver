@@ -11,7 +11,7 @@ $ErrorActionPreference = 'Stop'
 $ProducerId = 'm12-observability-harness'; $ArtifactKind = 'observability-evidence'
 $MaximumOutput = 65536; $MaximumError = 8192; $MaximumMilliseconds = 300000; $MaximumJsonBytes = 32768
 $script:M12OutputIdentities = @{}; $script:M12OutputHashes = @{}; $script:M12OutputBytes = @{}
-  $ApprovedContractSha256 = '079418db5baa7a11e4f100dac60119c9cfcbc5c97d398f5f6590e75c0aabdbff'
+  $ApprovedContractSha256 = 'd01b0d93499e7cc9e89df4dad9d2f2f225f2c3492770dc1d983a4d42b9039060'
   $ApprovedContractSchemaSha256 = '67bb52221c61df57b463842623f9ccd9f9770d8d7bde78017adc3067ce1b9a58'
   $ApprovedMatrixSha256 = '8b87625c2a56ea07b1dfe826201557e54891341803a75f2a77d2296509f07aac'
 $CaseMap = [ordered]@{

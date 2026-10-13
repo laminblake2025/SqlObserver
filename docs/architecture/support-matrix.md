@@ -5,6 +5,7 @@
 - **Initial-release scope**: required for the first supported release, but not yet certified by this scaffold.
 - **Planned**: intended future coverage; no current support claim.
 - **Development only**: tooling used to build or test, not a monitored production platform.
+- **Implemented, qualification pending**: version-specific application code is available; native and release certification remain outstanding.
 
 No platform is production-supported before M12 certification. A platform becomes supported only after its compatibility, security, installation, upgrade, performance, and recovery gates are complete and release documentation says so. M2/M3 integration tests are development evidence, not a support claim.
 
@@ -14,6 +15,7 @@ No platform is production-supported before M12 certification. A platform becomes
 | --- | --- | --- | --- |
 | Application host | Windows Server 2022 and 2025 | Initial-release scope | Separately deployable Windows-hosted .NET processes |
 | Application repository | PostgreSQL 18.x | Initial-release scope | Stores SqlObserver data; it is not a monitored engine |
+| Monitored database | SQL Server 2016 and 2017 on Windows | Implemented, qualification pending | Core/activity coverage; advanced collectors retain separate qualification limits |
 | Monitored database | SQL Server 2019 on Windows | Initial-release scope | Uses version-aware least-privilege grants |
 | Monitored database | SQL Server 2022 on Windows | Initial-release scope | Prefer supported performance-reader roles and performance-state permissions |
 | Monitored database | SQL Server 2025 on Windows | Initial-release scope | Prefer supported performance-reader roles and performance-state permissions |
@@ -28,8 +30,6 @@ No platform is production-supported before M12 certification. A platform becomes
 
 | Area | Planned entry | Qualification note |
 | --- | --- | --- |
-| Monitored database | SQL Server 2016 and 2017 | Requires permission fallbacks, DMV/query variants, and a full compatibility suite |
-| Monitored database | SQL Server 2014, best effort | Reduced capability set must be explicit; no parity promise |
 | Monitored database platform | SQL Server on Linux | Requires authentication, host-metric, packaging, and operational redesign/validation |
 | Managed database | Azure SQL Database | Requires service-tier capability and identity matrices |
 | Managed database | Azure SQL Managed Instance | Requires a distinct capability and permission matrix |
@@ -38,6 +38,16 @@ No platform is production-supported before M12 certification. A platform becomes
 | Virtualization | VMware adapter | Host/guest correlation must respect separate credentials and boundaries |
 
 Planned entries must not silently use the nearest initial-release implementation. Capability discovery fails closed, reports unsupported or degraded status, and chooses only an explicitly tested fallback.
+
+## SQL Server 2016 minimum
+
+The active engine allowlist is 13, 14, 15, 16, and 17. SQL Server 2014 is outside current support and native qualification scope. Its historical assets and migration receipts remain intact for upgrade verification; they are not loaded by the production composition.
+
+SQL Server 2016/2017 have explicit, independently checksum-pinned core/activity query variants. They provide engine workload and memory counters, scheduler CPU with valid interval baselines, database inventory and logical-file I/O, sessions/requests/waits/blocking, protected live snapshots, and deliberate captured SQL access. Both use VIEW SERVER STATE. SQL 2016 discovery avoids the later host DMV; 2017 uses native platform evidence.
+
+Advanced Query Store, deadlock, host, operational-health, and replication collectors retain their existing version contracts and are unavailable on 13/14 in this bundle. They must not run newer queries through a nearby-version fallback. SQL 2019/2022/2025 retain their existing query assets and feature-specific limits.
+
+Native qualification requires actual engines, strict integrated authentication and TLS, a non-sysadmin monitoring identity, and the complete collector → PostgreSQL → API → dashboard journey. Compatibility-mode databases supplement query-behavior tests and do not replace that evidence. See [version compatibility checks](../deployment/sqlserver-version-compatibility.md). Local CI and source smoke receipts are not production certification.
 
 ## Compatibility dimensions
 

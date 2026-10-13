@@ -108,6 +108,22 @@ public sealed class SqlServerActivityCollectorAssetCatalog
             : throw new KeyNotFoundException("The collector is not in the verified M5 activity bundle.");
     }
 
+    public static SqlServerActivityCollectorAssetCatalog LoadWithSqlServer2016Support()
+    {
+        SqlServerActivityCollectorAssetCatalog current = LoadEmbedded();
+        SqlServer2016AssetCatalog compatibility = SqlServer2016AssetCatalog.LoadEmbedded();
+        return new SqlServerActivityCollectorAssetCatalog(current.Collectors.Select(compatibility.Extend).ToArray(),
+            SqlServer2016AssetCatalog.ComposeBundleChecksum(current.BundleChecksum));
+    }
+
+    public static SqlServerActivityCollectorAssetCatalog LoadWithSqlServer2014Support()
+    {
+        SqlServerActivityCollectorAssetCatalog current = LoadEmbedded();
+        SqlServer2014AssetCatalog compatibility = SqlServer2014AssetCatalog.LoadEmbedded();
+        return new SqlServerActivityCollectorAssetCatalog(current.Collectors.Select(compatibility.Extend).ToArray(),
+            SqlServer2014AssetCatalog.ComposeBundleChecksum(current.BundleChecksum));
+    }
+
     public static SqlServerActivityCollectorAssetCatalog LoadEmbedded(Assembly? assembly = null)
     {
         assembly ??= typeof(SqlServerActivityCollectorAssetCatalog).Assembly;

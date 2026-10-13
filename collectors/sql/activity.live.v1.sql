@@ -1,11 +1,11 @@
 SET NOCOUNT ON;
 SET LOCK_TIMEOUT 1000;
-IF TRY_CONVERT(int, SERVERPROPERTY('ProductMajorVersion')) NOT IN (15,16,17)
+IF TRY_CONVERT(int, PARSENAME(CONVERT(nvarchar(128), SERVERPROPERTY('ProductVersion')),4)) NOT IN (13,14,15,16,17)
  THROW 51000, 'Unsupported live activity engine version', 1;
 IF ISNULL(IS_SRVROLEMEMBER('sysadmin'),1) <> 0
  THROW 51000, 'Live activity requires a non-sysadmin collector', 1;
-IF (TRY_CONVERT(int, SERVERPROPERTY('ProductMajorVersion'))=15 AND HAS_PERMS_BY_NAME(NULL,NULL,'VIEW SERVER STATE')<>1)
- OR (TRY_CONVERT(int, SERVERPROPERTY('ProductMajorVersion'))>=16 AND HAS_PERMS_BY_NAME(NULL,NULL,'VIEW SERVER PERFORMANCE STATE')<>1)
+IF (TRY_CONVERT(int, PARSENAME(CONVERT(nvarchar(128), SERVERPROPERTY('ProductVersion')),4))IN (13,14,15) AND HAS_PERMS_BY_NAME(NULL,NULL,'VIEW SERVER STATE')<>1)
+ OR (TRY_CONVERT(int, PARSENAME(CONVERT(nvarchar(128), SERVERPROPERTY('ProductVersion')),4))>=16 AND HAS_PERMS_BY_NAME(NULL,NULL,'VIEW SERVER PERFORMANCE STATE')<>1)
  THROW 51000, 'Live activity metadata permission unavailable', 1;
 
 SELECT TOP (513) s.session_id,r.request_id,COALESCE(r.database_id,s.database_id) AS database_id,

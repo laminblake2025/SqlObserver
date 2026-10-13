@@ -1,0 +1,19 @@
+{
+  "platform": "Windows",
+  "engineMajors": [
+    13,
+    14
+  ],
+  "collectors": [
+    "engine.core",
+    "database.inventory",
+    "database.files",
+    "activity.sessions",
+    "activity.requests",
+    "waits.server",
+    "blocking.current"
+  ],
+  "capabilityContractVersion": 4,
+  "schemaVersion": 1,
+  "mode": "passive"
+}

@@ -1,0 +1,35 @@
+{
+  "ConnectionStrings": {
+    "SqlObserverRepository": "__SET_SERVER_CONNECTION_TO_SQLOBSERVER_LAB_REPOSITORY__"
+  },
+  "SqlObserver": {
+    "IdentityFingerprintKey": "__SET_SHARED_64_HEX_CHARACTER_KEY__",
+    "WebRootPath": "__SET_ABSOLUTE_PACKAGE_WEB_DIRECTORY__",
+    "Authorization": {
+      "Bindings": [
+        {
+          "GroupSid": "__SET_EXISTING_LAB_WINDOWS_GROUP_SID__",
+          "Roles": ["Viewer", "Operator", "TargetAdministrator"],
+          "AllTargets": false,
+          "TargetIds": ["__SET_REGISTERED_TEST_TARGET_GUID__"]
+        }
+      ],
+      "DisabledActorSids": []
+    },
+    "LiveActivity": { "ProtectedKeyPath": "" },
+    "QueryContent": { "ProtectedKeyPath": "" }
+  },
+  "Kestrel": {
+    "Endpoints": {
+      "Https": {
+        "Url": "https://0.0.0.0:5444",
+        "Certificate": {
+          "Subject": "__SET_TRUSTED_LAB_CERTIFICATE_SUBJECT__",
+          "Store": "My",
+          "Location": "LocalMachine",
+          "AllowInvalid": false
+        }
+      }
+    }
+  }
+}

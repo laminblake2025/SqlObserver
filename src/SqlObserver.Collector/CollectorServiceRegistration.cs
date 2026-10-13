@@ -130,14 +130,14 @@ public static class CollectorServiceRegistration
         services.AddSingleton<IQuerySensitiveContentProtector>(_ =>
             new QuerySensitiveContentProtector(configuration["SqlObserver:QueryContent:ProtectedKeyPath"]));
         services.AddSingleton(static _ => new WorkerExecutionId(Guid.NewGuid()));
-        services.AddSingleton(static _ => SqlServerCollectorAssetCatalog.LoadEmbedded());
+        services.AddSingleton(static _ => SqlServerCollectorAssetCatalog.LoadWithSqlServer2016Support());
         services.AddSingleton(static provider => new SqlServerCoreEngineCollector(
             provider.GetRequiredService<SqlServerCollectorAssetCatalog>()));
         services.AddSingleton(static _ => new SqlServerDatabaseInventoryCollector(
-            SqlServerCollectorAssetCatalog.LoadVersion2Embedded()));
+            SqlServerCollectorAssetCatalog.LoadVersion2WithSqlServer2016Support()));
         services.AddSingleton(static provider => new SqlServerDatabaseFilesCollector(
             provider.GetRequiredService<SqlServerCollectorAssetCatalog>()));
-        services.AddSingleton(static _ => SqlServerActivityCollectorAssetCatalog.LoadEmbedded());
+        services.AddSingleton(static _ => SqlServerActivityCollectorAssetCatalog.LoadWithSqlServer2016Support());
         services.AddSingleton(static _ => SqlServerDeadlockCollectorAssetCatalog.LoadEmbedded());
         services.AddSingleton(static _ => SqlServerIncrementalDeadlockAssetCatalog.LoadEmbedded());
         services.AddSingleton<SqlServerIncrementalDeadlockCollector>();
@@ -280,7 +280,7 @@ public static class CollectorServiceRegistration
         var bundleDigest = new CollectorSha256Digest(catalog.BundleChecksum);
         SqlServerCollectorAsset coreAsset = catalog.Get(CollectorCatalogIds.EngineCore);
         SqlServerCollectorAssetCatalog inventoryV2Catalog =
-            SqlServerCollectorAssetCatalog.LoadVersion2Embedded();
+            SqlServerCollectorAssetCatalog.LoadVersion2WithSqlServer2016Support();
         SqlServerCollectorAsset inventoryAsset = inventoryV2Catalog.Get(CollectorCatalogIds.DatabaseInventory);
         var inventoryV2BundleDigest = new CollectorSha256Digest(inventoryV2Catalog.BundleChecksum);
         SqlServerCollectorAsset filesAsset = catalog.Get(CollectorCatalogIds.DatabaseFiles);

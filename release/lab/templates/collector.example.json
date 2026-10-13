@@ -1,0 +1,10 @@
+{
+  "ConnectionStrings": {
+    "SqlObserverRepository": "__SET_COLLECTOR_CONNECTION_TO_SQLOBSERVER_LAB_REPOSITORY__"
+  },
+  "SqlObserver": {
+    "IdentityFingerprintKey": "__SET_SHARED_64_HEX_CHARACTER_KEY__",
+    "LiveActivity": { "ProtectedKeyPath": "" },
+    "QueryContent": { "ProtectedKeyPath": "" }
+  }
+}

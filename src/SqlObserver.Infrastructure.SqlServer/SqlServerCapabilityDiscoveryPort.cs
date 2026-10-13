@@ -36,6 +36,7 @@ public sealed class SqlServerCapabilityDiscoveryPort : ISqlServerCapabilityDisco
     private static readonly SqlServerPermissionId SysjobhistorySelectPermissionId = new("msdb.sysjobhistory.select");
 
     private readonly ISqlServerConnectionFactory _connectionFactory;
+    private readonly SqlServer2016AssetCatalog _compatibility = SqlServer2016AssetCatalog.LoadEmbedded();
     private readonly SqlServerCapabilityAssetCatalog _assets;
     private readonly SqlServerCapabilityV2AssetCatalog? _assetsV2;
     private readonly SqlServerCapabilityV3AssetCatalog? _assetsV3;
@@ -119,7 +120,7 @@ public sealed class SqlServerCapabilityDiscoveryPort : ISqlServerCapabilityDisco
                     timeout.Token)
                 .ConfigureAwait(false);
 
-            if (bootstrap.ProductMajorVersion is < 15 or > 17)
+            if (!SqlServerVersionSupport.IsSupportedMajor(bootstrap.ProductMajorVersion))
             {
                 DetailedEvidence unsupportedVersion = bootstrap.ToDetail(
                     platform: bootstrap.Platform,
@@ -166,6 +167,7 @@ public sealed class SqlServerCapabilityDiscoveryPort : ISqlServerCapabilityDisco
             {
                 detail = await ExecuteDetailAsync(
                         connection,
+                        bootstrap.ProductMajorVersion is 13 or 14 ? _compatibility.GetCapabilitySql(bootstrap.ProductMajorVersion) :
                         _assetsV4?.GetSupportedQuery(bootstrap.ProductMajorVersion) ??
                             _assetsV3?.GetSupportedQuery(bootstrap.ProductMajorVersion) ??
                             _assetsV2?.Get($"capability.connection.sqlserver{bootstrap.ProductMajorVersion}-windows.v2.sql") ??
@@ -173,13 +175,13 @@ public sealed class SqlServerCapabilityDiscoveryPort : ISqlServerCapabilityDisco
                         commandTimeout,
                         budget,
                         usedPermissionFallback: false,
-                        contractVersion: _assetsV4 is not null ? 4 : _assetsV3 is not null ? 3 : _assetsV2 is not null ? 2 : 1,
+                        contractVersion: bootstrap.ProductMajorVersion is 13 or 14 || _assetsV4 is not null ? 4 : _assetsV3 is not null ? 3 : _assetsV2 is not null ? 2 : 1,
                         timeout.Token)
                     .ConfigureAwait(false);
             }
             catch (SqlException exception) when (IsPermissionDenied(exception))
             {
-                if (_assetsV4 is not null || _assetsV3 is not null || _assetsV2 is not null)
+                if (bootstrap.ProductMajorVersion is 13 or 14 || _assetsV4 is not null || _assetsV3 is not null || _assetsV2 is not null)
                 {
                     // Versioned contracts must not silently downgrade to the
                     // historical v1 fallback while retaining a newer profile version.
@@ -201,7 +203,7 @@ public sealed class SqlServerCapabilityDiscoveryPort : ISqlServerCapabilityDisco
                 throw new InvalidDataException("SQL Server version evidence changed during capability discovery.");
             }
 
-            if (_assetsV4 is not null || _assetsV3 is not null)
+            if (detail.ContractVersion >= 3)
             {
                 await using (var visibilityProbe = new SqlCommand(
                     "SELECT CONVERT(bit,COALESCE(HAS_PERMS_BY_NAME(NULL,NULL,N'VIEW ANY DATABASE'),0));",
@@ -228,7 +230,7 @@ public sealed class SqlServerCapabilityDiscoveryPort : ISqlServerCapabilityDisco
                 finally { connection.ChangeDatabase(originalDatabase); }
             }
 
-            if (_assetsV4 is not null)
+            if (detail.ContractVersion >= 4)
             {
                 await using var metadataProbe = new SqlCommand(
                     "SELECT CONVERT(bit,COALESCE(HAS_PERMS_BY_NAME(NULL,NULL,N'VIEW ANY DEFINITION'),0));",
@@ -238,7 +240,7 @@ public sealed class SqlServerCapabilityDiscoveryPort : ISqlServerCapabilityDisco
                 budget.AddFixedBytes(1);
             }
 
-            if ((_assetsV4 is not null || _assetsV3 is not null) && distributionDatabase is not null)
+            if (detail.ContractVersion >= 3 && detail.HasReplicationFeature && distributionDatabase is not null)
             {
                 bool roleGranted = await ProbeReplicationMonitorRoleAsync(
                         connection,
@@ -252,7 +254,7 @@ public sealed class SqlServerCapabilityDiscoveryPort : ISqlServerCapabilityDisco
 
             (CapabilityDiscoveryOutcome Outcome, CapabilityDiscoveryReason Reason) disposition =
                 GetConnectedDisposition(detail);
-            if (_assetsV4 is null && _assetsV3 is null && disposition.Outcome == CapabilityDiscoveryOutcome.Supported &&
+            if (detail.ContractVersion < 3 && disposition.Outcome == CapabilityDiscoveryOutcome.Supported &&
                 (!detail.HasBackupsetSelect || !detail.HasSysjobhistorySelect))
             {
                 disposition = (CapabilityDiscoveryOutcome.Degraded, CapabilityDiscoveryReason.RequiredPermissionMissing);
@@ -317,7 +319,7 @@ public sealed class SqlServerCapabilityDiscoveryPort : ISqlServerCapabilityDisco
         ProbeBudget budget,
         CancellationToken cancellationToken)
     {
-        await using var command = new SqlCommand(_assets.BootstrapSql, connection)
+        await using var command = new SqlCommand(_compatibility.BootstrapSql, connection)
         {
             CommandTimeout = commandTimeout,
         };
@@ -597,7 +599,7 @@ public sealed class SqlServerCapabilityDiscoveryPort : ISqlServerCapabilityDisco
                 CapabilityDiscoveryReason.TransportNotEncrypted);
         }
 
-        if (productMajorVersion is < 15 or > 17)
+        if (!SqlServerVersionSupport.IsSupportedMajor(productMajorVersion))
         {
             return (
                 CapabilityDiscoveryOutcome.Unsupported,
@@ -656,8 +658,8 @@ public sealed class SqlServerCapabilityDiscoveryPort : ISqlServerCapabilityDisco
             request.TargetId,
             request.TargetRevision,
             _assets.Manifest.Id,
-            _assetsV4 is not null ? _assetsV4.ManifestVersion : _assetsV3 is not null ? _assetsV3.ManifestVersion : _assetsV2?.ManifestVersion ?? _assets.Manifest.ManifestVersion.Value,
-            _assetsV4 is not null ? 4 : _assetsV3 is not null ? 3 : _assetsV2 is null ? _assets.Manifest.OutputSchemaVersion.Value : 2,
+            detail.ContractVersion,
+            detail.ContractVersion,
             identity,
             outcome,
             reason,
@@ -760,10 +762,10 @@ public sealed class SqlServerCapabilityDiscoveryPort : ISqlServerCapabilityDisco
 
     private static PermissionEvidence[] CreatePermissionEvidence(DetailedEvidence detail)
     {
-        SqlServerPermissionId requiredPermission = detail.ProductMajorVersion == 15
+        SqlServerPermissionId requiredPermission = SqlServerVersionSupport.UsesViewServerState(detail.ProductMajorVersion)
             ? ViewServerStatePermissionId
             : ViewServerPerformanceStatePermissionId;
-        PermissionEvidenceOutcome roleOutcome = detail.ProductMajorVersion == 15
+        PermissionEvidenceOutcome roleOutcome = SqlServerVersionSupport.UsesViewServerState(detail.ProductMajorVersion)
             ? PermissionEvidenceOutcome.NotApplicable
             : detail.IsPerformanceReaderMember
                 ? PermissionEvidenceOutcome.Granted

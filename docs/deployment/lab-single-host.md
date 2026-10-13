@@ -701,6 +701,14 @@ if ($LASTEXITCODE -ne 0) { throw 'Report expiry role creation failed.' }
   --command 'CREATE ROLE sqlobserver_payload_expirer WITH NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION BYPASSRLS;'
 if ($LASTEXITCODE -ne 0) { throw 'Payload expiry role creation failed.' }
 
+# Canonical-run checks need a separate fixed reader through FORCE RLS.
+# It has no login or runtime members, and only reviewed read/function rights.
+& "$pgBin\psql.exe" `
+  --host 127.0.0.1 --port 5432 --username postgres --dbname postgres `
+  --no-psqlrc --set ON_ERROR_STOP=1 `
+  --command 'CREATE ROLE sqlobserver_run_dependency_reader WITH NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION BYPASSRLS;'
+if ($LASTEXITCODE -ne 0) { throw 'Run dependency reader creation failed.' }
+
 & "$pgBin\createdb.exe" `
   --host 127.0.0.1 --port 5432 --username sqlobserver_bootstrap `
   --owner sqlobserver_bootstrap sqlobserver
@@ -730,6 +738,11 @@ try {
     --no-psqlrc --set ON_ERROR_STOP=1 `
     --command 'GRANT sqlobserver_payload_expirer TO sqlobserver_bootstrap WITH ADMIN OPTION;'
   if ($LASTEXITCODE -ne 0) { throw 'Temporary payload expiry membership grant failed.' }
+  & "$pgBin\psql.exe" `
+    --host 127.0.0.1 --port 5432 --username postgres --dbname postgres `
+    --no-psqlrc --set ON_ERROR_STOP=1 `
+    --command 'GRANT sqlobserver_run_dependency_reader TO sqlobserver_bootstrap WITH ADMIN OPTION;'
+  if ($LASTEXITCODE -ne 0) { throw 'Temporary run dependency reader membership grant failed.' }
 
   & "$migrationHost\SqlObserver.Cli.exe" postgres migrate `
     --lab-loopback --allow-loopback-cleartext `
@@ -740,10 +753,17 @@ finally {
   & "$pgBin\psql.exe" `
     --host 127.0.0.1 --port 5432 --username postgres --dbname postgres `
     --no-psqlrc --set ON_ERROR_STOP=1 `
-    --command 'REVOKE sqlobserver_report_expirer FROM sqlobserver_bootstrap; REVOKE sqlobserver_payload_expirer FROM sqlobserver_bootstrap; DO $verify$ BEGIN IF EXISTS (SELECT 1 FROM pg_catalog.pg_auth_members m JOIN pg_catalog.pg_roles granted ON granted.oid=m.roleid JOIN pg_catalog.pg_roles member ON member.oid=m.member WHERE granted.rolname IN (''sqlobserver_report_expirer'',''sqlobserver_payload_expirer'') OR member.rolname IN (''sqlobserver_report_expirer'',''sqlobserver_payload_expirer'')) THEN RAISE EXCEPTION ''Expiry-role membership cleanup failed''; END IF; END $verify$;'
-  if ($LASTEXITCODE -ne 0) { throw 'Expiry-role membership cleanup failed.' }
+    --command 'REVOKE sqlobserver_report_expirer FROM sqlobserver_bootstrap; REVOKE sqlobserver_payload_expirer FROM sqlobserver_bootstrap; REVOKE sqlobserver_run_dependency_reader FROM sqlobserver_bootstrap; REVOKE sqlobserver_run_dependency_reader FROM sqlobserver_migrator; DO $verify$ BEGIN IF EXISTS (SELECT 1 FROM pg_catalog.pg_auth_members m JOIN pg_catalog.pg_roles granted ON granted.oid=m.roleid JOIN pg_catalog.pg_roles member ON member.oid=m.member WHERE granted.rolname IN (''sqlobserver_report_expirer'',''sqlobserver_payload_expirer'',''sqlobserver_run_dependency_reader'') OR member.rolname IN (''sqlobserver_report_expirer'',''sqlobserver_payload_expirer'',''sqlobserver_run_dependency_reader'')) THEN RAISE EXCEPTION ''Protected-role membership cleanup failed''; END IF; END $verify$;'
+  if ($LASTEXITCODE -ne 0) { throw 'Protected-role membership cleanup failed.' }
 }
 ```
+
+The reader is required at migrations 325 and 347. For separate batches, grant
+its temporary membership before each stage and retain administrator cleanup
+after each batch. A known `postgres_42501` failure at either migration preserves
+the verified ledger prefix: provision the fixed role/grant, then resume. Do not
+run migrations as superuser, give BYPASSRLS to bootstrap/runtime logins, or edit
+ledger rows.
 
 The executable prompts once with hidden input. A successful result is a single
 secret-free JSON object with `status` equal to `succeeded`, zero failed

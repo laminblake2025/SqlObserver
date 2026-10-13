@@ -24,6 +24,7 @@ public static class LabPostgreSqlMigrationHost
         if (LabPostgreSqlMigrationInvocation.IsHelp(arguments))
         {
             Console.Out.WriteLine(LabPostgreSqlMigrationInvocation.Usage);
+            Console.Out.WriteLine(LabPostgreSqlMigrationInvocation.IsolatedUsage);
             Console.Out.WriteLine(
                 "Lab only: fixed 127.0.0.1:5432 target, interactive password, verified embedded migrations.");
             return CliHostScaffold.SuccessExitCode;
@@ -111,7 +112,7 @@ public static class LabPostgreSqlMigrationHost
             var settings = new DbConnectionStringBuilder();
             settings["Host"] = LabPostgreSqlMigrationInvocation.LoopbackAddress;
             settings["Port"] = LabPostgreSqlMigrationInvocation.PostgreSqlPort;
-            settings["Database"] = LabPostgreSqlMigrationInvocation.RepositoryName;
+            settings["Database"] = invocation.RepositoryDatabaseName;
             settings["Username"] = LabPostgreSqlMigrationInvocation.BootstrapLogin;
             settings["Password"] = passwordValue;
             settings["SSL Mode"] = "Disable";
