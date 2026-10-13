@@ -19,7 +19,7 @@ namespace SqlObserver.IntegrationTests.PostgreSql;
 [Trait("Category", "RequiresPostgreSql")]
 public sealed partial class M4CollectorPersistenceIntegrationTests
 {
-    private const string BundleDigest = "10ef6cb84001d6a3f34889cb8c2d96d51c247289582ef3fa25c3f63862399a17";
+    private const string BundleDigest = "65cdb23980bbae928879257ba5cc118de98595760920f77da0f08f8147b90627";
     private static readonly string[] EngineCoreMetricIds =
     [
         "engine.batch_requests_total",
@@ -1612,11 +1612,11 @@ public sealed partial class M4CollectorPersistenceIntegrationTests
     private static IReadOnlyList<CollectorCatalogEntry> CreateCatalog() =>
     [
         CreateCatalogEntry(1, "engine.core", CollectorOutputKind.Metrics,
-            "f062ab816cdbb56e7ea9f77ed0042bf00df2bb9b0e6c08b907710f468d8755a1"),
+            "3a9f281a29f9222ae829e16d6bda859bb13a7bd8255478d3a8b47e626ffb7fb9"),
         CreateCatalogEntry(2, "database.inventory", CollectorOutputKind.DatabaseInventory,
-            "ec1cbfea68854d111d11aab48b476addbf2416e99e639bf97ea58545d78af484"),
+            "c91afd4db152abcaf182244521f836b9f4c54f5f9d487dc38007f6ec2373a4b3"),
         CreateCatalogEntry(3, "database.files", CollectorOutputKind.DatabaseFiles,
-            "06c9353fe554f737f933c0fa4938fef19f5c6c0dd6af8832c4671160f5af0dcd"),
+            "943bc8bd0b9e394e9472c0a1cdbe71c26d614b6a692a459e50002e0f197292dd"),
     ];
 
     private static CollectorCatalogEntry CreateCatalogEntry(
@@ -1773,9 +1773,9 @@ public sealed partial class M4CollectorPersistenceIntegrationTests
                 ARRAY['engine.core', 'database.inventory', 'database.files']::text[],
                 ARRAY[1, 1, 1]::integer[],
                 ARRAY[
-                    decode('f062ab816cdbb56e7ea9f77ed0042bf00df2bb9b0e6c08b907710f468d8755a1', 'hex'),
-                    decode('ec1cbfea68854d111d11aab48b476addbf2416e99e639bf97ea58545d78af484', 'hex'),
-                    decode('06c9353fe554f737f933c0fa4938fef19f5c6c0dd6af8832c4671160f5af0dcd', 'hex')
+                    decode('3a9f281a29f9222ae829e16d6bda859bb13a7bd8255478d3a8b47e626ffb7fb9', 'hex'),
+                    decode('c91afd4db152abcaf182244521f836b9f4c54f5f9d487dc38007f6ec2373a4b3', 'hex'),
+                    decode('943bc8bd0b9e394e9472c0a1cdbe71c26d614b6a692a459e50002e0f197292dd', 'hex')
                 ]::bytea[],
                 array_fill(decode(@bundle_digest, 'hex'), ARRAY[3]),
                 ARRAY[1, 2, 3]::integer[],

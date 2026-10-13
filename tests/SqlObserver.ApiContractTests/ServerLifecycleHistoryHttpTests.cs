@@ -213,9 +213,12 @@ public sealed class ServerLifecycleHistoryHttpTests
     [Fact]
     public async Task CallerCancellationReachesRepositoryWithoutTurningIntoSuccess()
     {
-        await using var factory = new Factory(); factory.Repository.Wait = true; using var client = Client(factory);
+        await using var factory = new Factory(); using var client = Client(factory);
+        // Complete host/authentication startup before measuring cancellation propagation.
+        using var warmup = await client.GetAsync("/health"); Assert.Equal(HttpStatusCode.OK,warmup.StatusCode);
+        factory.Repository.Wait = true;
         using var cancellation = new CancellationTokenSource(); var pending = client.GetAsync(List(),cancellation.Token);
-        await factory.Repository.Started.Task.WaitAsync(TimeSpan.FromSeconds(5)); cancellation.Cancel();
+        await factory.Repository.Started.Task.WaitAsync(TimeSpan.FromSeconds(30)); cancellation.Cancel();
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => pending);
         await factory.Repository.Cancelled.Task.WaitAsync(TimeSpan.FromSeconds(5));
     }

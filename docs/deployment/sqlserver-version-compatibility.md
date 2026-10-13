@@ -2,7 +2,7 @@
 
 The current code recognizes SQL Server 2014 (12) and retains SQL Server 2019 (15). SQL Server 2014 has the reduced capability set listed in the [support matrix](../architecture/support-matrix.md). Neither version is newly native-certified by these source changes.
 
-Deploy the rebuilt Collector and API from the same source revision. Existing database migrations and API shapes do not change. Older lab deployments do not gain compatibility merely because the local dashboard assets were rebuilt.
+Apply forward migration `0373_sqlserver_2014_collector_contracts.sql`, then deploy the rebuilt Collector and API from the same source revision. The migration binds the exact extended core/activity asset digests and inventory activation digests; it preserves schedules, limits, output schemas, and historical migration bytes, and rejects prior contract drift atomically. Public API shapes remain unchanged. Older lab deployments do not gain compatibility merely because the local dashboard assets were rebuilt.
 
 Provision a pre-existing Windows monitoring login using the offline permission generator, with major `12` or `15` as appropriate. Review and execute the generated SQL independently as the authorized DBA. Select logical-file metadata explicitly if file collection is needed. For 2014, Query Store and replication options are rejected and msdb history grants are omitted.
 
