@@ -13,14 +13,20 @@ public sealed class LabPostgreSqlMigrationInvocation
     public const string LoopbackAddress = "127.0.0.1";
     public const int PostgreSqlPort = 5432;
     public const string RepositoryName = "sqlobserver";
+    public const string IsolatedRepositoryName = "sqlobserver_lab";
     public const string BootstrapLogin = "sqlobserver_bootstrap";
     public const string CommandName = "postgres_migrate_lab_loopback";
     public const string Usage =
         "SqlObserver.Cli postgres migrate --lab-loopback --allow-loopback-cleartext --database sqlobserver --username sqlobserver_bootstrap";
+    public const string IsolatedUsage =
+        "SqlObserver.Cli postgres migrate --lab-loopback --allow-loopback-cleartext --database sqlobserver_lab --username sqlobserver_bootstrap";
 
-    private LabPostgreSqlMigrationInvocation()
+    private LabPostgreSqlMigrationInvocation(string repositoryDatabaseName)
     {
+        RepositoryDatabaseName = repositoryDatabaseName;
     }
+
+    public string RepositoryDatabaseName { get; }
 
     public static bool IsHelp(IReadOnlyList<string> arguments) =>
         arguments.Count == 1 && arguments[0] is "--help" or "-h";
@@ -36,14 +42,14 @@ public sealed class LabPostgreSqlMigrationInvocation
             !string.Equals(arguments[2], "--lab-loopback", StringComparison.Ordinal) ||
             !string.Equals(arguments[3], "--allow-loopback-cleartext", StringComparison.Ordinal) ||
             !string.Equals(arguments[4], "--database", StringComparison.Ordinal) ||
-            !string.Equals(arguments[5], RepositoryName, StringComparison.Ordinal) ||
+            arguments[5] is not (RepositoryName or IsolatedRepositoryName) ||
             !string.Equals(arguments[6], "--username", StringComparison.Ordinal) ||
             !string.Equals(arguments[7], BootstrapLogin, StringComparison.Ordinal))
         {
             return false;
         }
 
-        invocation = new LabPostgreSqlMigrationInvocation();
+        invocation = new LabPostgreSqlMigrationInvocation(arguments[5]);
         return true;
     }
 

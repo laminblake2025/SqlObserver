@@ -23,6 +23,7 @@ public sealed class LabPostgreSqlMigrationContractTests
 
         Assert.True(LabPostgreSqlMigrationInvocation.TryParse(accepted, out var invocation));
         Assert.NotNull(invocation);
+        Assert.Equal("sqlobserver", invocation.RepositoryDatabaseName);
 
         string[][] rejected =
         [
@@ -39,6 +40,22 @@ public sealed class LabPostgreSqlMigrationContractTests
         {
             Assert.False(LabPostgreSqlMigrationInvocation.TryParse(value, out _));
         }
+    }
+
+    [Theory]
+    [InlineData("sqlobserver", true)]
+    [InlineData("sqlobserver_lab", true)]
+    [InlineData("sqlobserver_lab_other", false)]
+    [InlineData("SQLOBSERVER_LAB", false)]
+    [InlineData("sqlobserver_lab;Host=production", false)]
+    [InlineData("postgres", false)]
+    public void DatabaseSelectionIsRestrictedToTwoExplicitLabRepositories(string database, bool accepted)
+    {
+        bool parsed = LabPostgreSqlMigrationInvocation.TryParse(
+            ["postgres", "migrate", "--lab-loopback", "--allow-loopback-cleartext", "--database", database, "--username", "sqlobserver_bootstrap"], out var invocation);
+        Assert.Equal(accepted, parsed);
+        if (accepted) Assert.Equal(database, invocation!.RepositoryDatabaseName);
+        else Assert.Null(invocation);
     }
 
     [Fact]
