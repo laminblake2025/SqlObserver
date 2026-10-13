@@ -27,6 +27,14 @@ try {
     $sdk = (Get-Content -LiteralPath global.json -Raw | ConvertFrom-Json).sdk.version
     $actualSdk = (& dotnet --version).Trim()
     if ($LASTEXITCODE -ne 0 -or $actualSdk -cne $sdk) { throw 'The lab build requires the pinned .NET SDK.' }
+    $webPolicy = Get-Content -LiteralPath web/package.json -Raw | ConvertFrom-Json
+    if ($webPolicy.packageManager -cnotmatch '^pnpm@([0-9]+\.[0-9]+\.[0-9]+)$') { throw 'The lab build requires an exact pnpm version policy.' }
+    $expectedPnpm = $Matches[1]
+    $actualPnpm = (& pnpm --version).Trim()
+    if ($LASTEXITCODE -ne 0 -or $actualPnpm -cne $expectedPnpm) { throw 'The lab build requires the pinned pnpm version.' }
+    $expectedNode = ([string]$webPolicy.engines.node).TrimStart('>', '=')
+    $actualNode = (& node --version).Trim().TrimStart('v')
+    if ($LASTEXITCODE -ne 0 -or $actualNode -cne $expectedNode) { throw 'The lab build requires the pinned Node.js version.' }
     $runName = [DateTimeOffset]::UtcNow.ToString('yyyyMMddTHHmmssZ') + '-' + [Guid]::NewGuid().ToString('N').Substring(0, 8)
     $outputRoot = Join-Path $repositoryRoot "artifacts/lab-packages/$($sourceCommit.Substring(0,8))/$runName"
     $packageRoot = Join-Path $outputRoot 'package'

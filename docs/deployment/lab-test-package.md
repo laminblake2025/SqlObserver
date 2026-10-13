@@ -4,7 +4,7 @@ This ZIP is a versioned, unsigned Windows x64 test build. It contains the API, C
 
 ## Prerequisites and verification
 
-Use an isolated Windows Server 2022/2025 x64 test host with the .NET 10 ASP.NET Core runtime, PowerShell 7.5+, and PostgreSQL 18. A development SDK or Node.js is not required on the destination. SQL Server targets require Windows authentication, a non-sysadmin monitoring identity, the version-specific grants, and trusted TLS. SQL Server 2014 requires TLS 1.2 support and has reduced feature coverage.
+Use an isolated Windows Server 2022/2025 x64 test host with the .NET 10 ASP.NET Core runtime, PowerShell 7.5+, and PostgreSQL 18. A development SDK or Node.js is not required on the destination. SQL Server targets require Windows authentication, a non-sysadmin monitoring identity, the version-specific grants, and trusted TLS. The minimum engine is SQL Server 2016; SQL Server 2014 is excluded. SQL Server 2016/2017 targets run on a separate compatible Windows host and provide the bounded core/activity coverage described in [version compatibility](sqlserver-version-compatibility.md).
 
 Before extraction, compare the ZIP SHA-256 against the independently retained build receipt. Run the verifier from the trusted source checkout:
 
@@ -47,7 +47,7 @@ Use a browser with authorized Windows credentials at `https://CERTIFICATE-DNS-NA
 
 Sensitive content remains unavailable while the protection paths are empty. To test captured SQL, provision the machine-protected key on the destination host using `Tools\provision-live-activity-key.ps1`, naming exactly the Server and Collector identities, and configure the same path in both `SqlObserver:LiveActivity:ProtectedKeyPath` settings. Never overwrite a protection key used by retained evidence. Grant the application `QueryTextReader` role explicitly for the test target and verify both allowed and denied reads. Query-performance text/plan protection has its separate `SqlObserver:QueryContent:ProtectedKeyPath` setting and requires its own reviewed key setup.
 
-Validate the complete collector → PostgreSQL → API → dashboard path: freshness, database/file evidence, exact session captures, blocking relationships, deep links, capture saves, permission revocation, and visible missing/unsupported evidence. Use only bounded, authorized lab workloads with rollback. SQL Server 2014/2019 native smoke checks remain a separate prerequisite for claiming those versions tested; see [version compatibility](sqlserver-version-compatibility.md). No MCP stdio bridge is included.
+Validate the complete collector → PostgreSQL → API → dashboard path: freshness, database/file evidence, exact session captures, blocking relationships, deep links, capture saves, permission revocation, and visible missing/unsupported evidence. Use only bounded, authorized lab workloads with rollback. Test each native engine being claimed, including SQL Server 2016, 2017, and 2019; a database compatibility level does not replace native validation. Keep the sanitized qualification receipt and its package/source hashes beside the build receipt; see [version compatibility](sqlserver-version-compatibility.md). No MCP stdio bridge is included.
 
 ## Rollback and evidence
 
