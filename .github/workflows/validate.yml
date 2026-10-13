@@ -115,6 +115,20 @@ jobs:
         shell: pwsh
         run: ./tools/verify-test-results.ps1 -MatrixOnly -RepositoryRoot $PWD
 
+      - name: Build and verify Windows lab package
+        shell: pwsh
+        run: ./tools/build-lab-package.ps1
+
+      - name: Publish Windows lab package
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: windows-lab-package
+          path: |
+            artifacts/lab-packages/**/*.zip
+            artifacts/lab-packages/**/*.zip.sha256
+            artifacts/lab-packages/**/build-receipt.json
+          if-no-files-found: error
+
       - name: Publish validation evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2

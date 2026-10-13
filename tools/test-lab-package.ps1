@@ -158,7 +158,7 @@ try {
         $runtime = (Read-MemberText $name | ConvertFrom-Json -Depth 10).runtimeOptions
         if ($runtime.tfm -cne 'net10.0' -or $null -ne $runtime.PSObject.Properties['includedFrameworks']) { throw 'Package runtime configuration is invalid.' }
         $frameworks = if ($null -ne $runtime.PSObject.Properties['frameworks']) { @($runtime.frameworks) } elseif ($null -ne $runtime.PSObject.Properties['framework']) { @($runtime.framework) } else { @() }
-        $expectedFrameworks = if ($name.StartsWith('Server/', [StringComparison]::Ordinal)) { @('Microsoft.NETCore.App','Microsoft.AspNetCore.App') } else { @('Microsoft.NETCore.App') }
+        $expectedFrameworks = @('Microsoft.NETCore.App','Microsoft.AspNetCore.App')
         if ((@($frameworks.name | Sort-Object) -join '|') -cne (@($expectedFrameworks | Sort-Object) -join '|') -or @($frameworks | Where-Object { $_.version -notmatch '^10\.0\.\d+$' }).Count -gt 0) {
             throw 'Package framework prerequisites are invalid.'
         }

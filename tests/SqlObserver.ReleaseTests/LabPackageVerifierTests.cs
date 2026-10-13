@@ -104,7 +104,7 @@ public sealed class LabPackageVerifierTests
                 Write(folder + "/" + name + ".exe", apphost);
                 Write(folder + "/" + name + ".dll", "fixture");
                 var frameworks = new JsonArray(new JsonObject { ["name"]="Microsoft.NETCore.App", ["version"]="10.0.0" });
-                if (folder == "Server") frameworks.Add(new JsonObject { ["name"]="Microsoft.AspNetCore.App", ["version"]="10.0.0" });
+                frameworks.Add(new JsonObject { ["name"]="Microsoft.AspNetCore.App", ["version"]="10.0.0" });
                 Write(folder + "/" + name + ".runtimeconfig.json", new JsonObject { ["runtimeOptions"] = new JsonObject { ["tfm"]="net10.0", ["frameworks"]=frameworks } }.ToJsonString());
             }
             foreach (string name in new[] { "Web/index.html", "Docs/web-asset-manifest.v1.json", "ConfigTemplates/server.example.json", "ConfigTemplates/collector.example.json", "Tools/test-lab-package.ps1", "Tools/generate-permissions.ps1", "Tools/provision-live-activity-key.ps1" }) Write(name,"fixture");
