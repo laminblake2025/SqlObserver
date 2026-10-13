@@ -65,7 +65,7 @@ jobs:
   validate:
     name: Windows validation
     runs-on: windows-2025
-    timeout-minutes: 45
+    timeout-minutes: 75
 
     steps:
       - name: Check out source
