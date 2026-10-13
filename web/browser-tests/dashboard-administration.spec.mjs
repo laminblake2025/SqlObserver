@@ -174,24 +174,24 @@ async function generateScript(page, principal = "LAB\\O'Brien]sql", database = "
   await expect(generatedSql(page)).toBeVisible();
 }
 
-test('SQL Server 2014 permission plan disables unavailable features and clears newer-version choices', async ({ page }, testInfo) => {
+for (const [major, year] of [['13', '2016'], ['14', '2017']]) test(`SQL Server ${year} permission plan preserves core access and clears unqualified advanced choices`, async ({ page }, testInfo) => {
   await fixture(page); await page.goto(permissionsHref()); await generateScript(page);
   await page.getByRole('checkbox', { name: 'Replication monitoring', exact: true }).check();
-  await page.getByRole('combobox', { name: 'SQL Server version', exact: true }).selectOption('12');
+  await page.getByRole('combobox', { name: 'SQL Server version', exact: true }).selectOption(major);
   await expect(generatedSql(page)).toHaveCount(0);
   for (const name of ['Query Store access for one database', 'Replication monitoring']) {
     const option = page.getByRole('checkbox', { name, exact: true });
     await expect(option).toBeDisabled(); await expect(option).not.toBeChecked();
   }
-  await expect(page.getByRole('form', { name: 'Offline permission script generator', exact: true }).getByRole('status')).toContainText('SQL Server 2014 supports sessions');
+  await expect(page.getByRole('form', { name: 'Offline permission script generator', exact: true }).getByRole('status')).toContainText('SQL Server 2016 and 2017 support sessions');
   await page.getByRole('checkbox', { name: 'Logical file metadata', exact: true }).check();
   await page.getByRole('button', { name: 'Generate SQL', exact: true }).click();
   await expect(generatedSql(page)).toContainText('GRANT VIEW SERVER STATE');
   await expect(generatedSql(page)).toContainText('GRANT VIEW ANY DEFINITION');
   await expect(generatedSql(page)).not.toContainText('USE [msdb]');
   await expect(generatedSql(page)).not.toContainText('ADD MEMBER');
-  await audit(page, testInfo, 'sqlserver-2014-permissions');
-  await capture(page, 'sqlserver-2014-permissions.png');
+  await audit(page, testInfo, `sqlserver-${year}-permissions`);
+  await capture(page, `sqlserver-${year}-permissions.png`);
   await page.getByRole('combobox', { name: 'SQL Server version', exact: true }).selectOption('15');
   await expect(page.getByRole('checkbox', { name: 'Query Store access for one database', exact: true })).toBeEnabled();
 });
