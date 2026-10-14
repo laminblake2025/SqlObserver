@@ -1,11 +1,19 @@
 using System.Net;
+using System.Security.Principal;
+using Microsoft.AspNetCore.Authentication.Negotiate;
+using SqlObserver.LabDashboardHost;
 using Microsoft.Extensions.FileProviders;
 
 // Workstation-only lab adapter: current local UI, existing authenticated lab API.
 // No API payload translation, database credentials, or synthetic responses.
 const string upstreamOrigin = "https://WIN-QNGOV5GDM24:5443";
 const long maximumBodyBytes = 2 * 1024 * 1024;
+if (!OperatingSystem.IsWindows()) throw new PlatformNotSupportedException("The lab dashboard requires Windows authentication.");
+using WindowsIdentity processIdentity = WindowsIdentity.GetCurrent();
+SecurityIdentifier ownerSid = processIdentity.User
+    ?? throw new InvalidOperationException("The lab dashboard requires a process owner SID.");
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
+builder.Services.AddAuthentication(NegotiateDefaults.AuthenticationScheme).AddNegotiate();
 int port = builder.Configuration.GetValue("LabDashboard:Port", 4322);
 if (port is < 1024 or > 65535) throw new InvalidOperationException("Invalid lab dashboard port.");
 string webRoot = Path.GetFullPath(builder.Configuration["LabDashboard:WebRoot"]
@@ -52,6 +60,14 @@ app.Use(async (context, next) =>
     }
     context.Response.Headers.XContentTypeOptions = "nosniff";
     context.Response.Headers["Referrer-Policy"] = "same-origin";
+    await next(context).ConfigureAwait(false);
+});
+app.UseAuthentication();
+app.UseMiddleware<OwnerIdentityMiddleware>(ownerSid);
+app.Use(async (context, next) =>
+{
+    HttpRequest request = context.Request;
+    bool safe = HttpMethods.IsGet(request.Method) || HttpMethods.IsHead(request.Method);
     if (request.Path.StartsWithSegments("/api/v1", StringComparison.Ordinal))
     {
         // Resolve against a fixed origin; never accept an absolute or caller-selected destination.

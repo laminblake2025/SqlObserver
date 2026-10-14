@@ -21,7 +21,19 @@ identity for the fixed lab destination. It stores no passwords or SQL connection
 strings, preserves certificate validation and lab API authorization, rejects
 foreign Host/Origin/fetch-site and forwarding headers, and does not pass browser
 authentication or role headers upstream. This is a single-user workstation test
-host. It does not represent each browser user's Windows identity.
+host. Local requests must authenticate with Windows Negotiate and match the
+launching account's SID before any API forwarding, status or static content is
+served. Anonymous callers receive a Windows authentication challenge; other
+accounts receive 403 even with matching browser headers. The upstream still uses
+the launching account's existing identity and grants.
+
+Use Edge or Chrome under the same Windows account as the launcher. If browser
+policy does not negotiate loopback automatically, allow Windows authentication
+only for `localhost` and `127.0.0.1`; do not grant a wildcard authentication or
+delegation allowlist. The lab Playwright configuration applies this narrow
+allowlist, and owner API checks use same-origin browser fetch rather than the
+unauthenticated Node request fixture. Native readiness checks use
+`-UseDefaultCredentials`. No local password or bearer secret is introduced.
 
 The launcher refuses occupied ports and checks recorded PID, executable and start
 time before controlling its own process. Logs and process records live under

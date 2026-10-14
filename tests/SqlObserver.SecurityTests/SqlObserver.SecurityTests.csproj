@@ -4,6 +4,8 @@
     <AssemblyName>SqlObserver.SecurityTests</AssemblyName>
   </PropertyGroup>
   <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.TestHost" />
+    <Compile Include="../../tools/LabDashboardHost/OwnerIdentityMiddleware.cs" Link="OwnerIdentityMiddleware.Shared.cs" />
     <Compile Include="../../tools/SqlPolicyTokens.cs" Link="SqlPolicyTokens.Shared.cs" />
     <None Update="Fixtures\m8-alert-observation.json" CopyToOutputDirectory="PreserveNewest" />
     <ProjectReference Include="../../src/SqlObserver.Application/SqlObserver.Application.csproj" />

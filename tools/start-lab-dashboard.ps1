@@ -56,7 +56,7 @@ try {
         $taskProcess.Refresh()
         if ($taskProcess.HasExited) { throw 'Lab dashboard exited; inspect its logs.' }
         try {
-            $taskReady = Invoke-RestMethod -Uri "http://127.0.0.1:$Port/__lab/status" -NoProxy -TimeoutSec 2
+            $taskReady = Invoke-RestMethod -Uri "http://127.0.0.1:$Port/__lab/status" -UseDefaultCredentials -AllowUnencryptedAuthentication -NoProxy -TimeoutSec 2
             if ($taskReady.syntheticData -eq $false) {
                 Write-Host "Lab dashboard ready: http://localhost:$Port/#/overview?range=1h"
                 Write-Host 'Connected to WIN-QNGOV5GDM24 through its authenticated HTTPS API.'

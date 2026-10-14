@@ -2,4 +2,7 @@
   <PropertyGroup>
     <AssemblyName>SqlObserver.LabDashboardHost</AssemblyName>
   </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.Negotiate" />
+  </ItemGroup>
 </Project>

@@ -1,10 +1,12 @@
 import { test, expect } from '@playwright/test';
+import { ownerBrowserRequest } from './owner-browser-request.mjs';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 const targetId = 'dfb2b72c-4ad4-4765-9523-528c798482f0';
 const output = resolve('../.artifacts/lab-dashboard-20261009');
 
-test('real lab inventory, overview, summary and captured activity reach the current UI', async ({ page, request }) => {
+test('real lab inventory, overview, summary and captured activity reach the current UI', async ({ page }) => {
+  const request = await ownerBrowserRequest(page);
   await mkdir(output, { recursive: true });
   const status = await request.get('/__lab/status');
   expect(await status.json()).toMatchObject({ upstream: 'https://WIN-QNGOV5GDM24:5443', tls: 'validated', syntheticData: false });
@@ -46,7 +48,7 @@ test('real lab inventory, overview, summary and captured activity reach the curr
   }, null, 2));
 });
 
-test('lab relay refuses cross-origin, forged-host and forwarded requests before upstream access', async ({ request }) => {
+test('lab relay refuses cross-origin, forged-host and forwarded requests before upstream access', async ({ page, request }) => {
   for (const headers of [
     { Origin: 'https://example.invalid' }, { Host: 'example.invalid' },
     { 'X-Forwarded-Host': 'localhost' }, { 'Sec-Fetch-Site': 'cross-site' },
@@ -54,8 +56,11 @@ test('lab relay refuses cross-origin, forged-host and forwarded requests before 
   expect((await request.post('/api/v1/observation-targets', { data: {}, headers: { Origin: 'https://example.invalid' } })).status()).toBe(403);
   expect((await request.post('/api/v1/observation-targets', { data: {} })).status()).toBe(403);
   const origin = new URL(test.info().project.use.baseURL).origin;
-  expect((await request.post('/api/v1/__lab_nonexistent_route', { data: { probe: true }, headers: { Origin: origin } })).status()).toBe(404);
-  const permission = await request.get(`/api/v1/me?targetId=${targetId}`);
+  expect((await request.get('/api/v1/observation-targets/')).status()).toBe(401);
+  expect((await request.post('/api/v1/__lab_nonexistent_route', { data: {}, headers: { Origin: origin, 'Sec-Fetch-Site': 'same-origin' } })).status()).toBe(401);
+  const owner = await ownerBrowserRequest(page);
+  expect((await owner.post('/api/v1/__lab_nonexistent_route', { data: { probe: true } })).status()).toBe(404);
+  const permission = await owner.get(`/api/v1/me?targetId=${targetId}`);
   expect(permission.status()).toBe(200);
   const access = await permission.json();
   expect(access).toMatchObject({ active: true, targetId });

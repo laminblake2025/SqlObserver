@@ -1,10 +1,12 @@
 import { test, expect } from '@playwright/test';
+import { ownerBrowserRequest } from './owner-browser-request.mjs';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 const targetId = 'dfb2b72c-4ad4-4765-9523-528c798482f0';
 const output = resolve('../.artifacts/lab-dashboard-20261009');
 
-test('QueryTextReader loads captured SQL only after a deliberate request for the selected session', async ({ page, request }) => {
+test('QueryTextReader loads captured SQL only after a deliberate request for the selected session', async ({ page }) => {
+  const request = await ownerBrowserRequest(page);
   const runId = process.env.SQLOBSERVER_QUERYTEXT_VERIFICATION_RUN;
   expect(runId, 'A bounded native lab SQL probe must be running for this verification').toMatch(/^[0-9a-f]{32}$/);
   const application = `SQL Observer QueryTextReader verification ${runId}`;
