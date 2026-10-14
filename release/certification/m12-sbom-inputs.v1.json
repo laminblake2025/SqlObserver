@@ -166,7 +166,7 @@
     },
     {
       "path": "web/pnpm-lock.yaml",
-      "sha256": "4eac9dee8461ece607bbad1e3218cfc703dd6a5c4905b2b10eb0c807e8f400a9"
+      "sha256": "a92b23531a77abb7b6601808f4254f25b45353ead69f692d08ff71f27aa74bff"
     },
     {
       "path": "web/tools/web-asset-manifest.mjs",
