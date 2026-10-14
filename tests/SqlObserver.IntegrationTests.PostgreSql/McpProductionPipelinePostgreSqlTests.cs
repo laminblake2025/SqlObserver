@@ -385,9 +385,10 @@ public sealed class McpProductionPipelinePostgreSqlTests(PostgreSql18Fixture fix
             var seenIds = new HashSet<string>(StringComparer.Ordinal);
             var seenGenerations = new HashSet<long>();
             string? itemCursor = null;
+            // A continuation must replay its original window even if paging crosses a clock tick.
+            Dictionary<string, JsonElement> arguments = ArgumentsFor(other.Name, targetIds[0], incidentEvidenceThreadId);
             for (int itemPage = 0; itemPage < expectedPages; itemPage++)
             {
-                Dictionary<string, JsonElement> arguments = ArgumentsFor(other.Name, targetIds[0], incidentEvidenceThreadId);
                 if (paged)
                 {
                     arguments["limit"] = JsonSerializer.SerializeToElement(1);

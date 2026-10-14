@@ -14,7 +14,7 @@
     },
     {
       "path": "Directory.Packages.props",
-      "sha256": "5699d9704833cac0565ca7f91db7545f85594859dad1bc2c7f263361a9032280"
+      "sha256": "bf0b77d6b92b590b7945157a9dd5877a68a0ed1fb6969044c90e732f69ee978a"
     },
     {
       "path": "global.json",
@@ -58,7 +58,7 @@
     },
     {
       "path": "src/SqlObserver.Collector/packages.lock.json",
-      "sha256": "be84e9538e32ca205ecb96713a33d1fccbe8fbab5c47f514e33c847c4e1f22bf"
+      "sha256": "4b7c3a47c0f0d00793255f0f83deb8e5842bd041935eebb6c4adfbc32420cfb6"
     },
     {
       "path": "src/SqlObserver.Collector.Abstractions/SqlObserver.Collector.Abstractions.csproj",
@@ -98,7 +98,7 @@
     },
     {
       "path": "src/SqlObserver.Infrastructure.SqlServer/packages.lock.json",
-      "sha256": "d88448631e3fa9946bd3e2ede2f5d705f1849a523e64b7018b9dba08ff08ec14"
+      "sha256": "e3fef6871ed4f48895a21481470e1cfd726402afbb33e5f336fb33773774458a"
     },
     {
       "path": "src/SqlObserver.Infrastructure.Windows/SqlObserver.Infrastructure.Windows.csproj",
@@ -154,7 +154,7 @@
     },
     {
       "path": "src/SqlObserver.Server/packages.lock.json",
-      "sha256": "f398f1863d3a8164d26059be0b6e82b3c48ebe6f856d675d6d20034452e512fd"
+      "sha256": "63f774474453eae1a14ebcecece996fcb4b8764064f4a47bd1eb01c79ee40f76"
     },
     {
       "path": "web/contracts/web-asset-manifest.v1.schema.json",
