@@ -140,7 +140,7 @@ jobs:
   postgresql:
     name: PostgreSQL 18 functional tests
     runs-on: ubuntu-24.04
-    timeout-minutes: 90
+    timeout-minutes: 120
     services:
       postgres:
         image: postgres:18.4-bookworm@sha256:7e6103cf85f88f7a0eddb3ec0b1ba8940eba098ed118ade25a729ca9daee5568

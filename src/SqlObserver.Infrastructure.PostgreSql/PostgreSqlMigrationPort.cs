@@ -648,9 +648,10 @@ public sealed class PostgreSqlMigrationPort : IMigrationPort
         {
             await transaction.RollbackAsync(CancellationToken.None).ConfigureAwait(false);
         }
-        catch (NpgsqlException)
+        catch (Exception exception) when (exception is NpgsqlException or InvalidOperationException)
         {
-            // The original failure remains authoritative; disposing a broken connection releases its transaction.
+            // A canceled command can already have completed the transaction.
+            // Cleanup must preserve the original failure, including cancellation.
         }
     }
 

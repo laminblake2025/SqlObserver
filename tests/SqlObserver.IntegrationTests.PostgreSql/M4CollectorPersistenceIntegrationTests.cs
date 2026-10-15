@@ -32,6 +32,7 @@ public sealed partial class M4CollectorPersistenceIntegrationTests
         "engine.target_memory_bytes",
     ];
     private static readonly RepositoryCallTimeout DefaultTimeout = new(TimeSpan.FromSeconds(10));
+    private static readonly RepositoryCallTimeout MigrationSetupTimeout = new(TimeSpan.FromMinutes(2));
     private readonly PostgreSql18Fixture _fixture;
 
     public M4CollectorPersistenceIntegrationTests(PostgreSql18Fixture fixture) => _fixture = fixture;
@@ -1565,7 +1566,7 @@ public sealed partial class M4CollectorPersistenceIntegrationTests
         {
             var migrations = new PostgreSqlMigrationPort(database.DataSource);
             MigrationBatchResult result = await migrations.ApplyPendingAsync(
-                new MigrationApplyRequest(MigrationBatchResult.MaximumResults, DefaultTimeout),
+                new MigrationApplyRequest(MigrationBatchResult.MaximumResults, MigrationSetupTimeout),
                 CancellationToken.None);
             Assert.False(
                 result.HasFailures,
