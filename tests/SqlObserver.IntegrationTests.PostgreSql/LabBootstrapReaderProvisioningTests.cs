@@ -77,6 +77,13 @@ public sealed class LabBootstrapReaderProvisioningTests(PostgreSql18Fixture fixt
                     """);
                 Assert.Equal(0L, await memberships.ExecuteScalarAsync());
             }
+            // The ordinal history repair needs no temporary reader membership.
+            MigrationBatchResult ordinal = await port.ApplyPendingAsync(new(1, timeout), default);
+            Assert.False(ordinal.HasFailures);
+            MigrationExecutionResult ordinalMigration = Assert.Single(ordinal.Results);
+            Assert.Equal(375, ordinalMigration.Migration.Number.Value);
+            Assert.Equal("server_wait_history_ordinal_order", ordinalMigration.Migration.Name);
+            Assert.Equal(MigrationOutcome.Applied, ordinalMigration.Outcome);
             Assert.Empty((await port.ApplyPendingAsync(new(1, timeout), default)).Results);
         }
         finally
