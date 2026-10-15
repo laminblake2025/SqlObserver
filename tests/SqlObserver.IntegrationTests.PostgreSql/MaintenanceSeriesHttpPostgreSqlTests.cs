@@ -31,7 +31,8 @@ public sealed class MaintenanceSeriesHttpPostgreSqlTests(PostgreSql18Fixture fix
         Guid target=Guid.NewGuid(),other=Guid.NewGuid(),series=Guid.NewGuid();
         foreach(Guid id in new[]{target,other})
         {
-            await using var seed=database.DataSource.CreateCommand("INSERT INTO control.observation_target(instance_id,instance_key,display_name,created_at,updated_at,discovery_requested_at) VALUES(@id,@key,'Series HTTP target',clock_timestamp(),clock_timestamp(),clock_timestamp());");
+            // Discovery must be between creation and update, including at microsecond precision.
+            await using var seed=database.DataSource.CreateCommand("INSERT INTO control.observation_target(instance_id,instance_key,display_name,created_at,updated_at,discovery_requested_at) VALUES(@id,@key,'Series HTTP target',statement_timestamp(),statement_timestamp(),statement_timestamp());");
             seed.Parameters.AddWithValue("id",id);seed.Parameters.AddWithValue("key","series-http-"+id.ToString("N"));await seed.ExecuteNonQueryAsync();
         }
         string connection=new NpgsqlConnectionStringBuilder(database.ConnectionString){Options="-c role=sqlobserver_server"}.ConnectionString;
