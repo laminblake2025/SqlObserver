@@ -53,12 +53,14 @@ public sealed class ServerWaitHistoryIndexMigrationTests(PostgreSql18Fixture fix
         await AssertCompleteIndexAsync(database);
     }
 
-    [Fact]
-    public async Task MixedFleetHistoryPageUsesTargetAndTimeIndex()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task MixedFleetHistoryPageUsesTargetAndTimeIndex(bool englishCollation)
     {
-        await using RepositoryTestDatabase database = await fixture.CreateDatabaseAsync();
+        await using RepositoryTestDatabase database = await fixture.CreateDatabaseAsync(englishCollation);
         MigrationBatchResult applied = await new PostgreSqlMigrationPort(database.DataSource)
-            .ApplyPendingAsync(new MigrationApplyRequest(136, Timeout), CancellationToken.None);
+            .ApplyPendingAsync(new MigrationApplyRequest(englishCollation ? 375 : 136, Timeout), CancellationToken.None);
         Assert.False(applied.HasFailures);
         DateTimeOffset from = DateTimeOffset.UtcNow.AddHours(-1);
         Guid requestedTarget = Guid.Empty;
@@ -94,9 +96,10 @@ public sealed class ServerWaitHistoryIndexMigrationTests(PostgreSql18Fixture fix
                     (observed_at, collection_run_id, instance_id, target_revision, wait_type,
                      waiting_tasks_count, wait_time_ms, maximum_wait_time_ms,
                      signal_wait_time_ms, collected_at)
-                SELECT @from + sample * interval '1 second', @run, @target, 1,
-                       'LCK_M_S', sample, sample, sample, 0,
-                       @from + sample * interval '1 second'
+                SELECT @from + (CASE WHEN @english THEN sample/100 ELSE sample END) * interval '1 second', @run, @target, 1,
+                       CASE WHEN @english THEN 'WAIT_'||(sample%100)::text ELSE 'LCK_M_S' END,
+                       sample, sample, sample, 0,
+                       @from + (CASE WHEN @english THEN sample/100 ELSE sample END) * interval '1 second'
                 FROM generate_series(0,2499) AS sample;
                 """, connection);
             seed.Parameters.AddWithValue("target", target);
@@ -104,16 +107,18 @@ public sealed class ServerWaitHistoryIndexMigrationTests(PostgreSql18Fixture fix
             seed.Parameters.AddWithValue("owner", Guid.NewGuid());
             seed.Parameters.AddWithValue("key", $"wait.plan.{target:N}");
             seed.Parameters.AddWithValue("from", from);
+            seed.Parameters.AddWithValue("english", englishCollation);
             await seed.ExecuteNonQueryAsync();
         }
         await ExecuteAsync(connection, "ANALYZE telemetry.server_wait_snapshot;");
-        await using var plan = new NpgsqlCommand("""
-            EXPLAIN (FORMAT TEXT)
+        string order = englishCollation ? "wait_type COLLATE \"C\"" : "wait_type";
+        await using var plan = new NpgsqlCommand($"""
+            EXPLAIN (ANALYZE, FORMAT TEXT)
             SELECT observed_at, collection_run_id, wait_type
             FROM telemetry.server_wait_snapshot
             WHERE instance_id=@target AND observed_at>=@from
               AND observed_at<@to
-            ORDER BY observed_at DESC, collection_run_id DESC, wait_type DESC
+            ORDER BY observed_at DESC, collection_run_id DESC, {order} DESC
             LIMIT 25;
             """, connection);
         plan.Parameters.AddWithValue("target", requestedTarget);
@@ -123,6 +128,12 @@ public sealed class ServerWaitHistoryIndexMigrationTests(PostgreSql18Fixture fix
         await using NpgsqlDataReader reader = await plan.ExecuteReaderAsync();
         while (await reader.ReadAsync()) lines.Add(reader.GetString(0));
         Assert.Contains(lines, line => line.Contains("ix_server_wait_target_history_", StringComparison.Ordinal));
+        if (englishCollation)
+        {
+            Assert.Contains(lines, line => line.Contains("Incremental Sort", StringComparison.Ordinal));
+            Assert.Contains(lines, line => line.Contains("Presorted Key:", StringComparison.Ordinal));
+            Assert.DoesNotContain(lines, line => line.Contains("Seq Scan", StringComparison.Ordinal));
+        }
     }
 
     [Fact]

@@ -74,16 +74,20 @@ public sealed class PostgreSql18Fixture : IAsyncLifetime
 
     public Task DisposeAsync() => _container is null ? Task.CompletedTask : _container!.DisposeAsync().AsTask();
 
+    public Task<RepositoryTestDatabase> CreateDatabaseAsync(CancellationToken cancellationToken = default) =>
+        CreateDatabaseAsync(englishCollation: false, cancellationToken);
+
     public async Task<RepositoryTestDatabase> CreateDatabaseAsync(
-        CancellationToken cancellationToken = default)
+        bool englishCollation, CancellationToken cancellationToken = default)
     {
         string databaseName = $"sqlobserver_{Guid.NewGuid():N}";
         string adminConnectionString = _container is null ? _adminConnectionString : _container!.GetConnectionString();
         await using (var connection = new NpgsqlConnection(adminConnectionString))
         {
             await connection.OpenAsync(cancellationToken);
+            string locale = englishCollation ? " LOCALE_PROVIDER=icu ICU_LOCALE='en-US'" : string.Empty;
             await using var command = new NpgsqlCommand(
-                $"CREATE DATABASE \"{databaseName}\" TEMPLATE template0 ENCODING 'UTF8';",
+                $"CREATE DATABASE \"{databaseName}\" TEMPLATE template0 ENCODING 'UTF8'{locale};",
                 connection);
             await command.ExecuteNonQueryAsync(cancellationToken);
         }
