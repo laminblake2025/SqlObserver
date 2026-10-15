@@ -84,6 +84,12 @@ public sealed class LabBootstrapReaderProvisioningTests(PostgreSql18Fixture fixt
             Assert.Equal(375, ordinalMigration.Migration.Number.Value);
             Assert.Equal("server_wait_history_ordinal_order", ordinalMigration.Migration.Name);
             Assert.Equal(MigrationOutcome.Applied, ordinalMigration.Outcome);
+            MigrationBatchResult covering = await port.ApplyPendingAsync(new(4, timeout), default);
+            Assert.False(covering.HasFailures);
+            Assert.Equal(4, covering.Results.Count);
+            Assert.Equal(376, covering.Results[0].Migration.Number.Value);
+            Assert.Equal(379, covering.Results[^1].Migration.Number.Value);
+            Assert.All(covering.Results, result => Assert.Equal(MigrationOutcome.Applied, result.Outcome));
             Assert.Empty((await port.ApplyPendingAsync(new(1, timeout), default)).Results);
         }
         finally
