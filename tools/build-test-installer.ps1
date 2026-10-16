@@ -80,7 +80,7 @@ try {
     }
     $buildPins = Join-Path $stage 'BuildPins.iss'
     [IO.File]::WriteAllLines($buildPins, $defines)
-    Invoke-SetupBuild $IsccPath @('/Qp',"/DPayloadRoot=$application", "/DHelperRoot=$helper", "/DPrerequisiteRoot=$cache", "/DBuildPins=`"$buildPins`"", "/DSetupGuide=$(Join-Path $repo 'installer/test/TEST-INSTALL.txt')", 'installer/test/test-setup.iss')
+    Invoke-SetupBuild $IsccPath @('/Qp',"/DPayloadRoot=$application", "/DHelperRoot=$helper", "/DPrerequisiteRoot=$cache", "/DBuildPins=$buildPins", "/DSetupGuide=$(Join-Path $repo 'installer/test/TEST-INSTALL.txt')", 'installer/test/test-setup.iss')
     if ($commit -cne (& git rev-parse HEAD).Trim() -or @(& git status --porcelain=v1 --untracked-files=all).Count -ne 0) { throw 'Source changed during installer build.' }
     $exe = @(Get-ChildItem -LiteralPath $output -Filter '*.exe' -File)
     if ($exe.Count -ne 1) { throw 'Expected exactly one unsigned installer.' }

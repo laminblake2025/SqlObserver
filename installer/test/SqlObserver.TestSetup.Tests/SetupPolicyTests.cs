@@ -30,6 +30,8 @@ public sealed class SetupPolicyTests
     [InlineData("host/path")]
     [InlineData("*.example.com")]
     [InlineData("a..b")]
+    [InlineData("host.-bad")]
+    [InlineData("host.bad-")]
     public void HostInputCannotBecomeAUrlPathOrCommand(string name) => Assert.Throws<SetupException>(() => SetupPolicy.Host(name));
 
     [Fact]

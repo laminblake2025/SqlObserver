@@ -28,6 +28,9 @@ internal static class SetupWizard
             throw new SetupException("Choose a fresh directory under ProgramData. Retained configuration and keys are never overwritten.");
         string database = SetupPolicy.Database(Prompt("New PostgreSQL database", "sqlobserver_test"));
         string dns = SetupPolicy.Host(Prompt("Dashboard DNS hostname (must resolve to this machine)", System.Net.Dns.GetHostName()));
+        var localAddresses = NetworkInterface.GetAllNetworkInterfaces().SelectMany(n => n.GetIPProperties().UnicastAddresses).Select(a => a.Address).Append(IPAddress.Loopback).Append(IPAddress.IPv6Loopback).ToHashSet();
+        if (!(await Dns.GetHostAddressesAsync(dns).ConfigureAwait(false)).Any(localAddresses.Contains))
+            throw new SetupException("The dashboard hostname must resolve to this machine before setup.");
         if (!int.TryParse(Prompt("HTTPS port", "5444"), out int port)) throw new SetupException("The HTTPS port is invalid.");
         SetupPolicy.Port(port);
         if (IPGlobalProperties.GetIPGlobalProperties().GetActiveTcpListeners().Any(p => p.Port == port))
