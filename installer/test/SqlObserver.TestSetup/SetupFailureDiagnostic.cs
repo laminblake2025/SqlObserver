@@ -1,9 +1,20 @@
+using System.Text.Json.Serialization;
+
 namespace SqlObserver.TestSetup;
 
 internal sealed record SetupFailureDiagnostic(string Phase, string ExceptionType, string HResult, DateTimeOffset FailedAtUtc)
 {
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public int? MigrationNumber { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? FailureCode { get; init; }
+
     internal static SetupFailureDiagnostic Create(string phase, Exception exception) => new(
         phase, exception.GetType().Name,
         "0x" + exception.HResult.ToString("X8", System.Globalization.CultureInfo.InvariantCulture),
-        DateTimeOffset.UtcNow);
+        DateTimeOffset.UtcNow)
+    {
+        MigrationNumber = (exception as SetupException)?.MigrationNumber,
+        FailureCode = (exception as SetupException)?.FailureCode
+    };
 }

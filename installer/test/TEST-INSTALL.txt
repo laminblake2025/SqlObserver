@@ -104,6 +104,8 @@ in Windows Logs\Application; service start/stop failures appear in System.
 If configuration fails, setup-failure.json in the chosen ProgramData directory
 records a fixed phase ID, exception type, HRESULT and UTC time, without exception
 messages or connection material. The same phase and code print in the console.
+Migration failures also identify the migration number and bounded failure code
+(for example postgres_42501 for insufficient privileges), without provider text.
 install-state.json records whether service cleanup failed; inspect retained
 services before retrying if cleanup could not complete.
 .NET detection uses the machine-wide x64 dotnet host with --list-runtimes,
@@ -134,6 +136,9 @@ inspection. Setup does not delete data, reset credentials/keys, alter an existin
 ledger, or present failure as healthy. Resolve the cause, then run Configure test
 services from the Start menu with a NEW repository/configuration directory. If
 the operator group was already created, select it as an existing group on retry.
+Repository roles are shared across the PostgreSQL cluster. A new bootstrap login
+receives temporary administration rights on validated existing repository roles;
+these rights and dependent bootstrap grants are revoked when migration ends.
 Do not delete protected keys while their captured evidence is retained.
 If PostgreSQL itself failed during cleanup or the process was killed, inspect
 repository-setup.json for the exact bootstrap login. A PostgreSQL administrator

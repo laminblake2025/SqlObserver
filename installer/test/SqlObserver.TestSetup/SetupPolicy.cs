@@ -11,6 +11,7 @@ public static partial class SetupPolicy
     public const string CollectorService = "SqlObserverTestCollector";
     public const string OperatorGroup = "SqlObserverTestOperators";
     public static readonly string[] ProtectedOwners = ["sqlobserver_report_expirer", "sqlobserver_payload_expirer", "sqlobserver_run_dependency_reader"];
+    public static readonly string[] RepositoryRoles = ["sqlobserver_migrator", "sqlobserver_server", "sqlobserver_collector", "sqlobserver_auditor"];
 
     [GeneratedRegex("^[a-z][a-z0-9_]{0,47}$", RegexOptions.CultureInvariant)]
     private static partial Regex DatabasePattern();

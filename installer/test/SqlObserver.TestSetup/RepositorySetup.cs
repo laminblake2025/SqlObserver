@@ -63,6 +63,13 @@ internal sealed class RepositorySetup : IAsyncDisposable
         // Prove the eventual runtime TLS policy before creating any database or runtime login.
         await using (var tls = new NpgsqlConnection(Connection("postgres", administrator, administratorPassword)))
             await tls.OpenAsync(token).ConfigureAwait(false);
+        foreach (string role in SetupPolicy.RepositoryRoles)
+        {
+            using var check = new NpgsqlCommand("SELECT rolcanlogin OR rolsuper OR rolcreatedb OR rolcreaterole OR rolinherit OR rolreplication OR rolbypassrls OR EXISTS (SELECT 1 FROM pg_auth_members WHERE member = r.oid) FROM pg_roles r WHERE rolname = @name", admin);
+            check.Parameters.AddWithValue("name", role);
+            if (await check.ExecuteScalarAsync(token).ConfigureAwait(false) is true)
+                throw new SetupException("An existing repository role has unexpected attributes or memberships. No existing role was altered.");
+        }
         foreach (string owner in SetupPolicy.ProtectedOwners)
         {
             using var check = new NpgsqlCommand("SELECT rolcanlogin OR rolsuper OR rolcreatedb OR rolcreaterole OR rolinherit OR rolreplication OR NOT rolbypassrls OR EXISTS (SELECT 1 FROM pg_auth_members WHERE roleid = r.oid OR member = r.oid) FROM pg_roles r WHERE rolname = @name", admin);
@@ -82,13 +89,22 @@ internal sealed class RepositorySetup : IAsyncDisposable
     {
         try
         {
+            // Roles are cluster-wide and may survive an earlier installation. CREATEROLE alone
+            // cannot COMMENT ON ROLE or grant an existing role on PostgreSQL 18.
+            foreach (string role in SetupPolicy.RepositoryRoles)
+            {
+                using var check = new NpgsqlCommand("SELECT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = @name)", admin);
+                check.Parameters.AddWithValue("name", role);
+                if ((bool)(await check.ExecuteScalarAsync(token).ConfigureAwait(false))!)
+                    await Execute($"GRANT {SetupPolicy.QuoteIdentifier(role)} TO {SetupPolicy.QuoteIdentifier(Bootstrap)} WITH ADMIN TRUE, INHERIT FALSE, SET TRUE", token).ConfigureAwait(false);
+            }
             foreach (string owner in SetupPolicy.ProtectedOwners)
                 await Execute($"GRANT {SetupPolicy.QuoteIdentifier(owner)} TO {SetupPolicy.QuoteIdentifier(Bootstrap)} WITH ADMIN OPTION", token).ConfigureAwait(false);
             progress("Applying the checksum-verified migration catalog. This can take several minutes...");
             PostgreSqlMigrationExecution result = await PostgreSqlMigrationExecutor.ApplyPendingAsync(Connection(database, Bootstrap, bootstrapPassword),
                 new MigrationApplyRequest(MigrationBatchResult.MaximumResults, new RepositoryCallTimeout(TimeSpan.FromMinutes(20))), token).ConfigureAwait(false);
             if (!result.Succeeded || result.Batch!.HasFailures)
-                throw new SetupException("Repository migration did not complete. Its verified prefix was retained; setup did not start services.");
+                throw SetupException.MigrationFailure(result.Batch);
             await using var verify = new NpgsqlConnection(Connection(database, Bootstrap, bootstrapPassword));
             await verify.OpenAsync(token).ConfigureAwait(false);
             using var ledger = new NpgsqlCommand("SELECT migration_number, migration_name, sha256 FROM system.schema_migration ORDER BY migration_number", verify);
@@ -210,6 +226,15 @@ internal sealed class RepositorySetup : IAsyncDisposable
                 // Preflight required these roles to have no members. These memberships belong only to this bootstrap.
                 if ((bool)(await Scalar("SELECT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'sqlobserver_migrator')", cleanup.Token).ConfigureAwait(false))!)
                     await Execute($"REVOKE {SetupPolicy.QuoteIdentifier(owner)} FROM sqlobserver_migrator", cleanup.Token).ConfigureAwait(false);
+            }
+            foreach (string role in SetupPolicy.RepositoryRoles)
+            {
+                using var check = new NpgsqlCommand("SELECT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = @name)", admin);
+                check.Parameters.AddWithValue("name", role);
+                if ((bool)(await check.ExecuteScalarAsync(cleanup.Token).ConfigureAwait(false))!)
+                    // CASCADE removes only grants dependent on this unique temporary login's
+                    // administration rights, including migration 0001's grant to CURRENT_USER.
+                    await Execute($"REVOKE {SetupPolicy.QuoteIdentifier(role)} FROM {SetupPolicy.QuoteIdentifier(Bootstrap)} CASCADE", cleanup.Token).ConfigureAwait(false);
             }
             revoked = true;
         }

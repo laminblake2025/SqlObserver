@@ -63,6 +63,81 @@ public sealed class RepositorySetupTests
 
     [InstallerPostgresFact]
     [SupportedOSPlatform("windows")]
+    public async Task SecondFreshRepositoryReusesClusterRolesWithoutChangingFirstRepository()
+    {
+        string firstDatabase = "sqlobserver_test_first_" + Guid.NewGuid().ToString("N")[..8];
+        string secondDatabase = "sqlobserver_test_retry_" + Guid.NewGuid().ToString("N")[..8];
+        using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(25));
+        string firstConnection;
+        await using (var first = new RepositorySetup("postgres", FixturePassword))
+        {
+            await first.PrepareAsync(firstDatabase, NewRoot(), Certificate, timeout.Token);
+            await first.MigrateAsync(firstDatabase, _ => { }, timeout.Token);
+            firstConnection = first.Connection(firstDatabase, first.ServerLogin, first.ServerPassword);
+        }
+        await using (var second = new RepositorySetup("postgres", FixturePassword))
+        {
+            await second.PrepareAsync(secondDatabase, NewRoot(), Certificate, timeout.Token);
+            await using (var proofAdmin = await Administrator())
+            {
+                using var assume = new NpgsqlCommand("SET ROLE " + SetupPolicy.QuoteIdentifier(second.BootstrapLogin), proofAdmin);
+                await assume.ExecuteNonQueryAsync(timeout.Token);
+                try
+                {
+                    // Reproduce the old retry failure before the helper grants temporary ADMIN.
+                    using var comment = new NpgsqlCommand("COMMENT ON ROLE sqlobserver_migrator IS 'fixture'", proofAdmin);
+                    PostgresException denied = await Assert.ThrowsAsync<PostgresException>(() => comment.ExecuteNonQueryAsync(timeout.Token));
+                    Assert.Equal("42501", denied.SqlState);
+                }
+                finally
+                {
+                    using var reset = new NpgsqlCommand("RESET ROLE", proofAdmin);
+                    await reset.ExecuteNonQueryAsync(CancellationToken.None);
+                }
+            }
+            await second.MigrateAsync(secondDatabase, _ => { }, timeout.Token);
+            await using var admin = await Administrator();
+            await AssertBootstrapSealed(admin, second.BootstrapLogin);
+        }
+        // The previous runtime login and its database grants must survive temporary-grant cleanup.
+        await using var runtime = new NpgsqlConnection(firstConnection);
+        await runtime.OpenAsync(timeout.Token);
+        using var check = new NpgsqlCommand("SELECT NOT rolsuper AND NOT rolcreatedb AND NOT rolcreaterole AND NOT rolbypassrls AND pg_has_role(current_user, 'sqlobserver_server', 'MEMBER') FROM pg_roles WHERE rolname = current_user", runtime);
+        Assert.Equal(true, await check.ExecuteScalarAsync(timeout.Token));
+        await using var verify = await Administrator();
+        foreach (string database in new[] { firstDatabase, secondDatabase })
+        {
+            await verify.ChangeDatabaseAsync(database, timeout.Token);
+            using var ledger = new NpgsqlCommand("SELECT count(*) FROM system.schema_migration", verify);
+            Assert.Equal((long)SqlObserver.Infrastructure.PostgreSql.PostgreSqlMigrationCatalog.LoadEmbedded().Migrations.Count, await ledger.ExecuteScalarAsync(timeout.Token));
+        }
+    }
+
+    [InstallerPostgresFact]
+    [SupportedOSPlatform("windows")]
+    public async Task FailedMigrationReportsSafeCodeAndSealsTemporaryGrants()
+    {
+        string database = "sqlobserver_test_failure_" + Guid.NewGuid().ToString("N")[..8];
+        await using var setup = new RepositorySetup("postgres", FixturePassword);
+        await setup.PrepareAsync(database, NewRoot(), Certificate, CancellationToken.None);
+        await using var admin = await Administrator();
+        await admin.ChangeDatabaseAsync(database);
+        using (var trigger = new NpgsqlCommand("""
+            CREATE FUNCTION public.installer_deny_schema() RETURNS event_trigger LANGUAGE plpgsql AS $$
+            BEGIN RAISE EXCEPTION 'private provider fixture detail' USING ERRCODE='42501'; END $$;
+            CREATE EVENT TRIGGER installer_deny_schema ON ddl_command_start WHEN TAG IN ('CREATE SCHEMA')
+            EXECUTE FUNCTION public.installer_deny_schema();
+            """, admin))
+            await trigger.ExecuteNonQueryAsync();
+        SetupException error = await Assert.ThrowsAsync<SetupException>(() => setup.MigrateAsync(database, _ => { }, CancellationToken.None));
+        Assert.Equal(1, error.MigrationNumber);
+        Assert.Equal("postgres_42501", error.FailureCode);
+        Assert.DoesNotContain("private provider fixture detail", error.Message, StringComparison.Ordinal);
+        await AssertBootstrapSealed(admin, setup.BootstrapLogin);
+    }
+
+    [InstallerPostgresFact]
+    [SupportedOSPlatform("windows")]
     public async Task ExistingRepositoryFailsBeforeCreatingAnyRole()
     {
         await using var admin = await Administrator();
@@ -91,7 +166,7 @@ public sealed class RepositorySetupTests
 
     private static async Task AssertBootstrapSealed(NpgsqlConnection admin, string name)
     {
-        using var check = new NpgsqlCommand("SELECT NOT rolcanlogin AND NOT rolcreatedb AND NOT rolcreaterole AND NOT rolsuper AND NOT rolbypassrls AND rolpassword IS NULL AND NOT EXISTS (SELECT 1 FROM pg_auth_members m JOIN pg_roles r ON r.oid=m.roleid WHERE m.member=s.oid AND r.rolname IN ('sqlobserver_report_expirer','sqlobserver_payload_expirer','sqlobserver_run_dependency_reader')) FROM pg_authid s WHERE rolname=@name", admin);
+        using var check = new NpgsqlCommand("SELECT NOT rolcanlogin AND NOT rolcreatedb AND NOT rolcreaterole AND NOT rolsuper AND NOT rolbypassrls AND rolpassword IS NULL AND NOT EXISTS (SELECT 1 FROM pg_auth_members m WHERE m.member=s.oid) FROM pg_authid s WHERE rolname=@name", admin);
         check.Parameters.AddWithValue("name", name);
         Assert.Equal(true, await check.ExecuteScalarAsync());
     }
