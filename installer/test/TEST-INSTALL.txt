@@ -93,6 +93,15 @@ working deployment. Read the console's result and installer exit status.
    browser access is required. PostgreSQL need not be exposed remotely.
 
 FAILURE, RETRY AND REMOVAL
+Setup automatically writes a timestamped log in the installing user's TEMP
+directory. To choose a fixed filename, launch the installer with
+  /LOG="C:\existing-directory\SqlObserver-setup.log"
+The log records prerequisite detection and prerequisite installer exit codes.
+.NET detection uses Program Files\dotnet\dotnet.exe --list-runtimes (x64),
+and requires both Microsoft.NETCore.App and Microsoft.AspNetCore.App at stable
+10.0.13 or a later 10.0 patch. A runtime visible only through a user-local or
+x86 dotnet host does not satisfy the machine-wide service prerequisite.
+
 On failure, configuration files and the verified migration prefix remain for
 inspection. Setup does not delete data, reset credentials/keys, alter an existing
 ledger, or present failure as healthy. Resolve the cause, then run Configure test

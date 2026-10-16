@@ -22,7 +22,7 @@ DisableDirPage=yes
 WizardStyle=modern
 Compression=lzma2/fast
 SolidCompression=yes
-SetupLogging=no
+SetupLogging=yes
 UninstallDisplayName=SQL Observer Unsigned Test
 UninstallDisplayIcon={app}\Setup\SqlObserver.TestSetup.exe
 CloseApplications=no
@@ -53,13 +53,49 @@ Name: "{group}\Uninstall SQL Observer Test"; Filename: "{uninstallexe}"
 [Code]
 var ConfigurationExitCode: Integer;
 
-function HasRuntime(Framework: String): Boolean;
-var Versions: TArrayOfString; I: Integer; Value: TWindowsVersion;
+function RuntimeOutputHasFramework(Framework: String; Lines: TArrayOfString): Boolean;
+var I, Separator, Patch: Integer; Line, Version, Prefix: String;
 begin
   Result := False;
-  if RegGetValueNames(HKLM64, 'SOFTWARE\dotnet\Setup\InstalledVersions\x64\sharedfx\' + Framework, Versions) then
-    for I := 0 to GetArrayLength(Versions) - 1 do
-      if (Copy(Versions[I], 1, 5) = '10.0.') and (StrToIntDef(Copy(Versions[I], 6, 8), 0) >= 13) then Result := True;
+  Prefix := Framework + ' ';
+  for I := 0 to GetArrayLength(Lines) - 1 do begin
+    Line := Trim(Lines[I]);
+    if Copy(Line, 1, Length(Prefix)) = Prefix then begin
+      Version := Copy(Line, Length(Prefix) + 1, Length(Line));
+      Separator := Pos(' ', Version);
+      if Separator > 0 then begin
+        Version := Copy(Version, 1, Separator - 1);
+        Log('Detected x64 ' + Framework + ' ' + Version);
+        Patch := StrToIntDef(Copy(Version, 6, Length(Version)), -1);
+        if (Copy(Version, 1, 5) = '10.0.') and (Pos('-', Version) = 0) and (Patch >= 13) then Result := True;
+      end;
+    end;
+  end;
+end;
+
+function HasRuntime(Framework: String): Boolean;
+var Output: TExecOutput; ExitCode: Integer; Host: String;
+begin
+  Result := False;
+  // Use the same machine-wide x64 host as the installed services, never PATH.
+  // Valid runtime installations need not expose the HKLM64 sharedfx keys.
+  Host := ExpandConstant('{pf64}\dotnet\dotnet.exe');
+  Log('Checking x64 runtime ' + Framework + ' using ' + Host);
+  if not FileExists(Host) then begin
+    Log('Runtime check failed: x64 dotnet host is missing.'); exit;
+  end;
+  try
+    if not ExecAndCaptureOutput(Host, '--list-runtimes', '', SW_SHOWNORMAL, ewWaitUntilTerminated, ExitCode, Output) then begin
+      Log('Runtime check could not launch the x64 dotnet host.'); exit;
+    end;
+  except
+    Log('Runtime check could not capture dotnet output.'); exit;
+  end;
+  Log('Runtime probe exit code: ' + IntToStr(ExitCode));
+  if (ExitCode <> 0) or Output.Error then exit;
+  Result := RuntimeOutputHasFramework(Framework, Output.StdOut);
+  if Result then Log('Runtime check passed: ' + Framework)
+  else Log('Runtime check failed: ' + Framework + ' requires stable 10.0.13 or later 10.0 patch.');
 end;
 
 function HasPowerShell: Boolean;
@@ -72,6 +108,8 @@ begin
     Minor := Copy(Minor, 1, Pos('.', Minor) - 1);
     Result := (Pos('-', Version) = 0) and (((Copy(Version, 1, Dot - 1) = '7') and (StrToIntDef(Minor, 0) >= 5)) or (StrToIntDef(Copy(Version, 1, Dot - 1), 0) > 7));
   end;
+  if Result then Log('PowerShell prerequisite detected.')
+  else Log('PowerShell prerequisite not detected.');
 end;
 
 function HasPostgres18: Boolean;
@@ -82,6 +120,8 @@ begin
     for I := 0 to GetArrayLength(Names) - 1 do
       if RegQueryStringValue(HKLM64, 'SOFTWARE\PostgreSQL\Installations\' + Names[I], 'Version', Version) then
         if Copy(Version, 1, 3) = '18.' then Result := True;
+  if Result then Log('PostgreSQL 18 prerequisite detected.')
+  else Log('PostgreSQL 18 prerequisite not detected.');
 end;
 
 function InitializeSetup: Boolean;
@@ -128,6 +168,8 @@ begin
     Result := 'Could not launch prerequisite: ' + FileName
   else if (ExitCode <> 0) and (ExitCode <> 3010) then Result := 'Prerequisite failed or was cancelled: ' + FileName
   else if ExitCode = 3010 then Result := 'Restart Windows to finish prerequisite installation, then run this setup again.';
+  Log('Prerequisite ' + FileName + ' returned code ' + IntToStr(ExitCode));
+  if Result <> '' then Log(Result);
 end;
 
 function PrepareToInstall(var NeedsRestart: Boolean): String;
@@ -149,8 +191,16 @@ begin
     else Result := RunPrerequisite('{#PostgresFile}', '{#PostgresSha256}', '', False);
   end;
   if Result <> '' then exit;
-  if not HasRuntime('Microsoft.NETCore.App') or not HasRuntime('Microsoft.AspNetCore.App') or not HasPostgres18 then
-    Result := 'Prerequisite detection did not pass. Finish prerequisite setup and run this installer again.';
+  if not HasRuntime('Microsoft.NETCore.App') then
+    Result := Result + ' .NET x64 runtime 10.0.13+ (10.0).';
+  if not HasRuntime('Microsoft.AspNetCore.App') then
+    Result := Result + ' ASP.NET Core x64 runtime 10.0.13+ (10.0).';
+  if not HasPowerShell then Result := Result + ' PowerShell 7.5+.';
+  if not HasPostgres18 then Result := Result + ' PostgreSQL 18.';
+  if Result <> '' then begin
+    Result := 'Prerequisite detection did not pass. Missing or undetectable:' + Result + ' See the setup log for detection results.';
+    Log(Result);
+  end;
 end;
 
 procedure CurStepChanged(CurStep: TSetupStep);

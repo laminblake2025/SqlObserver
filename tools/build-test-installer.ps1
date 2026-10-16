@@ -37,6 +37,7 @@ try {
     if ((& dotnet --version).Trim() -cne $sdk) { throw 'Use the pinned .NET SDK.' }
     $compilerSignature = Get-AuthenticodeSignature -LiteralPath $IsccPath
     if ($compilerSignature.Status -ne 'Valid' -or $compilerSignature.SignerCertificate.Subject -notlike '*Pyrsys B.V.*') { throw 'Use an authentic Inno Setup 7 compiler.' }
+    & ./tools/test-test-installer-prerequisites.ps1 -IsccPath $IsccPath
     $archive = [IO.Path]::GetFullPath($ArchivePath)
     & ./tools/test-lab-package.ps1 -ArchivePath $archive -ExpectedArchiveSha256 $ExpectedArchiveSha256
     $run = [DateTimeOffset]::UtcNow.ToString('yyyyMMddTHHmmssZ') + '-' + [Guid]::NewGuid().ToString('N').Substring(0,8)
