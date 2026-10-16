@@ -67,3 +67,21 @@ conflict rejection, run the setup tests from an elevated Windows administrator
 session with `SQLOBSERVER_INSTALLER_EVENTLOG_TEST=1`. This opt-in test creates and
 removes uniquely named disposable sources in Application and System. It skips
 without both the opt-in and an elevated token.
+
+For the diagnosed test-host state where SSL is on but the original
+`ProgramData\SqlObserverTest\PostgresTls` certificate/key files are missing,
+`tools/repair-test-postgresql-tls.ps1` provides a separate recovery action. It
+requires elevated PowerShell 7.5+, verifies the observed PostgreSQL 18 local
+cluster and NetworkService identity, and refuses to replace an existing pair.
+Without `-Apply` it only inspects. With `-Apply` it atomically creates a fresh
+protected `ProgramData\SqlObserverPostgresTls` directory, generates a test issuer
+and server pair, updates only `ssl_cert_file` and `ssl_key_file`, reloads, then
+opens a new `verify-full` connection. It never sets SSL off, rewrites databases,
+resets users, or touches captured-data keys. The PostgreSQL administrator password
+is prompted by psql for inspection, application, and verification; it is never
+saved. Keep the new TLS directory and provide its `repository-root.crt` at the
+configuration helper's existing PostgreSQL root prompt. The recovery tool does
+not rerun application configuration or migrations. Certificate, chain, hostname,
+overwrite-refusal and protected-directory behavior can be verified with
+`tools/test-test-postgresql-tls-repair.ps1`; live server recovery still requires
+the affected host. Never delete TLS files referenced by a retained cluster.

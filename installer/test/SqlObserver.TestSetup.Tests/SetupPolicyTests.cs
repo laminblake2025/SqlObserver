@@ -5,6 +5,25 @@ namespace SqlObserver.TestSetup.Tests;
 
 public sealed class SetupPolicyTests
 {
+    [Fact]
+    public void MissingServerTlsFilesAreReportedBeforeAnotherConnectionAttempt()
+    {
+        string root = Path.Combine(Path.GetTempPath(), "SqlObserver-tls-paths-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        try
+        {
+            var error = Assert.Throws<SetupException>(() => SetupPolicy.AssertPostgresTlsFilesExist(root, "repository.crt", "repository.key"));
+            Assert.Contains("missing or inaccessible", error.Message, StringComparison.Ordinal);
+            File.WriteAllText(Path.Combine(root, "repository.crt"), "retained-certificate");
+            Assert.Throws<SetupException>(() => SetupPolicy.AssertPostgresTlsFilesExist(root, "repository.crt", "repository.key"));
+            File.WriteAllText(Path.Combine(root, "repository.key"), "retained-key");
+            SetupPolicy.AssertPostgresTlsFilesExist(root, "repository.crt", "repository.key");
+            SetupPolicy.AssertPostgresTlsFilesExist(root, Path.Combine(root, "repository.crt"), Path.Combine(root, "repository.key"));
+            Assert.Equal("retained-key", File.ReadAllText(Path.Combine(root, "repository.key")));
+        }
+        finally { Directory.Delete(root, true); }
+    }
+
     [Theory]
     [InlineData("\"C:\\Program Files\\PostgreSQL\\18\\bin\\pg_ctl.exe\" runservice -N CustomRepository -D \"D:\\PgData\"", true)]
     [InlineData("C:\\PostgreSQL\\18\\bin\\pg_ctl.exe runservice -D D:\\PgData", true)]

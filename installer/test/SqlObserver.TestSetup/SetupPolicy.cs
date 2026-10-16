@@ -47,6 +47,16 @@ public static partial class SetupPolicy
     public static int Port(int value) => value is >= 1024 and <= 65535 ? value :
         throw new SetupException("Use an unoccupied TCP port from 1024 to 65535.");
 
+    public static void AssertPostgresTlsFilesExist(string dataDirectory, string certificate, string key)
+    {
+        // Only inspect local Windows server paths. Container-based TLS fixtures
+        // expose Linux paths; their availability is checked by the TLS connection.
+        if (!Path.IsPathFullyQualified(dataDirectory)) return;
+        string Resolve(string path) => Path.IsPathFullyQualified(path) ? path : Path.Combine(dataDirectory, path);
+        if (!File.Exists(Resolve(certificate)) || !File.Exists(Resolve(key)))
+            throw new SetupException("PostgreSQL has SSL enabled, but its configured certificate or private-key file is missing or inaccessible. Restore the original pair or explicitly repair the PostgreSQL TLS paths before retrying. Changing the client root certificate alone cannot fix this.");
+    }
+
     public static string NewSecret() => "Aa1!" + Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
     public static string QuoteIdentifier(string value) => "\"" + value.Replace("\"", "\"\"", StringComparison.Ordinal) + "\"";
     public static string QuoteLiteral(string value) => "'" + value.Replace("'", "''", StringComparison.Ordinal) + "'";

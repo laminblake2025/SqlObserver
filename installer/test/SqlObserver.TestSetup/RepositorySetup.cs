@@ -129,6 +129,10 @@ internal sealed class RepositorySetup : IAsyncDisposable
     {
         if (string.Equals((string?)await Scalar("SHOW ssl", token).ConfigureAwait(false), "on", StringComparison.Ordinal))
         {
+            SetupPolicy.AssertPostgresTlsFilesExist(
+                (string)(await Scalar("SHOW data_directory", token).ConfigureAwait(false))!,
+                (string)(await Scalar("SHOW ssl_cert_file", token).ConfigureAwait(false))!,
+                (string)(await Scalar("SHOW ssl_key_file", token).ConfigureAwait(false))!);
             if (!string.IsNullOrWhiteSpace(rootCertificate))
             {
                 SetupPolicy.AssertOrdinaryPath(rootCertificate);
