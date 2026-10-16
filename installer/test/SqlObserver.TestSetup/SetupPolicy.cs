@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using System.Runtime.Versioning;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 
@@ -15,6 +16,26 @@ public static partial class SetupPolicy
     private static partial Regex DatabasePattern();
     [GeneratedRegex("^(?=.{1,253}$)[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)*$", RegexOptions.CultureInvariant)]
     private static partial Regex HostPattern();
+    [SupportedOSPlatform("windows")]
+    public static bool IsPostgresServiceForData(string command, string dataDirectory)
+    {
+        string[] arguments = WindowsHost.ParseCommandLine(command.Trim().Replace('/', '\\'));
+        if (arguments.Length == 0 || !Path.IsPathFullyQualified(arguments[0]) ||
+            !Path.GetFileName(arguments[0]).Equals("pg_ctl.exe", StringComparison.OrdinalIgnoreCase)) return false;
+        var directories = new List<string>();
+        for (int index = 1; index < arguments.Length; index++)
+        {
+            string argument = arguments[index];
+            if (argument is "-D" or "--pgdata")
+            {
+                if (++index >= arguments.Length) return false;
+                directories.Add(arguments[index]);
+            }
+            else if (argument.StartsWith("--pgdata=", StringComparison.Ordinal)) directories.Add(argument[9..]);
+        }
+        return directories.Count == 1 && directories[0].TrimEnd('\\').Equals(
+            dataDirectory.Replace('/', '\\').TrimEnd('\\'), StringComparison.OrdinalIgnoreCase);
+    }
 
     public static string Database(string value) => DatabasePattern().IsMatch(value) &&
         value.StartsWith("sqlobserver_test", StringComparison.Ordinal) ? value :

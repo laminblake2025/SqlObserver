@@ -41,10 +41,16 @@ internal sealed class RepositorySetup : IAsyncDisposable
 
     public async Task PrepareAsync(string database, string dataRoot, string existingRootCertificate, CancellationToken token)
     {
-        await admin.OpenAsync(token).ConfigureAwait(false);
-        if ((int)(await Scalar("SELECT current_setting('server_version_num')::integer / 10000", token).ConfigureAwait(false))! != 18 ||
-            !(bool)(await Scalar("SELECT rolsuper FROM pg_roles WHERE rolname = current_user", token).ConfigureAwait(false))!)
-            throw new SetupException("Repository setup requires a local PostgreSQL 18 administrator. Other PostgreSQL versions are not changed.");
+        try { await admin.OpenAsync(token).ConfigureAwait(false); }
+        catch (NpgsqlException)
+        {
+            throw new SetupException("Cannot connect to PostgreSQL at 127.0.0.1:5432. Verify the server is running, allows local connections, and accepts the supplied administrator credentials.");
+        }
+        int major = (int)(await Scalar("SELECT current_setting('server_version_num')::integer / 10000", token).ConfigureAwait(false))!;
+        if (major != 18)
+            throw new SetupException($"The server at 127.0.0.1:5432 is PostgreSQL {major}. This application requires PostgreSQL 18.x; other majors are not changed.");
+        if (!(bool)(await Scalar("SELECT rolsuper FROM pg_roles WHERE rolname = current_user", token).ConfigureAwait(false))!)
+            throw new SetupException("Repository setup requires a local PostgreSQL administrator with superuser rights.");
         if (!(bool)(await Scalar("SELECT pg_try_advisory_lock(6003668672497471828)", token).ConfigureAwait(false))!)
             throw new SetupException("Another test setup is using this PostgreSQL cluster.");
         using (var check = new NpgsqlCommand("SELECT count(*) FROM pg_database WHERE datname = @database", admin))
@@ -135,11 +141,11 @@ internal sealed class RepositorySetup : IAsyncDisposable
         string dataDirectory = ((string)(await Scalar("SHOW data_directory", token).ConfigureAwait(false))!).Replace('/', '\\');
         using RegistryKey services = Registry.LocalMachine.OpenSubKey(@"SYSTEM\CurrentControlSet\Services")!;
         var matches = new List<string>();
-        foreach (string name in services.GetSubKeyNames().Where(n => n.StartsWith("postgresql", StringComparison.OrdinalIgnoreCase)))
+        foreach (string name in services.GetSubKeyNames())
         {
             using RegistryKey? service = services.OpenSubKey(name);
             string path = (service?.GetValue("ImagePath") as string ?? "").Replace('/', '\\');
-            if (!path.Contains("pg_ctl", StringComparison.OrdinalIgnoreCase) || !path.Contains('"' + dataDirectory + '"', StringComparison.OrdinalIgnoreCase)) continue;
+            if (!SetupPolicy.IsPostgresServiceForData(path, dataDirectory)) continue;
             string account = service!.GetValue("ObjectName") as string ?? "";
             if (account.StartsWith(@".\", StringComparison.Ordinal)) account = Environment.MachineName + account[1..];
             matches.Add(account);

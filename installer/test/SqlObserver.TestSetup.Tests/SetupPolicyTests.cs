@@ -6,6 +6,22 @@ namespace SqlObserver.TestSetup.Tests;
 public sealed class SetupPolicyTests
 {
     [Theory]
+    [InlineData("\"C:\\Program Files\\PostgreSQL\\18\\bin\\pg_ctl.exe\" runservice -N CustomRepository -D \"D:\\PgData\"", true)]
+    [InlineData("C:\\PostgreSQL\\18\\bin\\pg_ctl.exe runservice -D D:\\PgData", true)]
+    [InlineData("C:\\PostgreSQL\\18\\bin\\pg_ctl.exe runservice --pgdata=\"D:\\PgData\"", true)]
+    [InlineData("C:\\PostgreSQL\\18\\bin\\pg_ctl.exe runservice -D D:\\PgDataOther", false)]
+    [InlineData("C:\\PostgreSQL\\18\\bin\\other-pg_ctl.exe runservice -D D:\\PgData", false)]
+    [InlineData("C:\\PostgreSQL\\18\\bin\\pg_ctl.exe runservice -D D:\\PgData -D D:\\Other", false)]
+    [InlineData("C:\\Program Files\\PostgreSQL\\18\\bin\\pg_ctl.exe runservice -D D:\\PgData", false)]
+    [InlineData("C:\\PostgreSQL\\18\\bin\\pg_ctl.exe runservice -N \"-D D:\\PgData\"", false)]
+    [InlineData("C:\\PostgreSQL\\18\\bin\\pg_ctl.exe runservice -D D:/PgData", true)]
+    public void PostgresServiceUsesExecutableAndExactDataArgument(string command, bool expected)
+    {
+        if (!OperatingSystem.IsWindows()) return;
+        Assert.Equal(expected, SetupPolicy.IsPostgresServiceForData(command, @"D:\PgData"));
+    }
+
+    [Theory]
     [InlineData("sqlobserver_test")]
     [InlineData("sqlobserver_test_20261015")]
     public void FreshTestRepositoryNamesAreAccepted(string name) => Assert.Equal(name, SetupPolicy.Database(name));

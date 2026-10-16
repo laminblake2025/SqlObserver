@@ -16,6 +16,27 @@ internal static class WindowsHost
     private static readonly SecurityIdentifier SystemSid = new("S-1-5-18");
     private static readonly SecurityIdentifier AdminSid = new("S-1-5-32-544");
 
+    internal static string[] ParseCommandLine(string command)
+    {
+        if (string.IsNullOrWhiteSpace(command)) return [];
+        nint buffer = CommandLineToArgv(command, out int count);
+        if (buffer == 0) return [];
+        try
+        {
+            if (count is < 1 or > 128) return [];
+            var arguments = new string[count];
+            for (int index = 0; index < count; index++)
+                arguments[index] = Marshal.PtrToStringUni(Marshal.ReadIntPtr(buffer, index * IntPtr.Size)) ?? "";
+            return arguments;
+        }
+        finally { _ = LocalFree(buffer); }
+    }
+
+    [DllImport("shell32.dll", EntryPoint = "CommandLineToArgvW", CharSet = CharSet.Unicode)]
+    private static extern nint CommandLineToArgv(string command, out int count);
+    [DllImport("kernel32.dll")]
+    private static extern nint LocalFree(nint buffer);
+
     public static void AssertProtectedInstallRoot(string root)
     {
         SetupPolicy.AssertOrdinaryPath(root);
