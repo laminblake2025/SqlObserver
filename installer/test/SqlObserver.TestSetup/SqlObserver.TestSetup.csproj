@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>SqlObserver.TestSetup</AssemblyName>
+    <RootNamespace>SqlObserver.TestSetup</RootNamespace>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="System.Security.Cryptography.ProtectedData" />
+    <ProjectReference Include="../../../src/SqlObserver.Infrastructure.PostgreSql/SqlObserver.Infrastructure.PostgreSql.csproj" />
+    <EmbeddedResource Include="$(SetupBuildInput)" LogicalName="SetupBuild.json" Condition="'$(SetupBuildInput)' != ''" />
+  </ItemGroup>
+</Project>

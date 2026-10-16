@@ -1,6 +1,18 @@
 # Installer assets
 
-WiX packaging and PostgreSQL installation or integration assets remain reserved
+## Unsigned test installer
+
+The separate [test installer](test/TEST-INSTALL.txt) provides an interactive,
+offline Windows x64 lab bootstrapper with bundled prerequisites, fresh-repository
+configuration, Windows services, and data-preserving uninstall. Build it with
+`tools/build-test-installer.ps1` around a verified lab package. Its source and
+tests live under `installer/test/`; it does not change or consume the foundation
+assessment's mutation authority. It is unsigned, fresh-install-only, and does
+not satisfy production release or native installer certification gates.
+
+## Production foundation
+
+Production WiX packaging and PostgreSQL installation or integration assets remain reserved
 for a later M12 package. The current foundation contains only closed assessment
 contracts under `contracts/`; it does not create an MSI/Burn package or install,
 register, start, stop, or uninstall services. It does not provision PostgreSQL,
