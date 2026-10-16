@@ -161,6 +161,7 @@
         "type": "Project",
         "dependencies": {
           "SqlObserver.Infrastructure.PostgreSql": "[1.0.0, )",
+          "System.Diagnostics.EventLog": "[10.0.11, )",
           "System.Security.Cryptography.ProtectedData": "[10.0.11, )"
         }
       },

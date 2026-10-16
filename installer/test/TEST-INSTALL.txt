@@ -97,6 +97,15 @@ Setup automatically writes a timestamped log in the installing user's TEMP
 directory. To choose a fixed filename, launch the installer with
   /LOG="C:\existing-directory\SqlObserver-setup.log"
 The log records prerequisite detection and prerequisite installer exit codes.
+The elevated configuration helper registers SqlObserver.Server and
+SqlObserver.Collector as Application event sources before starting services.
+Service accounts retain non-admin permissions. Runtime service messages appear
+in Windows Logs\Application; service start/stop failures appear in System.
+If configuration fails, setup-failure.json in the chosen ProgramData directory
+records a fixed phase ID, exception type, HRESULT and UTC time, without exception
+messages or connection material. The same phase and code print in the console.
+install-state.json records whether service cleanup failed; inspect retained
+services before retrying if cleanup could not complete.
 .NET detection uses the machine-wide x64 dotnet host with --list-runtimes,
 and requires both Microsoft.NETCore.App and Microsoft.AspNetCore.App at stable
 10.0.13 or a later 10.0 patch. A newer 10.x minor is accepted when no 10.0

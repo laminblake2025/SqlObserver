@@ -7,6 +7,7 @@
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="System.Security.Cryptography.ProtectedData" />
+    <PackageReference Include="System.Diagnostics.EventLog" />
     <ProjectReference Include="../../../src/SqlObserver.Infrastructure.PostgreSql/SqlObserver.Infrastructure.PostgreSql.csproj" />
     <EmbeddedResource Include="$(SetupBuildInput)" LogicalName="SetupBuild.json" Condition="'$(SetupBuildInput)' != ''" />
   </ItemGroup>

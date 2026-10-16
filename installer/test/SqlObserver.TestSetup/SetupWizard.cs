@@ -53,7 +53,7 @@ internal static class SetupWizard
         string pgUser = Prompt("Local PostgreSQL administrator", "postgres");
         string pgRoot = Prompt("Existing PostgreSQL TLS root certificate path (blank uses Windows trust; ignored when TLS is off)", "");
         Console.WriteLine($"\nReview\n  Application: {installRoot}\n  Configuration: {dataRoot}\n  Fresh repository: {database} on local PostgreSQL 18, port 5432\n  Services: {SetupPolicy.ServerService}, {SetupPolicy.CollectorService}\n  Dashboard: https://{dns}:{port}/\n  PostgreSQL runtime accounts: separate, generated, non-admin\n  Windows Server identity: dedicated virtual service account\n  Windows Collector identity: {(virtualCollector ? "dedicated virtual service account" : collector)}\n  Operators: {group}\n  Initial roles: Viewer, Operator, TargetAdministrator for all test targets{(enableSql ? ", QueryTextReader" : "")}\n");
-        Console.WriteLine("Setup creates a 365-day test HTTPS certificate and trusts its public certificate on this host.\nIf local PostgreSQL TLS is off, setup enables TLS using a new test certificate and reloads its configuration.\nNo firewall rule or SQL Server permission is added. Database, certificates, keys, and configuration survive uninstall.\nNarrow the initial all-target authorization after registering targets.\n");
+        Console.WriteLine("Setup registers Server and Collector Application event sources, creates a 365-day test HTTPS certificate and trusts its public certificate on this host.\nIf local PostgreSQL TLS is off, setup enables TLS using a new test certificate and reloads its configuration.\nNo firewall rule or SQL Server permission is added. Database, certificates, keys, and configuration survive uninstall.\nNarrow the initial all-target authorization after registering targets.\n");
         if (Prompt("Type INSTALL to apply this configuration", "").Equals("INSTALL", StringComparison.Ordinal) is false)
             throw new SetupException("Configuration cancelled before changes were applied.");
         string pgPassword = ReadPassword("PostgreSQL administrator password");
@@ -64,14 +64,20 @@ internal static class SetupWizard
         ConsoleCancelEventHandler handler = (_, e) => { e.Cancel = true; cancel.Cancel(); };
         Console.CancelKeyPress += handler;
         bool servicesAttempted = false;
+        string phase = "event-source-provisioning";
         try
         {
+            Console.WriteLine("Registering Application event sources for Server and Collector...");
+            WindowsHost.ProvisionApplicationEventSources();
+            phase = "repository-prepare";
             await using var repository = new RepositorySetup(pgUser, pgPassword);
             pgPassword = "";
             WriteJson(Path.Combine(dataRoot, "repository-setup.json"), new { database, bootstrapLogin = repository.BootstrapLogin, serverLogin = repository.ServerLogin, collectorLogin = repository.CollectorLogin, protectedOwners = SetupPolicy.ProtectedOwners });
             Console.WriteLine("Checking local PostgreSQL and verifying runtime TLS...");
             await repository.PrepareAsync(database, dataRoot, pgRoot, cancel.Token).ConfigureAwait(false);
+            phase = "repository-migrate";
             await repository.MigrateAsync(database, Console.WriteLine, cancel.Token).ConfigureAwait(false);
+            phase = "service-provisioning";
             groupSid ??= WindowsHost.CreateOperatorGroup();
             string serverAccount = @"NT SERVICE\" + SetupPolicy.ServerService;
             if (virtualCollector) collector = @"NT SERVICE\" + SetupPolicy.CollectorService;
@@ -81,6 +87,7 @@ internal static class SetupWizard
             WindowsHost.CreateService(SetupPolicy.CollectorService, SetupPolicy.ServiceCommand(appRoot, dataRoot, "Collector"), collector, collectorPassword);
             collectorPassword = null;
             string serverSid = WindowsHost.AccountSid(serverAccount), collectorSid = WindowsHost.AccountSid(collector);
+            phase = "configuration-and-certificates";
             var readers = new List<string> { serverSid, collectorSid };
             if (!string.IsNullOrEmpty(repository.PostgresSid)) readers.Add(repository.PostgresSid);
             WindowsHost.ProtectDirectory(dataRoot, readers.ToArray());
@@ -127,12 +134,18 @@ internal static class SetupWizard
                 SqlObserver = new { IdentityFingerprintKey = identityKey, LiveActivity = new { ProtectedKeyPath = liveKey }, QueryContent = new { ProtectedKeyPath = queryKey } }
             });
             Console.WriteLine("Starting the Server and verifying authenticated HTTPS repository readiness...");
+            phase = "server-start";
             WindowsHost.Start(SetupPolicy.ServerService);
+            phase = "server-readiness";
             await WaitForReady(port, cancel.Token).ConfigureAwait(false);
+            phase = "server-identity-check";
             WindowsHost.AssertRunning(SetupPolicy.ServerService);
+            phase = "collector-start";
             WindowsHost.Start(SetupPolicy.CollectorService);
             await Task.Delay(TimeSpan.FromSeconds(5), cancel.Token).ConfigureAwait(false);
+            phase = "collector-identity-check";
             WindowsHost.AssertRunning(SetupPolicy.CollectorService);
+            phase = "completion-record";
             string guide = $"""
                 SQL Observer unsigned test deployment
                 Dashboard: https://{dns}:{port}/
@@ -159,10 +172,25 @@ internal static class SetupWizard
             Console.WriteLine("Press Enter to finish.");
             Console.ReadLine();
         }
-        catch
+        catch (Exception error)
         {
-            if (servicesAttempted) WindowsHost.RemoveOwnedServices(appRoot);
-            WriteJson(receiptPath, new { schemaVersion = 1, status = "incomplete", manifestSha256 = manifestHash, installRoot, database, stoppedAtUtc = DateTimeOffset.UtcNow, dataPreserved = true });
+            // Only bounded phase IDs and exception codes, never messages, SQL,
+            // credentials, connection strings or provider exception bodies.
+            var failure = SetupFailureDiagnostic.Create(phase, error);
+            Console.Error.WriteLine($"Configuration failed in phase {failure.Phase} ({failure.ExceptionType}, {failure.HResult}).");
+            try { WriteJson(Path.Combine(dataRoot, "setup-failure.json"), failure); }
+            catch (Exception diagnosticError) when (diagnosticError is IOException or UnauthorizedAccessException or System.Security.SecurityException)
+            { Console.Error.WriteLine("Could not write setup-failure.json. The phase and error code above remain the failure evidence."); }
+            bool cleanupFailed = false;
+            try { if (servicesAttempted) WindowsHost.RemoveOwnedServices(appRoot); }
+            catch (Exception)
+            {
+                cleanupFailed = true;
+                Console.Error.WriteLine("Service cleanup failed. Inspect the retained test services before retrying setup.");
+            }
+            try { WriteJson(receiptPath, new { schemaVersion = 1, status = "incomplete", phase, cleanupFailed, manifestSha256 = manifestHash, installRoot, database, stoppedAtUtc = DateTimeOffset.UtcNow, dataPreserved = true }); }
+            catch (Exception diagnosticError) when (diagnosticError is IOException or UnauthorizedAccessException or System.Security.SecurityException)
+            { Console.Error.WriteLine("Could not update install-state.json. Retained data was not deleted."); }
             throw;
         }
         finally { Console.CancelKeyPress -= handler; pgPassword = ""; collectorPassword = null; }

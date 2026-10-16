@@ -7,11 +7,11 @@
 AppId={{49159A72-DDE6-47C6-9639-C5E01F77BC21}
 AppName=SQL Observer Unsigned Test
 AppVersion=0.1.0
-AppVerName=SQL Observer Unsigned Test ({#SourceCommitShort})
+AppVerName=SQL Observer Unsigned Test (app {#SourceCommitShort}, setup {#InstallerCommitShort})
 DefaultDirName={autopf}\SqlObserver Test
 DefaultGroupName=SQL Observer Test
 OutputDir={#InstallerOutput}
-OutputBaseFilename=SqlObserver-TestSetup-win-x64-{#SourceCommitShort}
+OutputBaseFilename=SqlObserver-TestSetup-win-x64-{#SourceCommitShort}-setup-{#InstallerCommitShort}
 ArchitecturesAllowed=x64os
 ArchitecturesInstallIn64BitMode=x64os
 MinVersion=10.0.20348
@@ -333,6 +333,7 @@ function InitializeSetup: Boolean;
 var ProductType: String;
 begin
   ConfigurationExitCode := 1;
+  Log('Installer source: {#InstallerCommitShort}; application source: {#SourceCommitShort}');
   Result := not (RegKeyExists(HKLM64, 'SYSTEM\CurrentControlSet\Services\SqlObserverTestServer') or
     RegKeyExists(HKLM64, 'SYSTEM\CurrentControlSet\Services\SqlObserverTestCollector'));
   if not Result then MsgBox('Test services already exist. This installer supports fresh installs. Uninstall the existing test package first; its repository, configuration and keys will be preserved.', mbError, MB_OK);

@@ -68,6 +68,7 @@ try {
     foreach ($name in @('dotnetRuntime','aspnetRuntime','powerShell','postgreSql')) { $prerequisites[$name] = Assert-PinnedPrerequisite $pins.$name $cache }
     $definitions = [ordered]@{
         SourceCommitShort=$manifest.sourceCommit.Substring(0,8)
+        InstallerCommitShort=$commit.Substring(0,8)
         InstallerOutput=$output
         DotnetFile=$pins.dotnetRuntime.file; DotnetSha256=$prerequisites.dotnetRuntime.sha256
         AspnetFile=$pins.aspnetRuntime.file; AspnetSha256=$prerequisites.aspnetRuntime.sha256

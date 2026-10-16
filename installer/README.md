@@ -53,3 +53,17 @@ hosts. Windows' Framework64 C# compiler builds those test fixtures. The setup
 policy tests cover PostgreSQL service command parsing with custom names and
 quoted/unquoted paths. Neither test suite substitutes for a full Windows Server
 install/configure/uninstall run; that lifecycle remains pending in the receipt.
+
+The elevated helper provisions Application log sources `SqlObserver.Server` and
+`SqlObserver.Collector` before service startup, retaining existing Application
+registrations and refusing conflicts with another log. Sources remain on
+uninstall to preserve historical log interpretation. Service identity membership
+checks request token query and duplicate access; no service account elevation is
+needed. Configuration failures write only phase/type/HRESULT/time diagnostics to
+`setup-failure.json`, and a logging failure cannot skip service cleanup.
+
+To additionally verify native source creation, idempotence, event writing and
+conflict rejection, run the setup tests from an elevated Windows administrator
+session with `SQLOBSERVER_INSTALLER_EVENTLOG_TEST=1`. This opt-in test creates and
+removes uniquely named disposable sources in Application and System. It skips
+without both the opt-in and an elevated token.

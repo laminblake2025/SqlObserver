@@ -48,7 +48,7 @@ internal static class Program
             string message = ex is SetupException ? ex.Message :
                 $"Setup stopped ({ex.GetType().Name}). No provider details or credentials were logged.";
             Console.Error.WriteLine(message);
-            Console.Error.WriteLine("Setup is incomplete. Any newly created services were stopped and removed. Retained data is never deleted automatically.");
+            Console.Error.WriteLine("Setup is incomplete. Inspect the console phase and retained setup-failure.json/install-state.json before retrying. Retained data is never deleted automatically.");
             if (!Console.IsInputRedirected) { Console.WriteLine("Press Enter to close."); Console.ReadLine(); }
             return 1;
         }

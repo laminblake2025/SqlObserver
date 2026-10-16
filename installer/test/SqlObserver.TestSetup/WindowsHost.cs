@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
 using System.Security.AccessControl;
@@ -15,6 +16,20 @@ internal static class WindowsHost
     private const uint ScmConnect = 1, ScmCreate = 2, ServiceAll = 0xF01FF;
     private static readonly SecurityIdentifier SystemSid = new("S-1-5-18");
     private static readonly SecurityIdentifier AdminSid = new("S-1-5-32-544");
+
+    public static void ProvisionApplicationEventSources()
+    {
+        EnsureApplicationEventSource("SqlObserver.Server");
+        EnsureApplicationEventSource("SqlObserver.Collector");
+    }
+
+    internal static void EnsureApplicationEventSource(string source)
+    {
+        if (!EventLog.SourceExists(source))
+            EventLog.CreateEventSource(new EventSourceCreationData(source, "Application"));
+        if (!string.Equals(EventLog.LogNameFromSourceName(source, "."), "Application", StringComparison.OrdinalIgnoreCase))
+            throw new SetupException("An application event source is already registered to a different Windows log. Resolve the source conflict before setup.");
+    }
 
     internal static string[] ParseCommandLine(string command)
     {
@@ -190,21 +205,29 @@ internal static class WindowsHost
     {
         if (!QueryServiceStatusEx(service, 0, out ServiceProcessStatus status, (uint)Marshal.SizeOf<ServiceProcessStatus>(), out _)) throw new Win32Exception();
         if (status.State != 4) throw new SetupException("A test service stopped during startup. Inspect its Windows Application event log.");
-        nint process = OpenProcess(0x1000, false, status.ProcessId);
+        if (IsProcessAdministrator(status.ProcessId))
+            throw new SetupException("The test service is running with administrator authority. Use a dedicated non-admin service identity.");
+    });
+
+    internal static bool IsProcessAdministrator(uint processId)
+    {
+        nint process = OpenProcess(0x1000, false, processId);
         if (process == 0) throw new Win32Exception();
         try
         {
-            if (!OpenProcessToken(process, 8, out nint token)) throw new Win32Exception();
+            // WindowsPrincipal.IsInRole duplicates a primary token for membership
+            // checks. QUERY alone opens successfully but later throws SecurityException.
+            const uint tokenQueryAndDuplicate = 0x0008 | 0x0002;
+            if (!OpenProcessToken(process, tokenQueryAndDuplicate, out nint token)) throw new Win32Exception();
             try
             {
                 using var identity = new WindowsIdentity(token);
-                if (new WindowsPrincipal(identity).IsInRole(WindowsBuiltInRole.Administrator) || identity.IsSystem)
-                    throw new SetupException("The test service is running with administrator authority. Use a dedicated non-admin service identity.");
+                return new WindowsPrincipal(identity).IsInRole(WindowsBuiltInRole.Administrator) || identity.IsSystem;
             }
             finally { CloseHandle(token); }
         }
         finally { CloseHandle(process); }
-    });
+    }
 
     public static void RemoveOwnedServices(string appRoot)
     {
