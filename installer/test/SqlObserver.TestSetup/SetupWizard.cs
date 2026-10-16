@@ -23,9 +23,9 @@ internal static class SetupWizard
         string dataRoot = Prompt("New configuration/data directory", Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "SqlObserverTest"));
         dataRoot = Path.GetFullPath(dataRoot);
         SetupPolicy.AssertOrdinaryPath(dataRoot);
-        string commonData = Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData).TrimEnd('\\') + "\\";
-        if (!dataRoot.StartsWith(commonData, StringComparison.OrdinalIgnoreCase) || Directory.Exists(dataRoot) || File.Exists(dataRoot))
-            throw new SetupException("Choose a fresh directory under ProgramData. Retained configuration and keys are never overwritten.");
+        string commonData = Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData);
+        if (!string.Equals(Path.GetDirectoryName(dataRoot), commonData, StringComparison.OrdinalIgnoreCase) || Directory.Exists(dataRoot) || File.Exists(dataRoot))
+            throw new SetupException("Choose a fresh direct child of ProgramData. Retained configuration and keys are never overwritten.");
         string database = SetupPolicy.Database(Prompt("New PostgreSQL database", "sqlobserver_test"));
         string dns = SetupPolicy.Host(Prompt("Dashboard DNS hostname (must resolve to this machine)", System.Net.Dns.GetHostName()));
         var localAddresses = NetworkInterface.GetAllNetworkInterfaces().SelectMany(n => n.GetIPProperties().UnicastAddresses).Select(a => a.Address).Append(IPAddress.Loopback).Append(IPAddress.IPv6Loopback).ToHashSet();

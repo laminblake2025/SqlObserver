@@ -32,6 +32,7 @@ public sealed class SetupPolicyTests
     [InlineData("a..b")]
     [InlineData("host.-bad")]
     [InlineData("host.bad-")]
+    [InlineData("127.0.0.1")]
     public void HostInputCannotBecomeAUrlPathOrCommand(string name) => Assert.Throws<SetupException>(() => SetupPolicy.Host(name));
 
     [Fact]
@@ -66,6 +67,9 @@ public sealed class SetupPolicyTests
             File.WriteAllText(Path.Combine(root, "checksums.sha256"), "metadata");
             string hash = WriteManifest(root, "app.exe");
             Assert.Equal(new string('a', 40), SetupPolicy.VerifyPayload(root, hash));
+            File.AppendAllText(Path.Combine(root, "checksums.sha256"), "tampered");
+            Assert.Throws<SetupException>(() => SetupPolicy.VerifyPayload(root, hash));
+            hash = WriteManifest(root, "app.exe");
             File.WriteAllText(Path.Combine(root, "app.exe"), "tampered-content");
             Assert.Throws<SetupException>(() => SetupPolicy.VerifyPayload(root, hash));
             File.WriteAllText(Path.Combine(root, "app.exe"), "verified-content");
@@ -93,6 +97,10 @@ public sealed class SetupPolicyTests
             files = names.Select(name => new { path = name, bytes = bytes.Length, sha256 = Convert.ToHexString(SHA256.HashData(bytes)) })
         });
         File.WriteAllBytes(Path.Combine(root, "package-manifest.json"), manifest);
-        return Convert.ToHexString(SHA256.HashData(manifest));
+        string hash = Convert.ToHexString(SHA256.HashData(manifest));
+        IEnumerable<string> lines = names.Select(name => Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant() + "  " + name)
+            .Append(hash.ToLowerInvariant() + "  package-manifest.json").Order(StringComparer.Ordinal);
+        File.WriteAllText(Path.Combine(root, "checksums.sha256"), string.Join('\n', lines) + "\n");
+        return hash;
     }
 }

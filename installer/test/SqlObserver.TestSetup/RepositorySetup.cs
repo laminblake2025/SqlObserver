@@ -191,15 +191,25 @@ internal sealed class RepositorySetup : IAsyncDisposable
     {
         if (!bootstrapCreated || admin.State != System.Data.ConnectionState.Open) return;
         using var cleanup = new CancellationTokenSource(TimeSpan.FromSeconds(30));
-        foreach (string owner in SetupPolicy.ProtectedOwners)
+        bool revoked = false;
+        try
         {
-            await Execute($"REVOKE {SetupPolicy.QuoteIdentifier(owner)} FROM {SetupPolicy.QuoteIdentifier(Bootstrap)}", cleanup.Token).ConfigureAwait(false);
-            // The migration temporarily grants this closed role administrative membership too.
-            if ((bool)(await Scalar("SELECT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'sqlobserver_migrator')", cleanup.Token).ConfigureAwait(false))!)
-                await Execute($"REVOKE {SetupPolicy.QuoteIdentifier(owner)} FROM sqlobserver_migrator", cleanup.Token).ConfigureAwait(false);
+            foreach (string owner in SetupPolicy.ProtectedOwners)
+            {
+                await Execute($"REVOKE {SetupPolicy.QuoteIdentifier(owner)} FROM {SetupPolicy.QuoteIdentifier(Bootstrap)}", cleanup.Token).ConfigureAwait(false);
+                // Preflight required these roles to have no members. These memberships belong only to this bootstrap.
+                if ((bool)(await Scalar("SELECT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'sqlobserver_migrator')", cleanup.Token).ConfigureAwait(false))!)
+                    await Execute($"REVOKE {SetupPolicy.QuoteIdentifier(owner)} FROM sqlobserver_migrator", cleanup.Token).ConfigureAwait(false);
+            }
+            revoked = true;
         }
-        await Execute($"ALTER ROLE {SetupPolicy.QuoteIdentifier(Bootstrap)} NOLOGIN NOCREATEDB NOCREATEROLE PASSWORD NULL", cleanup.Token).ConfigureAwait(false);
-        bootstrapCreated = false;
+        finally
+        {
+            // Still disable login/administration if membership cleanup failed. Never reuse the operation's cancelled token.
+            using var seal = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            await Execute($"ALTER ROLE {SetupPolicy.QuoteIdentifier(Bootstrap)} NOLOGIN NOCREATEDB NOCREATEROLE PASSWORD NULL", seal.Token).ConfigureAwait(false);
+            if (revoked) bootstrapCreated = false;
+        }
     }
     public async ValueTask DisposeAsync()
     {

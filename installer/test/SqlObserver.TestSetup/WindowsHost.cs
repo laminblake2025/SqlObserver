@@ -271,7 +271,15 @@ internal static class WindowsHost
     public static void WriteProtectedKey(string path)
     {
         byte[] raw = RandomNumberGenerator.GetBytes(32);
-        try { using FileStream file = new(path, FileMode.CreateNew); file.Write(ProtectedData.Protect(raw, null, DataProtectionScope.LocalMachine)); }
+        try
+        {
+            using (FileStream file = new(path, FileMode.CreateNew)) file.Write(ProtectedData.Protect(raw, null, DataProtectionScope.LocalMachine));
+            var info = new FileInfo(path);
+            FileSecurity acl = info.GetAccessControl();
+            // Both runtime protectors require a protected file DACL, not only a protected parent.
+            acl.SetAccessRuleProtection(true, true);
+            info.SetAccessControl(acl);
+        }
         finally { CryptographicOperations.ZeroMemory(raw); }
     }
 

@@ -39,6 +39,7 @@ After the files are copied, a configuration console opens. Follow its prompts:
 Setup creates separate, generated PostgreSQL runtime logins with only the Server
 or Collector role, applies the embedded checksum-verified migrations under a
 temporary non-superuser bootstrap login, and disables that login afterward.
+The temporary password also expires after one hour if the process is terminated.
 It never replaces an existing repository. Bootstrap administration is limited
 to 127.0.0.1:5432; runtime repository connections use VerifyFull TLS.
 
@@ -98,6 +99,12 @@ ledger, or present failure as healthy. Resolve the cause, then run Configure tes
 services from the Start menu with a NEW repository/configuration directory. If
 the operator group was already created, select it as an existing group on retry.
 Do not delete protected keys while their captured evidence is retained.
+If PostgreSQL itself failed during cleanup or the process was killed, inspect
+repository-setup.json for the exact bootstrap login. A PostgreSQL administrator
+must disable that login and revoke any recorded protected-owner memberships
+before a new attempt. Never grant protected-owner memberships to runtime logins.
+If an earlier attempt enabled PostgreSQL test TLS, supply that attempt's public
+repository-root.crt when retrying; the retained TLS key directory remains in use.
 
 Uninstall through Windows Installed Apps. Only services whose executable belongs
 to this installation are stopped/deleted, and binaries are removed afterward.

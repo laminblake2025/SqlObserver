@@ -20,7 +20,7 @@ public static partial class SetupPolicy
         value.StartsWith("sqlobserver_test", StringComparison.Ordinal) ? value :
         throw new SetupException("Use a fresh lowercase database name starting with sqlobserver_test (maximum 48 characters).");
 
-    public static string Host(string value) => HostPattern().IsMatch(value) && !value.Contains("..", StringComparison.Ordinal) ? value :
+    public static string Host(string value) => HostPattern().IsMatch(value) && !System.Net.IPAddress.TryParse(value, out _) ? value :
         throw new SetupException("Enter a DNS hostname, without a URL, port, wildcard, or path.");
 
     public static int Port(int value) => value is >= 1024 and <= 65535 ? value :
@@ -53,6 +53,9 @@ public static partial class SetupPolicy
     {
         AssertOrdinaryPath(root);
         string manifestPath = Path.Combine(root, "package-manifest.json");
+        var manifestInfo = new FileInfo(manifestPath);
+        if (manifestInfo.Length > 1024 * 1024 || (manifestInfo.Attributes & FileAttributes.ReparsePoint) != 0)
+            throw new SetupException("Invalid application manifest length or file type.");
         byte[] manifest = File.ReadAllBytes(manifestPath);
         if (manifest.Length > 1024 * 1024 || !Convert.ToHexString(SHA256.HashData(manifest)).Equals(expectedManifestHash, StringComparison.OrdinalIgnoreCase))
             throw new SetupException("Application manifest checksum mismatch.");
@@ -62,6 +65,7 @@ public static partial class SetupPolicy
             m.GetProperty("runtimeIdentifier").GetString() != "win-x64" || m.GetProperty("selfContained").GetBoolean())
             throw new SetupException("Only the verified Windows x64 lab payload is permitted.");
         var expected = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "package-manifest.json", "checksums.sha256" };
+        var checksums = new List<string> { expectedManifestHash.ToLowerInvariant() + "  package-manifest.json" };
         long total = 0;
         foreach (JsonElement file in m.GetProperty("files").EnumerateArray())
         {
@@ -78,7 +82,13 @@ public static partial class SetupPolicy
             using FileStream stream = File.OpenRead(path);
             if (!Convert.ToHexString(SHA256.HashData(stream)).Equals(file.GetProperty("sha256").GetString(), StringComparison.OrdinalIgnoreCase))
                 throw new SetupException("Application payload checksum mismatch.");
+            checksums.Add(file.GetProperty("sha256").GetString()!.ToLowerInvariant() + "  " + name);
         }
+        string checksumPath = Path.Combine(root, "checksums.sha256");
+        var checksumInfo = new FileInfo(checksumPath);
+        if (checksumInfo.Length > 1024 * 1024 || (checksumInfo.Attributes & FileAttributes.ReparsePoint) != 0 ||
+            File.ReadAllText(checksumPath) != string.Join('\n', checksums.Order(StringComparer.Ordinal)) + "\n")
+            throw new SetupException("Application checksum catalog mismatch.");
         foreach (string path in Directory.EnumerateFileSystemEntries(root, "*", SearchOption.AllDirectories))
         {
             if ((File.GetAttributes(path) & FileAttributes.ReparsePoint) != 0) throw new SetupException("Payload links are not permitted.");

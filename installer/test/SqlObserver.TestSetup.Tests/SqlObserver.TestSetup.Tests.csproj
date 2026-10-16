@@ -5,6 +5,7 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../SqlObserver.TestSetup/SqlObserver.TestSetup.csproj" />
+    <ProjectReference Include="../../../src/SqlObserver.Infrastructure.Windows/SqlObserver.Infrastructure.Windows.csproj" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
     <PackageReference Include="xunit" />
     <PackageReference Include="xunit.runner.visualstudio"><PrivateAssets>all</PrivateAssets></PackageReference>
