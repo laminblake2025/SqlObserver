@@ -7,7 +7,7 @@ $output = Join-Path $repo ('artifacts/prerequisite-tests/' + [Guid]::NewGuid().T
 [void][IO.Directory]::CreateDirectory($output)
 $source = Get-Content (Join-Path $repo 'installer/test/test-setup.iss') -Raw
 $start = $source.IndexOf('function RuntimeOutputHasFramework(')
-$end = $source.IndexOf('function HasPowerShell:')
+$end = $source.IndexOf('function HasPostgres18:')
 if ($start -lt 0 -or $end -le $start) { throw 'Runtime detector functions not found.' }
 $functions = $source.Substring($start, $end - $start)
 $dotnet = Join-Path $env:ProgramFiles 'dotnet/dotnet.exe'
@@ -22,6 +22,9 @@ $checks = foreach ($framework in @('Microsoft.NETCore.App', 'Microsoft.AspNetCor
     }).Count -gt 0
     "  if HasRuntime('$framework') <> $($expected.ToString()) then RaiseException('Native host result mismatch: $framework');"
 }
+$testPowerShell = (Join-Path $PSHOME 'pwsh.exe').Replace("'", "''")
+$checks += "  if not HasPowerShellAt('$testPowerShell') then RaiseException('Native PowerShell probe failed');"
+$checks += "  if HasPowerShellAt(ExpandConstant('{src}\missing-pwsh.exe')) then RaiseException('Missing PowerShell accepted');"
 $harness = @'
 [Setup]
 AppName=Prerequisite detector tests
@@ -45,6 +48,13 @@ end;
 function InitializeSetup: Boolean;
 var Lines: TArrayOfString;
 begin
+  if not PowerShellVersionSupported('7.6.7') then RaiseException('PowerShell 7.6.7 rejected');
+  if not PowerShellVersionSupported('7.5.0') then RaiseException('PowerShell minimum rejected');
+  if not PowerShellVersionSupported('8.0.0') then RaiseException('Newer PowerShell rejected');
+  if PowerShellVersionSupported('7.4.9') then RaiseException('Old PowerShell accepted');
+  if PowerShellVersionSupported('7.6.7-preview.1') then RaiseException('PowerShell preview accepted');
+  if PowerShellVersionSupported('7.6') then RaiseException('Incomplete PowerShell version accepted');
+  if PowerShellVersionSupported('7.6.bad') then RaiseException('Invalid PowerShell version accepted');
   Check('Microsoft.NETCore.App 10.0.13 [C:\Program Files\dotnet\shared\Microsoft.NETCore.App]', True);
   Check('Microsoft.NETCore.App 10.0.14 [C:\Program Files\dotnet\shared\Microsoft.NETCore.App]', True);
   Check('Microsoft.NETCore.App 10.0.12 [C:\Program Files\dotnet\shared\Microsoft.NETCore.App]', False);

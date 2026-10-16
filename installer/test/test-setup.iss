@@ -98,18 +98,51 @@ begin
   else Log('Runtime check failed: ' + Framework + ' requires stable 10.0.13 or later 10.0 patch.');
 end;
 
-function HasPowerShell: Boolean;
-var Version, Minor: String; Dot: Integer;
+function PowerShellVersionSupported(Version: String): Boolean;
+var Major, Minor, Patch, Dot, I: Integer; Remainder: String;
 begin
-  Result := RegQueryStringValue(HKLM64, 'SOFTWARE\Microsoft\PowerShellCore\InstalledVersions\{31ab5147-9a97-4452-8443-d9709f0516e1}', 'SemanticVersion', Version);
-  if Result then begin
-    Dot := Pos('.', Version);
-    Minor := Copy(Version, Dot + 1, 32);
-    Minor := Copy(Minor, 1, Pos('.', Minor) - 1);
-    Result := (Pos('-', Version) = 0) and (((Copy(Version, 1, Dot - 1) = '7') and (StrToIntDef(Minor, 0) >= 5)) or (StrToIntDef(Copy(Version, 1, Dot - 1), 0) > 7));
+  Result := False;
+  for I := 1 to Length(Version) do
+    if ((Version[I] < '0') or (Version[I] > '9')) and (Version[I] <> '.') then exit;
+  Dot := Pos('.', Version);
+  if Dot = 0 then exit;
+  Major := StrToIntDef(Copy(Version, 1, Dot - 1), -1);
+  Remainder := Copy(Version, Dot + 1, Length(Version));
+  Dot := Pos('.', Remainder);
+  if Dot = 0 then exit;
+  Minor := StrToIntDef(Copy(Remainder, 1, Dot - 1), -1);
+  Patch := StrToIntDef(Copy(Remainder, Dot + 1, Length(Remainder)), -1);
+  Result := (Minor >= 0) and (Patch >= 0) and ((Major > 7) or ((Major = 7) and (Minor >= 5)));
+end;
+
+function HasPowerShellAt(Host: String): Boolean;
+var Output: TExecOutput; ExitCode: Integer; Version: String;
+begin
+  Result := False;
+  Log('Checking PowerShell using ' + Host);
+  if not FileExists(Host) then begin
+    Log('PowerShell prerequisite not detected: executable is missing.'); exit;
   end;
+  try
+    if not ExecAndCaptureOutput(Host, '-NoLogo -NoProfile -NonInteractive -Command "if (-not [Environment]::Is64BitProcess) { exit 1 }; $PSVersionTable.PSVersion.ToString()"', '', SW_SHOWNORMAL, ewWaitUntilTerminated, ExitCode, Output) then begin
+      Log('PowerShell prerequisite probe could not launch.'); exit;
+    end;
+  except
+    Log('PowerShell prerequisite probe could not capture output.'); exit;
+  end;
+  Log('PowerShell probe exit code: ' + IntToStr(ExitCode));
+  if (ExitCode <> 0) or Output.Error or (GetArrayLength(Output.StdOut) <> 1) then exit;
+  Version := Trim(Output.StdOut[0]);
+  Log('Detected x64 PowerShell ' + Version);
+  Result := PowerShellVersionSupported(Version);
   if Result then Log('PowerShell prerequisite detected.')
-  else Log('PowerShell prerequisite not detected.');
+  else Log('PowerShell prerequisite not detected: stable 7.5+ is required.');
+end;
+
+function HasPowerShell: Boolean;
+begin
+  // The bundled x64 MSI installs here; do not depend on a particular product GUID or PATH.
+  Result := HasPowerShellAt(ExpandConstant('{pf64}\PowerShell\7\pwsh.exe'));
 end;
 
 function HasPostgres18: Boolean;

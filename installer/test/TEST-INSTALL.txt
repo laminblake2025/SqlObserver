@@ -101,6 +101,8 @@ The log records prerequisite detection and prerequisite installer exit codes.
 and requires both Microsoft.NETCore.App and Microsoft.AspNetCore.App at stable
 10.0.13 or a later 10.0 patch. A runtime visible only through a user-local or
 x86 dotnet host does not satisfy the machine-wide service prerequisite.
+PowerShell detection runs Program Files\PowerShell\7\pwsh.exe without profiles
+to verify a stable x64 version of 7.5 or later; it does not rely on an MSI GUID.
 
 On failure, configuration files and the verified migration prefix remain for
 inspection. Setup does not delete data, reset credentials/keys, alter an existing
