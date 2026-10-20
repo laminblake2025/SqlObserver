@@ -203,31 +203,15 @@ internal static class WindowsHost
 
     public static void AssertRunning(string name) => WithService(name, service =>
     {
-        if (!QueryServiceStatusEx(service, 0, out ServiceProcessStatus status, (uint)Marshal.SizeOf<ServiceProcessStatus>(), out _)) throw new Win32Exception();
+        if (!QueryServiceStatusEx(service, 0, out ServiceProcessStatus status, (uint)Marshal.SizeOf<ServiceProcessStatus>(), out _))
+            throw new SetupWin32Exception(Marshal.GetLastWin32Error(), SetupNativeOperation.QueryServiceStatusEx);
         if (status.State != 4) throw new SetupException("A test service stopped during startup. Inspect its Windows Application event log.");
         if (IsProcessAdministrator(status.ProcessId))
             throw new SetupException("The test service is running with administrator authority. Use a dedicated non-admin service identity.");
-    });
+    }, 0x0004); // SERVICE_QUERY_STATUS; identity verification does not need SERVICE_ALL_ACCESS.
 
     internal static bool IsProcessAdministrator(uint processId)
-    {
-        nint process = OpenProcess(0x1000, false, processId);
-        if (process == 0) throw new Win32Exception();
-        try
-        {
-            // WindowsPrincipal.IsInRole duplicates a primary token for membership
-            // checks. QUERY alone opens successfully but later throws SecurityException.
-            const uint tokenQueryAndDuplicate = 0x0008 | 0x0002;
-            if (!OpenProcessToken(process, tokenQueryAndDuplicate, out nint token)) throw new Win32Exception();
-            try
-            {
-                using var identity = new WindowsIdentity(token);
-                return new WindowsPrincipal(identity).IsInRole(WindowsBuiltInRole.Administrator) || identity.IsSystem;
-            }
-            finally { CloseHandle(token); }
-        }
-        finally { CloseHandle(process); }
-    }
+        => WindowsProcessIdentity.IsAdministrator(processId);
 
     public static void RemoveOwnedServices(string appRoot)
     {
@@ -264,14 +248,14 @@ internal static class WindowsHost
         }
     }
 
-    private static void WithService(string name, Action<nint> action)
+    private static void WithService(string name, Action<nint> action, uint access = ServiceAll)
     {
         nint manager = OpenSCManager(null, null, ScmConnect);
-        if (manager == 0) throw new Win32Exception();
+        if (manager == 0) throw new SetupWin32Exception(Marshal.GetLastWin32Error(), SetupNativeOperation.OpenSCManager);
         try
         {
-            nint service = OpenService(manager, name, ServiceAll);
-            if (service == 0) throw new Win32Exception();
+            nint service = OpenService(manager, name, access);
+            if (service == 0) throw new SetupWin32Exception(Marshal.GetLastWin32Error(), SetupNativeOperation.OpenService);
             try { action(service); } finally { CloseServiceHandle(service); }
         }
         finally { CloseServiceHandle(manager); }
@@ -358,7 +342,4 @@ internal static class WindowsHost
     [DllImport("advapi32.dll")] private static extern uint LsaAddAccountRights(nint policy, nint sid, ref LsaString rights, uint count);
     [DllImport("advapi32.dll")] private static extern uint LsaNtStatusToWinError(uint code);
     [DllImport("advapi32.dll")] private static extern uint LsaClose(nint policy);
-    [DllImport("kernel32.dll", SetLastError = true)] private static extern nint OpenProcess(uint access, [MarshalAs(UnmanagedType.Bool)] bool inherit, uint id);
-    [DllImport("advapi32.dll", SetLastError = true)] [return: MarshalAs(UnmanagedType.Bool)] private static extern bool OpenProcessToken(nint process, uint access, out nint token);
-    [DllImport("kernel32.dll")] [return: MarshalAs(UnmanagedType.Bool)] private static extern bool CloseHandle(nint handle);
 }

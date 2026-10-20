@@ -104,6 +104,15 @@ in Windows Logs\Application; service start/stop failures appear in System.
 If configuration fails, setup-failure.json in the chosen ProgramData directory
 records a fixed phase ID, exception type, HRESULT and UTC time, without exception
 messages or connection material. The same phase and code print in the console.
+Windows failures also include the native error number and, for service identity
+inspection, a fixed operation name. HRESULT alone can hide the actual Win32 code.
+The identity check reads token SIDs with query access and enables an already
+assigned SeDebugPrivilege only if cross-account process access is denied. It
+restores the inspector's prior privilege state and never elevates service accounts.
+From an elevated console, run Setup\SqlObserver.TestSetup.exe
+--check-service-identity for a read-only check against the existing Windows NSI
+service before retrying configuration. No service is started, stopped or changed.
+If it fails, retain the printed operation and native error number before retrying.
 Migration failures also identify the migration number and bounded failure code
 (for example postgres_42501 for insufficient privileges), without provider text.
 install-state.json records whether service cleanup failed; inspect retained

@@ -178,6 +178,8 @@ internal static class SetupWizard
             // credentials, connection strings or provider exception bodies.
             var failure = SetupFailureDiagnostic.Create(phase, error);
             Console.Error.WriteLine($"Configuration failed in phase {failure.Phase} ({failure.ExceptionType}, {failure.HResult}).");
+            if (failure.NativeErrorCode is int nativeCode)
+                Console.Error.WriteLine($"Windows operation: {failure.NativeOperation ?? "unavailable"}; native error: {nativeCode}.");
             try { WriteJson(Path.Combine(dataRoot, "setup-failure.json"), failure); }
             catch (Exception diagnosticError) when (diagnosticError is IOException or UnauthorizedAccessException or System.Security.SecurityException)
             { Console.Error.WriteLine("Could not write setup-failure.json. The phase and error code above remain the failure evidence."); }

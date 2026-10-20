@@ -8,6 +8,10 @@ internal sealed record SetupFailureDiagnostic(string Phase, string ExceptionType
     public int? MigrationNumber { get; init; }
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? FailureCode { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public int? NativeErrorCode { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? NativeOperation { get; init; }
 
     internal static SetupFailureDiagnostic Create(string phase, Exception exception) => new(
         phase, exception.GetType().Name,
@@ -15,6 +19,8 @@ internal sealed record SetupFailureDiagnostic(string Phase, string ExceptionType
         DateTimeOffset.UtcNow)
     {
         MigrationNumber = (exception as SetupException)?.MigrationNumber,
-        FailureCode = (exception as SetupException)?.FailureCode
+        FailureCode = (exception as SetupException)?.FailureCode,
+        NativeErrorCode = (exception as System.ComponentModel.Win32Exception)?.NativeErrorCode,
+        NativeOperation = (exception as SetupWin32Exception)?.Operation.ToString()
     };
 }

@@ -30,13 +30,22 @@ internal static class Program
             if (!new WindowsPrincipal(identity).IsInRole(WindowsBuiltInRole.Administrator))
                 throw new SetupException("Run test setup as Administrator.");
             WindowsHost.AssertProtectedInstallRoot(installRoot);
+            if (args is ["--check-service-identity"])
+            {
+                // Read-only preflight against the existing Windows NSI service, whose process
+                // runs under a different, non-administrator account. Run before another setup.
+                SetupPolicy.VerifyPayload(appRoot, manifestHash);
+                WindowsHost.AssertRunning("nsi");
+                Console.WriteLine("Windows service identity inspection passed (nsi). No services were changed.");
+                return 0;
+            }
             if (args is ["--remove-services"])
             {
                 WindowsHost.RemoveOwnedServices(appRoot);
                 Console.WriteLine("Test services removed. PostgreSQL, repository data, configuration, certificates and keys were preserved.");
                 return 0;
             }
-            if (args.Length != 0) throw new SetupException("No arguments are required. Use --verify or --remove-services for maintenance.");
+            if (args.Length != 0) throw new SetupException("No arguments are required. Use --verify, --check-service-identity or --remove-services for maintenance.");
             SetupPolicy.VerifyPayload(appRoot, manifestHash);
             AssertMigrationCatalog(appRoot);
             await SetupWizard.RunAsync(installRoot, appRoot, manifestHash).ConfigureAwait(false);
@@ -45,7 +54,8 @@ internal static class Program
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
             // Provider exceptions may contain connection material, SQL, or account details. Never emit them.
-            string message = ex is SetupException ? ex.Message :
+            string message = ex is SetupException ? ex.Message : ex is SetupWin32Exception native ?
+                $"Windows operation {native.Operation} failed (native error {native.NativeErrorCode})." :
                 $"Setup stopped ({ex.GetType().Name}). No provider details or credentials were logged.";
             Console.Error.WriteLine(message);
             Console.Error.WriteLine("Setup is incomplete. Inspect the console phase and retained setup-failure.json/install-state.json before retrying. Retained data is never deleted automatically.");
