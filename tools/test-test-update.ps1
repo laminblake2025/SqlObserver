@@ -17,6 +17,10 @@ foreach ($name in @('Set-TargetTrust', 'Assert-Child', 'Assert-Tree', 'Move-Inst
 function Assert([bool] $Condition, [string] $Failure) { if (!$Condition) { throw $Failure } }
 $target = @{ TargetId='6140bc24-d03d-4b67-b42e-a2863d8a29c5'; Host='sdlc-qa-db03.pentechho.com'; TcpPort=1433 }
 $other = @{ TargetId='11111111-1111-1111-1111-111111111111'; Host='other.example.test'; TcpPort=1444 }
+foreach ($initial in @(@{SqlObserver=@{}}, @{SqlObserver=@{SqlServerCertificateTrustOverrides=@()}})) {
+    $updated = Set-TargetTrust $initial $target
+    Assert ($updated.SqlObserver.SqlServerCertificateTrustOverrides.Count -eq 1) 'An absent or empty trust array was not configured.'
+}
 $configuration = '{"ConnectionStrings":{"SqlObserverRepository":"synthetic-secret"},"SqlObserver":{"IdentityFingerprintKey":"preserve-key","SqlServerCertificateTrustOverrides":[]},"Other":{"Flag":true}}' | ConvertFrom-Json -AsHashtable
 $configuration.SqlObserver.SqlServerCertificateTrustOverrides = @($other)
 $result = Set-TargetTrust $configuration $target

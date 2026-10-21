@@ -42,7 +42,8 @@ function Set-TargetTrust($Configuration, $Target) {
         throw 'Expected SqlObserver configuration is missing.'
     }
     $settings = $Configuration.SqlObserver
-    $entries = if ($settings.Contains('SqlServerCertificateTrustOverrides')) { @($settings.SqlServerCertificateTrustOverrides) } else { @() }
+    $entries = @()
+    if ($settings.Contains('SqlServerCertificateTrustOverrides')) { $entries = @($settings.SqlServerCertificateTrustOverrides) }
     if ($entries.Count -gt 32) { throw 'Too many existing certificate trust exceptions.' }
     $others = @($entries | Where-Object { [string]$_.TargetId -ine [string]$Target.TargetId })
     if ($others.Count -ge 32) { throw 'Too many certificate trust exceptions.' }
