@@ -79,10 +79,12 @@ public sealed class PostgreSqlCapabilityProfilePort : ICapabilityProfileReposito
         """;
 
     private readonly NpgsqlDataSource _dataSource;
+    private readonly SqlServerCertificateTrustOverrides _certificateTrust;
 
-    public PostgreSqlCapabilityProfilePort(NpgsqlDataSource dataSource)
+    public PostgreSqlCapabilityProfilePort(NpgsqlDataSource dataSource, SqlServerCertificateTrustOverrides? certificateTrust = null)
     {
         _dataSource = dataSource ?? throw new ArgumentNullException(nameof(dataSource));
+        _certificateTrust = certificateTrust ?? SqlServerCertificateTrustOverrides.None;
     }
 
     public async ValueTask<CapabilityDiscoveryDueBatch> ListDueAsync(
@@ -115,7 +117,7 @@ public sealed class PostgreSqlCapabilityProfilePort : ICapabilityProfileReposito
                 targets.Add(new CapabilityDiscoveryDueTarget(
                     new MonitoredInstanceId(reader.GetGuid(0)),
                     new ObservationTargetRevision(reader.GetInt64(1)),
-                    ReadConnectionPolicy(reader, 2)));
+                    _certificateTrust.Apply(reader.GetGuid(0), ReadConnectionPolicy(reader, 2))));
                 hasMore = reader.GetBoolean(9);
             }
 

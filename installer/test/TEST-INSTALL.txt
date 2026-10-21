@@ -64,6 +64,12 @@ replace it with a certificate from your trusted issuer. No TLS bypass is used.
 Maintain certificate renewal; the test certificate expires in 365 days.
 
 AFTER SETUP
+SQL target certificates are validated by default. For an explicitly approved
+self-signed SQL target, administrators can enable a target/host/port-scoped
+TrustServerCertificate exception in BOTH service configuration files. Encryption
+remains mandatory. See Application\Docs\deployment\sqlserver-certificate-trust.md.
+This SQL target option does not change dashboard or PostgreSQL TLS validation.
+
 The configuration console verifies authenticated HTTPS repository readiness,
 starts the Collector, and writes NEXT-STEPS.txt and install-state.json in the
 chosen ProgramData directory. An incomplete configuration is explicitly reported

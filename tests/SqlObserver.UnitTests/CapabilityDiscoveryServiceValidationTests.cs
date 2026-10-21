@@ -14,6 +14,26 @@ public sealed class CapabilityDiscoveryServiceValidationTests
         new(2026, 8, 23, 18, 0, 0, TimeSpan.Zero);
 
     [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task ExplicitCertificateTrustIsRecordedOnlyForConfiguredTargetPolicy(bool configured)
+    {
+        CapabilityEvidence[] evidence = [.. CreateCapabilities().Where(c => c.CapabilityId.Value != "transport.tls-validated"),
+            new(new CapabilityId("transport.tls-validated"), CapabilityAvailability.Unavailable, CapabilityEvidenceReason.FeatureDisabled),
+            new(new CapabilityId(SqlServerCertificateTrustOverrides.TrustedCapability), CapabilityAvailability.Available, CapabilityEvidenceReason.Verified)];
+        TestHarness harness = CreateHarness(r => CreateConnectedProfile(r, capabilities: evidence), trustServerCertificate: configured);
+        if (configured) Assert.Equal(1, (await harness.RunAsync()).RecordedCount);
+        else await AssertInvalidBeforePersistenceAsync(harness);
+    }
+
+    [Fact]
+    public async Task TrustExceptionCannotBeRecordedAsValidatedCertificateEvidence()
+    {
+        TestHarness harness = CreateHarness(r => CreateConnectedProfile(r), trustServerCertificate: true);
+        await AssertInvalidBeforePersistenceAsync(harness);
+    }
+
+    [Theory]
     [InlineData(13)]
     [InlineData(14)]
     [InlineData(15)]
@@ -374,14 +394,15 @@ public sealed class CapabilityDiscoveryServiceValidationTests
     private static TestHarness CreateHarness(
         Func<CapabilityDiscoveryRequest, CapabilityProfile> profileFactory,
         TimeSpan? discoveryTimeout = null,
-        TimeSpan? refreshInterval = null)
+        TimeSpan? refreshInterval = null,
+        bool trustServerCertificate = false)
     {
         var target = new CapabilityDiscoveryDueTarget(
             new MonitoredInstanceId(Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")),
             new ObservationTargetRevision(3),
             new SqlServerConnectionPolicy(
                 new SqlServerEndpoint(new SqlServerHostName("sql.example.test"), tcpPort: 1433),
-                new SqlServerConnectTimeout(TimeSpan.FromSeconds(5))));
+                new SqlServerConnectTimeout(TimeSpan.FromSeconds(5)), trustServerCertificate: trustServerCertificate));
         var repository = new FakeProfileRepository(target);
         var service = new CapabilityDiscoveryService(
             repository,

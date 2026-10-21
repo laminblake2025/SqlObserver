@@ -57,8 +57,13 @@ make rotation/revocation explicit. PostgreSQL connection material should be
 provisioned by deployment policy rather than invented by application code.
 
 Require a trusted certificate chain, hostname validation, modern TLS settings,
-and an explicit certificate rotation/expiry alarm. Do not add certificate
-validation bypasses or fallback to cleartext. Keep sensitive report/query
+and an explicit certificate rotation/expiry alarm for production deployment.
+The unsigned test host supports an explicit administrator-managed SQL target
+certificate trust exception, scoped to target GUID, host, and TCP port; encryption
+remains required, and capability evidence identifies the skipped validation.
+See [SQL target certificate trust](../deployment/sqlserver-certificate-trust.md).
+Dashboard and repository certificate validation remain required. Do not fall back
+to cleartext. Keep sensitive report/query
 content unavailable in production by default until the owner approves its
 availability and key policy.
 

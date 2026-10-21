@@ -2,6 +2,7 @@ using SqlObserver.Application.Ports;
 using SqlObserver.Collector.Abstractions;
 using SqlObserver.Domain.Capabilities;
 using SqlObserver.Domain.Collection;
+using SqlObserver.Domain.Targets;
 
 namespace SqlObserver.Collectors;
 
@@ -94,8 +95,12 @@ public static class CollectorEligibilityEvaluator
             static evidence => evidence.CapabilityId.Value,
             StringComparer.Ordinal);
         if (manifest.RequiredCapabilities.Any(required =>
+                !(required.Value == "transport.tls-validated" && work.ConnectionPolicy.TrustServerCertificate && profile.TransportEncrypted &&
+                    capabilities.TryGetValue(SqlServerCertificateTrustOverrides.TrustedCapability, out var trusted) &&
+                    trusted.Availability == CapabilityAvailability.Available && trusted.Reason == CapabilityEvidenceReason.Verified) &&
+                (
                 !capabilities.TryGetValue(required.Value, out CapabilityEvidence? evidence) ||
-                evidence.Availability != CapabilityAvailability.Available))
+                evidence.Availability != CapabilityAvailability.Available)))
         {
             return CollectorEligibilityStatus.CapabilityMissing;
         }
