@@ -12,7 +12,7 @@ if ($LASTEXITCODE -ne 0 -or $receipt.installerSourceCommit -cne $source -or @(& 
 $stage = Join-Path $build 'staging'
 & (Join-Path $repo 'tools/test-lab-package.ps1') -PackageDirectory (Join-Path $stage 'Application')
 if (!$?) { throw 'Application verification failed.' }
-& (Join-Path $stage 'Setup/SqlObserver.TestSetup.exe') --verify
+& dotnet (Join-Path $stage 'Setup/SqlObserver.TestSetup.dll') --verify
 if ($LASTEXITCODE -ne 0) { throw 'Helper verification failed.' }
 $run = [DateTimeOffset]::UtcNow.ToString('yyyyMMddTHHmmssZ') + '-' + [Guid]::NewGuid().ToString('N').Substring(0, 8)
 $output = Join-Path $repo "artifacts/test-patches/$run"
