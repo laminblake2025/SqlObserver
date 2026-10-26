@@ -4,6 +4,7 @@ using SqlObserver.Application.Ports;
 using SqlObserver.Application.Services;
 using SqlObserver.Domain.Security;
 using SqlObserver.Reporting;
+using SqlObserver.Domain.Targets;
 
 namespace SqlObserver.Infrastructure.PostgreSql;
 
@@ -14,13 +15,13 @@ public sealed class PostgreSqlTargetControlPlane : IAsyncDisposable
 {
     private readonly NpgsqlDataSource _dataSource;
 
-    private PostgreSqlTargetControlPlane(NpgsqlDataSource dataSource, IdentityFingerprintKey fingerprintKey)
+    private PostgreSqlTargetControlPlane(NpgsqlDataSource dataSource, IdentityFingerprintKey fingerprintKey, SqlServerCertificateTrustOverrides? certificateTrust)
     {
         _dataSource = dataSource;
-        LiveActivity = new PostgreSqlLiveActivityRepository(dataSource);
-        Targets = new PostgreSqlObservationTargetPort(dataSource);
+        LiveActivity = new PostgreSqlLiveActivityRepository(dataSource, certificateTrust);
+        Targets = new PostgreSqlObservationTargetPort(dataSource, certificateTrust);
         TargetGrouping = new PostgreSqlObservationTargetGroupingPort(dataSource);
-        CapabilityProfiles = new PostgreSqlCapabilityProfilePort(dataSource);
+        CapabilityProfiles = new PostgreSqlCapabilityProfilePort(dataSource, certificateTrust);
         AdministrativeAudit = new PostgreSqlAdministrativeAuditPort(dataSource);
         McpInvocationAudit = new PostgreSqlMcpInvocationAuditPort(dataSource);
         WorkerLeases = new PostgreSqlWorkerLeasePort(dataSource);
@@ -65,7 +66,7 @@ public sealed class PostgreSqlTargetControlPlane : IAsyncDisposable
         PlanCacheIntervalHistory = new PostgreSqlPlanCacheIntervalHistoryPort(dataSource);
         PlanCacheContentReads = new PostgreSqlPlanCacheContentReadRepositoryPort(dataSource);
         PlanCacheIntervalRankings = new PostgreSqlPlanCacheIntervalRankingPort(dataSource);
-        CollectorRuntime = new PostgreSqlCollectorRuntimeRepositoryPort(dataSource, fingerprintKey);
+        CollectorRuntime = new PostgreSqlCollectorRuntimeRepositoryPort(dataSource, fingerprintKey, certificateTrust);
         var alertRepository = new PostgreSqlAlertRepositoryPort(dataSource);
         Alerts = alertRepository;
         AlertLifecycle = new PostgreSqlAlertLifecycleRepositoryPort(dataSource);
@@ -184,11 +185,11 @@ public sealed class PostgreSqlTargetControlPlane : IAsyncDisposable
     public static PostgreSqlTargetControlPlane Create(
         string repositoryConfiguration,
         string applicationName,
-        IdentityFingerprintKey fingerprintKey)
+        IdentityFingerprintKey fingerprintKey, SqlServerCertificateTrustOverrides? certificateTrust = null)
     {
         return new PostgreSqlTargetControlPlane(
             PostgreSqlDataSourceFactory.Create(repositoryConfiguration, applicationName),
-            fingerprintKey ?? throw new ArgumentNullException(nameof(fingerprintKey)));
+            fingerprintKey ?? throw new ArgumentNullException(nameof(fingerprintKey)), certificateTrust);
     }
 
     public ValueTask DisposeAsync() => _dataSource.DisposeAsync();

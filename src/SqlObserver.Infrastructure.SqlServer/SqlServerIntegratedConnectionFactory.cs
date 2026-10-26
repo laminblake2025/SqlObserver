@@ -77,7 +77,7 @@ internal sealed class SqlServerIntegratedConnectionFactory : ISqlServerConnectio
             ApplicationIntent = ApplicationIntent.ReadWrite,
             IntegratedSecurity = true,
             Encrypt = SqlConnectionEncryptOption.Mandatory,
-            TrustServerCertificate = false,
+            TrustServerCertificate = policy.TrustServerCertificate,
             ApplicationName = applicationName,
             ConnectTimeout = Math.Min(
                 SqlServerCapabilityAssetCatalog.ConnectTimeoutSeconds,

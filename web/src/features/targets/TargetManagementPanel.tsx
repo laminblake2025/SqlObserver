@@ -175,7 +175,8 @@ function ServerSettings({ instanceId, scope, access, onChanged, onClose }: Props
         <div><dt>Capability status</dt><dd>{target.capabilityStatus.replaceAll("_", " ")}</dd></div>
         <div><dt>Last discovery</dt><dd>{target.lastDiscoveryAtUtc === undefined ? "Not observed" : formatTime(target.lastDiscoveryAtUtc)}</dd></div>
       </dl>
-      <p>Server ID and stable key are fixed. Connections use the Collector Windows service identity with validated TLS. No SQL login credentials are stored.</p>
+      <p>Server ID and stable key are fixed. Connections use the Collector Windows service identity with required TLS encryption. No SQL login credentials are stored.</p>
+      {target.encryptionMode === "mandatory_trust_server_certificate" && <p role="status">Trust server certificate is enabled for this target by an administrator. Traffic is encrypted; certificate identity validation is skipped.</p>}
       {retired ? <p role="status">This server is retired; settings changes and rediscovery are disabled.</p> : null}
       <form aria-label="Server settings" className="target-form target-management-form" onSubmit={event => void save(event)}>
         <fieldset disabled={disabled}>

@@ -1,0 +1,67 @@
+name: Unsigned test installer
+
+on:
+  workflow_dispatch:
+  push:
+    paths: ['installer/test/**', 'tools/build-test-installer.ps1', '.github/workflows/test-installer.yml']
+  pull_request:
+    paths: ['installer/test/**', 'tools/build-test-installer.ps1', '.github/workflows/test-installer.yml']
+
+permissions:
+  contents: read
+
+jobs:
+  installer:
+    runs-on: windows-2025
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9
+        env:
+          DOTNET_INSTALL_DIR: ${{ runner.temp }}/dotnet
+        with:
+          global-json-file: global.json
+      - uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa
+        with:
+          version: 11.19.0
+          run_install: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 22.22.0
+      - name: Install verified Inno Setup compiler on the build runner
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $path = Join-Path $env:RUNNER_TEMP 'innosetup-7.1.0-x64.exe'
+          Invoke-WebRequest 'https://github.com/jrsoftware/issrc/releases/download/is-7_1_0/innosetup-7.1.0-x64.exe' -OutFile $path
+          if ((Get-FileHash $path -Algorithm SHA256).Hash -ine '0362a383ed217d4c4239b5933866dd96d3eb2102737da92f80f6057a4b40df2f') { throw 'Compiler installer hash mismatch' }
+          $sig = Get-AuthenticodeSignature $path
+          if ($sig.Status -ne 'Valid' -or $sig.SignerCertificate.Subject -notlike '*Pyrsys B.V.*') { throw 'Compiler publisher mismatch' }
+          $destination = Join-Path $env:RUNNER_TEMP 'InnoSetup'
+          $process = Start-Process -FilePath $path -ArgumentList @('/CURRENTUSER','/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART',('/DIR="' + $destination + '"')) -WindowStyle Hidden -Wait -PassThru
+          if ($process.ExitCode -ne 0) { throw 'Build compiler installation failed' }
+      - name: Build verified application payload
+        shell: pwsh
+        run: ./tools/build-lab-package.ps1
+      - name: Build and test unsigned offline installer
+        shell: pwsh
+        run: |
+          $receipts = @(Get-ChildItem artifacts/lab-packages -Recurse -Filter build-receipt.json)
+          if ($receipts.Count -ne 1) { throw 'Expected one verified application build receipt' }
+          $receiptFile = $receipts[0]
+          $receipt = Get-Content $receiptFile.FullName -Raw | ConvertFrom-Json
+          ./tools/build-test-installer.ps1 -ArchivePath (Join-Path $receiptFile.DirectoryName $receipt.archive) -ExpectedArchiveSha256 $receipt.sha256 -IsccPath (Join-Path $env:RUNNER_TEMP 'InnoSetup/ISCC.exe')
+      - name: Publish unsigned installer and verification evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: unsigned-test-installer
+          path: |
+            artifacts/test-installers/**/*.exe
+            artifacts/test-installers/**/*.sha256
+            artifacts/test-installers/**/build-receipt.json
+            artifacts/test-installers/**/tests/*.trx
+          if-no-files-found: warn
+          retention-days: 14

@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "dotnetRuntime": {
+    "file": "dotnet-runtime-10.0.13-win-x64.exe",
+    "url": "https://builds.dotnet.microsoft.com/dotnet/Runtime/10.0.13/dotnet-runtime-10.0.13-win-x64.exe",
+    "algorithm": "SHA512",
+    "hash": "44da78e619ae23e352e81fbc3a5803d78b1375dff89c176dd17a884d4e42e17850bb7adb78c799ca15b2127b67529395df1143976e33f6c8157f53bfc5a42e62",
+    "publisher": "Microsoft Corporation"
+  },
+  "aspnetRuntime": {
+    "file": "aspnetcore-runtime-10.0.13-win-x64.exe",
+    "url": "https://builds.dotnet.microsoft.com/dotnet/aspnetcore/Runtime/10.0.13/aspnetcore-runtime-10.0.13-win-x64.exe",
+    "algorithm": "SHA512",
+    "hash": "680bf274a7ecc1818d49e1845072aa3064102992fb00547965107938ff6808ea35f832c46f1b4e05231cae47e40e746419c024e5622f7a1254c0dcb946c5c07c",
+    "publisher": "Microsoft Corporation"
+  },
+  "powerShell": {
+    "file": "PowerShell-7.6.7-win-x64.msi",
+    "url": "https://github.com/PowerShell/PowerShell/releases/download/v7.6.7/PowerShell-7.6.7-win-x64.msi",
+    "algorithm": "SHA256",
+    "hash": "ec575cef9ec56fcd905de0d5eeac9cb7f81a0a65abb87bb5cd0e87fdfe2b8cc0",
+    "publisher": "Microsoft Corporation"
+  },
+  "postgreSql": {
+    "file": "postgresql-18.6-5-windows-x64.exe",
+    "url": "https://get.enterprisedb.com/postgresql/postgresql-18.6-5-windows-x64.exe",
+    "algorithm": "SHA256",
+    "hash": "227e2bc08091b4c2b8338c7d61b11d057f895711480b006f90bfcfcd2410a58a",
+    "publisher": "EnterpriseDB"
+  }
+}

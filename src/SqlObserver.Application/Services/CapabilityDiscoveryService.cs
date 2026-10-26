@@ -2,6 +2,7 @@ using SqlObserver.Application.Ports;
 using SqlObserver.Domain.Auditing;
 using SqlObserver.Domain.Capabilities;
 using SqlObserver.Domain.Coordination;
+using SqlObserver.Domain.Targets;
 
 namespace SqlObserver.Application.Services;
 
@@ -265,7 +266,7 @@ public sealed class CapabilityDiscoveryService : ICapabilityDiscoveryService
         }
 
         ValidateConnectedDisposition(profile);
-        ValidateConnectedCapabilities(profile);
+        ValidateConnectedCapabilities(profile, target.ConnectionPolicy.TrustServerCertificate);
         ValidateConnectedPermissions(profile);
     }
 
@@ -324,7 +325,7 @@ public sealed class CapabilityDiscoveryService : ICapabilityDiscoveryService
         }
     }
 
-    private static void ValidateConnectedCapabilities(CapabilityProfile profile)
+    private static void ValidateConnectedCapabilities(CapabilityProfile profile, bool trustServerCertificate)
     {
         var capabilities = new Dictionary<string, CapabilityEvidence>(StringComparer.Ordinal);
         foreach (CapabilityEvidence evidence in profile.Capabilities)
@@ -357,8 +358,17 @@ public sealed class CapabilityDiscoveryService : ICapabilityDiscoveryService
             usesWindowsAuthentication ? CapabilityEvidenceReason.Verified : CapabilityEvidenceReason.ProbeUnavailable);
         ValidateCapability(
             capabilities[ValidatedTlsCapabilityId],
-            profile.TransportEncrypted ? CapabilityAvailability.Available : CapabilityAvailability.Unavailable,
-            profile.TransportEncrypted ? CapabilityEvidenceReason.Verified : CapabilityEvidenceReason.FeatureDisabled);
+            profile.TransportEncrypted && !trustServerCertificate ? CapabilityAvailability.Available : CapabilityAvailability.Unavailable,
+            profile.TransportEncrypted && !trustServerCertificate ? CapabilityEvidenceReason.Verified : CapabilityEvidenceReason.FeatureDisabled);
+        if (trustServerCertificate)
+        {
+            if (!capabilities.TryGetValue(SqlServerCertificateTrustOverrides.TrustedCapability, out var trusted))
+                throw new InvalidDataException("Discovery omitted the explicit certificate trust evidence.");
+            ValidateCapability(trusted, profile.TransportEncrypted ? CapabilityAvailability.Available : CapabilityAvailability.Unavailable,
+                profile.TransportEncrypted ? CapabilityEvidenceReason.Verified : CapabilityEvidenceReason.FeatureDisabled);
+        }
+        else if (capabilities.ContainsKey(SqlServerCertificateTrustOverrides.TrustedCapability))
+            throw new InvalidDataException("Discovery returned certificate trust evidence without a configured exception.");
         ValidateCapability(
             capabilities[NonSysAdminCapabilityId],
             profile.IsSysAdmin ? CapabilityAvailability.Unavailable : CapabilityAvailability.Available,
@@ -407,6 +417,7 @@ public sealed class CapabilityDiscoveryService : ICapabilityDiscoveryService
 
         if (profile.Outcome is CapabilityDiscoveryOutcome.Supported or CapabilityDiscoveryOutcome.Degraded &&
             RequiredCapabilityIds.Any(id =>
+                !(trustServerCertificate && id == ValidatedTlsCapabilityId) &&
                 capabilities[id].Availability != CapabilityAvailability.Available))
         {
             throw new InvalidDataException("Capability discovery marked a required capability unavailable on a usable profile.");
@@ -562,6 +573,7 @@ public sealed class CapabilityDiscoveryService : ICapabilityDiscoveryService
         ConnectionCapabilityId or
         WindowsAuthenticationCapabilityId or
         ValidatedTlsCapabilityId or
+        SqlServerCertificateTrustOverrides.TrustedCapability or
         NonSysAdminCapabilityId or
         WindowsPlatformCapabilityId or
         AvailabilityGroupsCapabilityId or

@@ -66,6 +66,21 @@ See the [architecture overview](docs/architecture/overview.md), [architecture de
 
 ## Getting started
 
+### Unsigned Windows test installer
+
+Download the [unsigned test installer and existing-host patch](https://github.com/laminblake2025/SqlObserver/releases/tag/v0.1.0-test.b9ae1674).
+The full installer configures a fresh, isolated Windows test host. The separate,
+version-checked patch updates the previously provisioned identity-fix test host
+and enables certificate trust for its existing SQL-QA-DB03 target while retaining
+repository data, configuration, keys, and service identities. It is not a general
+upgrade package. Follow the installation instructions and verify the SHA-256
+checksums attached to the release.
+
+SQL target connections remain encrypted. Certificate validation is the default;
+administrators can configure an exception for an exact target, host, and TCP port.
+See [SQL Server certificate trust exceptions](docs/deployment/sqlserver-certificate-trust.md).
+Native installer and service-update lifecycle qualification remains incomplete.
+
 ### 1. Prepare a development environment
 
 Use a Windows development workstation or an isolated Windows Server lab with:

@@ -443,7 +443,7 @@ public static class ObservationTargetEndpoints
             target.ConnectionPolicy.Endpoint.TcpPort,
             target.ConnectionPolicy.CertificateHostName?.Value,
             "windows_integrated_service_identity",
-            "mandatory_validated",
+            target.ConnectionPolicy.TrustServerCertificate ? "mandatory_trust_server_certificate" : "mandatory_validated",
             lifecycle,
             capabilityStatus,
             reasons,
