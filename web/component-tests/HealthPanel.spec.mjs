@@ -383,7 +383,10 @@ test('embedded navigation and independent dashboard remain available when the la
     await route.fulfill({ status: 503, contentType: 'application/json', body: '{"detail":"PRIVATE_HEALTH_ERROR"}' }); return true;
   };
   await open(page, 'Dashboard', '?embedded=true');
-  await panel(page).getByText('Latest health, databases & configuration', { exact:true }).click();
+  const latestHealth = panel(page).locator('.latest-health-disclosure');
+  if (!await latestHealth.evaluate(element => element.open)) {
+    await latestHealth.getByText('Latest health, databases & configuration', { exact: true }).click();
+  }
   await expect(panel(page).getByRole('heading', { name: 'Server diagnostics for Alpha', exact: true })).toHaveCount(1);
   await expect(page.getByRole('heading', { name: 'Server summary for Alpha', exact: true })).toHaveCount(0);
   await expect(panel(page).getByRole('button', { name: 'Close', exact: true })).toHaveCount(0);
