@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 import { ownerBrowserRequest } from './owner-browser-request.mjs';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
-const targetId = 'dfb2b72c-4ad4-4765-9523-528c798482f0';
+const targetId = '5a3acf12-2722-4f87-b751-a7b210fe27ce';
 const output = resolve('../.artifacts/lab-dashboard-20261009');
 
 test('QueryTextReader loads captured SQL only after a deliberate request for the selected session', async ({ page }) => {

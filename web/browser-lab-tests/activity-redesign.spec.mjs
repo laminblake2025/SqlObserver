@@ -4,12 +4,12 @@ import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { loadActivityCapture } from '../src/features/activity/activityCaptureModel.ts';
 import { buildSessionTriage, defaultTriageThresholds } from '../src/features/activity/sessionTriageModel.ts';
-const target = 'dfb2b72c-4ad4-4765-9523-528c798482f0', output = resolve('../.artifacts/activity-redesign-20261009/native');
+const target = '5a3acf12-2722-4f87-b751-a7b210fe27ce', output = resolve('../.artifacts/activity-redesign-20261009/native');
 test('bounded native blocking workload flows through collector, repository, API and prioritized dashboard', async ({ page }) => {
   const request = await ownerBrowserRequest(page);
   await mkdir(output, { recursive: true }); const { runId } = JSON.parse(await readFile(resolve(output, 'inputs.json'), 'utf8'));
   const application = 'SQL Observer Activity qualification ' + runId;
-  const status = await request.get('/__lab/status'); expect(await status.json()).toMatchObject({ upstream: 'https://WIN-QNGOV5GDM24:5443', tls: 'validated', syntheticData: false });
+  const status = await request.get('/__lab/status'); expect(await status.json()).toMatchObject({ upstream: 'https://WIN-QNGOV5GDM24:5444', tls: 'validated', syntheticData: false });
   const access = await request.get(`/api/v1/me?targetId=${target}`); expect((await access.json()).targetRoles).toContain('QueryTextReader');
   let capture, groups, blocked, blocker;
   const replay = process.env.SQLOBSERVER_ACTIVITY_REPLAY_CAPTURE === '1' ? JSON.parse(await readFile(resolve(output, 'dashboard-evidence.json'), 'utf8')) : undefined;
