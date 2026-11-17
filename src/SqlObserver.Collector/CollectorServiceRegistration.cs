@@ -53,7 +53,8 @@ public static class CollectorServiceRegistration
         services.AddSingleton(_ => PostgreSqlCollectorDataPlane.Create(
             repositoryConfiguration,
             "SqlObserver.Collector",
-            _.GetRequiredService<IdentityFingerprintKey>()));
+            _.GetRequiredService<IdentityFingerprintKey>(), new SqlServerCertificateTrustOverrides(
+                configuration.GetSection(SqlServerCertificateTrustOverrides.ConfigurationSection).Get<SqlServerCertificateTrustOverride[]>() ?? [])));
         if (configureTracing is null && configureMetrics is null)
         {
             services.AddSqlObserverObservability(configuration, ObservabilityContract.CollectorServiceName, environment);

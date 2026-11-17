@@ -18,6 +18,10 @@ if (Test-Path -LiteralPath $taskStatePath) {
             $taskOwnedProcess.StartTime.ToUniversalTime().Ticks -ne [long]$taskState.StartTicks -or
             $taskState.EntryPoint -ne $taskAssembly) { throw 'Recorded PID belongs to another process; refusing to control it.' }
         if ($Stop) { Stop-Process -Id $taskOwnedProcess.Id; Write-Host 'Lab dashboard stopped; lab services are untouched.'; return }
+        $taskExistingStatus = Invoke-RestMethod -Uri "http://127.0.0.1:$Port/__lab/status" -UseDefaultCredentials -AllowUnencryptedAuthentication -NoProxy -TimeoutSec 5
+        if ($taskExistingStatus.upstream -cne 'https://WIN-QNGOV5GDM24:5444' -or $taskExistingStatus.tls -cne 'validated' -or $taskExistingStatus.syntheticData -ne $false) {
+            throw 'The running lab dashboard uses an outdated connection. Stop it with -Stop, then start it again.'
+        }
         Write-Host "Lab dashboard already running at http://localhost:$Port/#/overview?range=1h"
         return
     }
@@ -40,8 +44,8 @@ try {
         if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $taskAssembly)) { throw 'Build and verify the dashboard first.' }
     }
     # Preflight keeps validated TLS and the caller's existing Windows privileges.
-    $taskInventory = Invoke-RestMethod -Uri 'https://WIN-QNGOV5GDM24:5443/api/v1/observation-targets/' -UseDefaultCredentials -TimeoutSec 15
-    if (@($taskInventory.items | Where-Object instanceKey -ceq 'lab-sql-01').Count -ne 1) { throw 'Expected lab target is unavailable.' }
+    $taskInventory = Invoke-RestMethod -Uri 'https://WIN-QNGOV5GDM24:5444/api/v1/observation-targets/' -UseDefaultCredentials -NoProxy -TimeoutSec 15
+    if (@($taskInventory.items | Where-Object { $_.instanceId -ceq '5a3acf12-2722-4f87-b751-a7b210fe27ce' -and $_.instanceKey -ceq 'lab-sql-63277404' }).Count -ne 1) { throw 'Expected qualified lab target is unavailable.' }
     [void][IO.Directory]::CreateDirectory($taskArtifacts)
     $taskRuntime = (Get-Command dotnet -CommandType Application | Select-Object -First 1).Source
     $taskWeb = Join-Path $taskRepository 'web/dist'

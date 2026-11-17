@@ -90,6 +90,13 @@ public sealed class LabBootstrapReaderProvisioningTests(PostgreSql18Fixture fixt
             Assert.Equal(376, covering.Results[0].Migration.Number.Value);
             Assert.Equal(379, covering.Results[^1].Migration.Number.Value);
             Assert.All(covering.Results, result => Assert.Equal(MigrationOutcome.Applied, result.Outcome));
+            // The recent-completion read path also needs no temporary reader grant.
+            MigrationBatchResult recentCompletion = await port.ApplyPendingAsync(new(1, timeout), default);
+            Assert.False(recentCompletion.HasFailures);
+            MigrationExecutionResult recentMigration = Assert.Single(recentCompletion.Results);
+            Assert.Equal(380, recentMigration.Migration.Number.Value);
+            Assert.Equal("recent_completion_read_path", recentMigration.Migration.Name);
+            Assert.Equal(MigrationOutcome.Applied, recentMigration.Outcome);
             Assert.Empty((await port.ApplyPendingAsync(new(1, timeout), default)).Results);
         }
         finally

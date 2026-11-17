@@ -22,7 +22,7 @@ export interface ObservationTargetSummary {
   readonly tcpPort?: number;
   readonly certificateHostName?: string;
   readonly authenticationMode: "windows_integrated_service_identity";
-  readonly encryptionMode: "mandatory_validated";
+  readonly encryptionMode: "mandatory_validated" | "mandatory_trust_server_certificate";
   readonly lifecycle: TargetLifecycle;
   readonly capabilityStatus: CapabilityStatus;
   readonly capabilityReasons: readonly string[];

@@ -102,10 +102,12 @@ public sealed class PostgreSqlObservationTargetPort : IObservationTargetReposito
         """;
 
     private readonly NpgsqlDataSource _dataSource;
+    private readonly SqlServerCertificateTrustOverrides _certificateTrust;
 
-    public PostgreSqlObservationTargetPort(NpgsqlDataSource dataSource)
+    public PostgreSqlObservationTargetPort(NpgsqlDataSource dataSource, SqlServerCertificateTrustOverrides? certificateTrust = null)
     {
         _dataSource = dataSource ?? throw new ArgumentNullException(nameof(dataSource));
+        _certificateTrust = certificateTrust ?? SqlServerCertificateTrustOverrides.None;
     }
 
     public async ValueTask<ObservationTargetRegistrationResult> RegisterAsync(
@@ -418,7 +420,7 @@ public sealed class PostgreSqlObservationTargetPort : IObservationTargetReposito
         _ => throw new ArgumentOutOfRangeException(nameof(action)),
     };
 
-    internal static ObservationTarget ReadTarget(NpgsqlDataReader reader, int offset)
+    internal ObservationTarget ReadTarget(NpgsqlDataReader reader, int offset)
     {
         string authenticationMode = reader.GetString(offset + 8);
         string transportSecurity = reader.GetString(offset + 9);
@@ -446,7 +448,7 @@ public sealed class PostgreSqlObservationTargetPort : IObservationTargetReposito
             new MonitoredInstanceId(reader.GetGuid(offset)),
             new ObservationTargetKey(reader.GetString(offset + 1)),
             new ObservationTargetDisplayName(reader.GetString(offset + 2)),
-            policy,
+            _certificateTrust.Apply(reader.GetGuid(offset), policy),
             reader.GetString(offset + 10) switch
             {
                 "pending_discovery" => ObservationTargetLifecycle.PendingDiscovery,

@@ -6,7 +6,7 @@ using Microsoft.Extensions.FileProviders;
 
 // Workstation-only lab adapter: current local UI, existing authenticated lab API.
 // No API payload translation, database credentials, or synthetic responses.
-const string upstreamOrigin = "https://WIN-QNGOV5GDM24:5443";
+const string upstreamOrigin = "https://WIN-QNGOV5GDM24:5444";
 const long maximumBodyBytes = 2 * 1024 * 1024;
 if (!OperatingSystem.IsWindows()) throw new PlatformNotSupportedException("The lab dashboard requires Windows authentication.");
 using WindowsIdentity processIdentity = WindowsIdentity.GetCurrent();
@@ -27,6 +27,7 @@ builder.Logging.AddFilter("Microsoft.AspNetCore", LogLevel.Warning);
 using HttpClientHandler handler = new()
 {
     UseDefaultCredentials = true,
+    UseProxy = false,
     UseCookies = false,
     AllowAutoRedirect = false,
 };
@@ -68,7 +69,8 @@ app.Use(async (context, next) =>
 {
     HttpRequest request = context.Request;
     bool safe = HttpMethods.IsGet(request.Method) || HttpMethods.IsHead(request.Method);
-    if (request.Path.StartsWithSegments("/api/v1", StringComparison.Ordinal))
+    if (request.Path.StartsWithSegments("/api/v1", StringComparison.Ordinal)
+        || request.Path.StartsWithSegments("/api/v2", StringComparison.Ordinal))
     {
         // Resolve against a fixed origin; never accept an absolute or caller-selected destination.
         string resource = request.Path.ToUriComponent() + request.QueryString.ToUriComponent();

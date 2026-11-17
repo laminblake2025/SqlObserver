@@ -54,7 +54,7 @@ export function parseObservationTarget(value: unknown, expectedInstanceId?: stri
   const namedInstance = row.namedInstance == null ? undefined : token(row.namedInstance, 128, /^[a-z0-9][a-z0-9_$\-]*$/iu);
   const tcpPort = row.tcpPort == null ? undefined : positiveInteger(row.tcpPort);
   if ((namedInstance === undefined) === (tcpPort === undefined) || tcpPort !== undefined && tcpPort > 65535 ||
-    row.authenticationMode !== "windows_integrated_service_identity" || row.encryptionMode !== "mandatory_validated") throw invalidTargetResponse();
+    row.authenticationMode !== "windows_integrated_service_identity" || !["mandatory_validated", "mandatory_trust_server_certificate"].includes(String(row.encryptionMode))) throw invalidTargetResponse();
   const lifecycle = oneOf(row.lifecycle, lifecycles), capabilityStatus = oneOf(row.capabilityStatus, capabilityStatuses);
   if (!Array.isArray(row.capabilityReasons) || row.capabilityReasons.length > 32) throw invalidTargetResponse();
   const certificateHostName = row.certificateHostName == null ? undefined : token(row.certificateHostName, 255, hostPattern);
@@ -63,7 +63,7 @@ export function parseObservationTarget(value: unknown, expectedInstanceId?: stri
     instanceId, instanceKey: token(row.instanceKey, 256, keyPattern), displayName: text(row.displayName, 512),
     host: token(row.host, 255, hostPattern), ...(namedInstance === undefined ? {} : { namedInstance }),
     ...(tcpPort === undefined ? {} : { tcpPort }), ...(certificateHostName === undefined ? {} : { certificateHostName }),
-    authenticationMode: "windows_integrated_service_identity", encryptionMode: "mandatory_validated", lifecycle, capabilityStatus,
+    authenticationMode: "windows_integrated_service_identity", encryptionMode: row.encryptionMode as ObservationTargetSummary["encryptionMode"], lifecycle, capabilityStatus,
     capabilityReasons: row.capabilityReasons.map(reason => text(reason, 512)), configurationRevision: positiveInteger(row.configurationRevision),
     discoveryRequestedAtUtc: utc(row.discoveryRequestedAtUtc), ...(lastDiscoveryAtUtc === undefined ? {} : { lastDiscoveryAtUtc }),
   };

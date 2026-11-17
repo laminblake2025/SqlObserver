@@ -6,6 +6,7 @@ using SqlObserver.Application.Ports;
 using SqlObserver.Application.Services;
 using SqlObserver.Domain.Coordination;
 using SqlObserver.Domain.Security;
+using SqlObserver.Domain.Targets;
 using SqlObserver.Infrastructure.PostgreSql;
 using SqlObserver.Infrastructure.Windows;
 using SqlObserver.Mcp;
@@ -69,7 +70,8 @@ builder.Services.AddSingleton(static services =>
     IConfiguration configuration = services.GetRequiredService<IConfiguration>();
     string repositoryConfiguration = configuration.GetConnectionString("SqlObserverRepository") ??
         throw new InvalidOperationException("The SqlObserver repository is not configured.");
-    return PostgreSqlTargetControlPlane.Create(repositoryConfiguration, "SqlObserver.Server", services.GetRequiredService<IdentityFingerprintKey>());
+    return PostgreSqlTargetControlPlane.Create(repositoryConfiguration, "SqlObserver.Server", services.GetRequiredService<IdentityFingerprintKey>(),
+        new SqlServerCertificateTrustOverrides(configuration.GetSection(SqlServerCertificateTrustOverrides.ConfigurationSection).Get<SqlServerCertificateTrustOverride[]>() ?? []));
 });
 builder.Services.AddSingleton<IObservationTargetRepositoryPort>(static services =>
     services.GetRequiredService<PostgreSqlTargetControlPlane>().Targets);

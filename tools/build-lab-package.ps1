@@ -58,6 +58,7 @@ try {
         'docs/deployment/lab-test-package.md' = 'README.md'
         'docs/deployment/lab-single-host.md' = 'Docs/deployment/lab-single-host.md'
         'docs/deployment/sqlserver-version-compatibility.md' = 'Docs/deployment/sqlserver-version-compatibility.md'
+        'docs/deployment/sqlserver-certificate-trust.md' = 'Docs/deployment/sqlserver-certificate-trust.md'
         'docs/architecture/support-matrix.md' = 'Docs/architecture/support-matrix.md'
         'docs/adr/ADR-0017-deployment-identities-secrets-and-transport.md' = 'Docs/adr/ADR-0017-deployment-identities-secrets-and-transport.md'
         'web/.artifacts/web-asset-manifest.v1.json' = 'Docs/web-asset-manifest.v1.json'

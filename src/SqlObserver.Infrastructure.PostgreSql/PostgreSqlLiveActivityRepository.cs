@@ -10,7 +10,7 @@ using SqlObserver.Domain.Targets;
 
 namespace SqlObserver.Infrastructure.PostgreSql;
 
-internal sealed class PostgreSqlLiveActivityRepository(NpgsqlDataSource source) : ILiveActivityRepository
+internal sealed class PostgreSqlLiveActivityRepository(NpgsqlDataSource source, SqlServerCertificateTrustOverrides? certificateTrust = null) : ILiveActivityRepository
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
     private sealed record Cursor(Guid Snapshot, int Offset, string Scope);
@@ -23,10 +23,10 @@ internal sealed class PostgreSqlLiveActivityRepository(NpgsqlDataSource source) 
         await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
         var targets = new List<LiveActivityTarget>();
         while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
-            targets.Add(new(reader.GetGuid(0), reader.GetInt64(1), new SqlServerConnectionPolicy(
+            targets.Add(new(reader.GetGuid(0), reader.GetInt64(1), (certificateTrust ?? SqlServerCertificateTrustOverrides.None).Apply(reader.GetGuid(0), new SqlServerConnectionPolicy(
                 new SqlServerEndpoint(new SqlServerHostName(reader.GetString(2)), reader.IsDBNull(3) ? null : new SqlServerInstanceName(reader.GetString(3)),
                     reader.IsDBNull(4) ? null : reader.GetInt32(4)), new SqlServerConnectTimeout(reader.GetTimeSpan(6)),
-                reader.IsDBNull(5) ? null : new SqlServerCertificateHostName(reader.GetString(5)))));
+                reader.IsDBNull(5) ? null : new SqlServerCertificateHostName(reader.GetString(5))))));
         return targets;
     }
 

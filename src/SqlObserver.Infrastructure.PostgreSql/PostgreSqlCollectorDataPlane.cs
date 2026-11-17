@@ -16,12 +16,12 @@ public sealed class PostgreSqlCollectorDataPlane : IAsyncDisposable
     private readonly NpgsqlDataSource _dataSource;
     private readonly IdentityFingerprintKey _fingerprintKey;
 
-    private PostgreSqlCollectorDataPlane(NpgsqlDataSource dataSource, IdentityFingerprintKey fingerprintKey)
+    private PostgreSqlCollectorDataPlane(NpgsqlDataSource dataSource, IdentityFingerprintKey fingerprintKey, SqlServerCertificateTrustOverrides? certificateTrust)
     {
         _dataSource = dataSource;
-        LiveActivity = new PostgreSqlLiveActivityRepository(dataSource);
+        LiveActivity = new PostgreSqlLiveActivityRepository(dataSource, certificateTrust);
         _fingerprintKey = fingerprintKey ?? throw new ArgumentNullException(nameof(fingerprintKey));
-        Runtime = new PostgreSqlCollectorRuntimeRepositoryPort(dataSource, fingerprintKey);
+        Runtime = new PostgreSqlCollectorRuntimeRepositoryPort(dataSource, fingerprintKey, certificateTrust);
         BackupZoneQualifications = new PostgreSqlBackupZoneQualificationPort(dataSource);
         SqlAgentModuleEnrollments = new PostgreSqlSqlAgentModuleEnrollmentPort(dataSource);
         QueryStoreGroupWindows = new PostgreSqlQueryStoreGroupWindowPort(dataSource);
@@ -33,7 +33,7 @@ public sealed class PostgreSqlCollectorDataPlane : IAsyncDisposable
         BackupAlertEvidence = new PostgreSqlBackupAlertEvidencePort(dataSource);
         BlockingAlertEvidence = new PostgreSqlBlockingAlertEvidencePort(dataSource);
         DeadlockAlertEvidence = new PostgreSqlDeadlockAlertEvidencePort(dataSource);
-        CapabilityProfiles = new PostgreSqlCapabilityProfilePort(dataSource);
+        CapabilityProfiles = new PostgreSqlCapabilityProfilePort(dataSource, certificateTrust);
         ReplicationDistributionBindings = new PostgreSqlReplicationDistributionBindingResolver(dataSource);
         Alerts = new PostgreSqlAlertRepositoryPort(dataSource);
         PartitionMaintenance = new PostgreSqlPartitionMaintenancePort(dataSource);
@@ -156,8 +156,8 @@ public sealed class PostgreSqlCollectorDataPlane : IAsyncDisposable
     public static PostgreSqlCollectorDataPlane Create(
         string repositoryConfiguration,
         string applicationName,
-        IdentityFingerprintKey fingerprintKey) =>
-        new(PostgreSqlDataSourceFactory.Create(repositoryConfiguration, applicationName), fingerprintKey ?? throw new ArgumentNullException(nameof(fingerprintKey)));
+        IdentityFingerprintKey fingerprintKey, SqlServerCertificateTrustOverrides? certificateTrust = null) =>
+        new(PostgreSqlDataSourceFactory.Create(repositoryConfiguration, applicationName), fingerprintKey ?? throw new ArgumentNullException(nameof(fingerprintKey)), certificateTrust);
 
     public ValueTask DisposeAsync() => _dataSource.DisposeAsync();
 }

@@ -1,0 +1,180 @@
+SQL OBSERVER — UNSIGNED TEST INSTALLER 0.1
+
+Use a fresh, isolated Windows Server 2022 or later x64 machine. This is a test
+installer, not a signed production release. It supports fresh installation and
+data-preserving uninstall. Automatic upgrades and database purge are excluded.
+Run the installer as Administrator. Verify its SHA-256 against the separately
+retained build receipt before transferring or executing it.
+
+PREREQUISITES
+The installer bundles signed, checksum-pinned .NET 10.0.13 runtime and ASP.NET
+Core runtime, PowerShell 7.6.7, and the PostgreSQL 18.6 vendor installer. Missing
+.NET/PowerShell prerequisites install automatically. No internet is needed on
+the destination. Shared prerequisites are retained on uninstall.
+
+If PostgreSQL 18 is missing, its interactive vendor wizard opens first. Install
+the server and command-line tools on local port 5432, choose a strong postgres
+administrator password, and retain that password securely. pgAdmin and Stack
+Builder are optional. Finish the vendor wizard to return to SQL Observer setup.
+An existing PostgreSQL 18 installation is retained. Other majors are not upgraded.
+
+CONFIGURATION
+After the files are copied, a configuration console opens. Follow its prompts:
+  - Choose a FRESH ProgramData directory and database name (sqlobserver_test...).
+  - Enter this machine's stable DNS hostname and an unused HTTPS port (5444).
+  - Create the dedicated local operator group, or select an existing dedicated
+    Windows group. New group membership requires sign-out/sign-in before use.
+  - Choose a virtual Collector identity for local SQL/domain machine access,
+    or an existing non-admin domain service account/gMSA for remote SQL.
+    Ordinary account passwords are collected with hidden input. Domain policy
+    must permit service logon. Do not use an administrator service account.
+  - Choose whether this operator group may deliberately load protected SQL.
+    This is OFF by default; enabling it creates distinct machine-protected keys
+    and explicitly assigns QueryTextReader for the test targets.
+  - Enter the local PostgreSQL administrator name and, if TLS is already on,
+    its trusted root certificate path (blank uses Windows trust).
+  - Review the proposed changes and type INSTALL. Then enter the PostgreSQL
+    administrator password with hidden input. It is not retained on disk.
+
+Setup creates separate, generated PostgreSQL runtime logins with only the Server
+or Collector role, applies the embedded checksum-verified migrations under a
+temporary non-superuser bootstrap login, and disables that login afterward.
+The temporary password also expires after one hour if the process is terminated.
+It never replaces an existing repository. Bootstrap administration is limited
+to 127.0.0.1:5432; runtime repository connections use VerifyFull TLS.
+
+If local PostgreSQL TLS is off, the reviewed setup enables it with a new test
+certificate and reloads PostgreSQL configuration. Existing TLS settings are
+retained. It does not edit listen_addresses, pg_hba.conf, or firewall rules.
+This makes an isolated test host important: enabling TLS affects that local
+PostgreSQL cluster. Existing databases and active sessions are retained.
+
+Two delayed-auto Windows services are installed: SqlObserverTestServer and
+SqlObserverTestCollector. Each has its own configuration access. Generated
+repository credentials and fingerprint/PFX secrets are in ACL-restricted
+appsettings.json files; this is the existing lab-file policy, not a production
+secret-store design. Never share these populated files or copy DPAPI keys to
+another machine. The application directory remains read-only to the services.
+
+Setup creates a one-year self-signed TEST HTTPS certificate for this hostname,
+localhost, and the machine name, and trusts the public certificate on THIS host.
+For remote browsers, verify the certificate fingerprint in NEXT-STEPS.txt and
+distribute the public dashboard-test-root.cer through your lab trust process, or
+replace it with a certificate from your trusted issuer. No TLS bypass is used.
+Maintain certificate renewal; the test certificate expires in 365 days.
+
+AFTER SETUP
+SQL target certificates are validated by default. For an explicitly approved
+self-signed SQL target, administrators can enable a target/host/port-scoped
+TrustServerCertificate exception in BOTH service configuration files. Encryption
+remains mandatory. See Application\Docs\deployment\sqlserver-certificate-trust.md.
+This SQL target option does not change dashboard or PostgreSQL TLS validation.
+
+The configuration console verifies authenticated HTTPS repository readiness,
+starts the Collector, and writes NEXT-STEPS.txt and install-state.json in the
+chosen ProgramData directory. An incomplete configuration is explicitly reported
+and new test services are stopped/removed. File installation alone is NOT a
+working deployment. Read the console's result and installer exit status.
+
+1. Sign out/in if setup created the operator group; open the dashboard using
+   credentials belonging to that group.
+2. Register the intended SQL Server from the dashboard. Minimum engine: SQL
+   Server 2016. SQL 2016/2017 have bounded core/activity coverage; consult
+   Application\Docs\deployment\sqlserver-version-compatibility.md.
+3. From PowerShell 7, generate a least-privilege grant script for the Collector:
+     & 'C:\Program Files\SqlObserver Test\Application\Tools\generate-permissions.ps1' `
+       -SqlServerMajorVersion 15 -Principal 'DOMAIN\collector-account' `
+       -Operation Grant -OutputPath 'C:\Temp\SqlObserver-test-grants.sql'
+   Major versions: 13=2016, 14=2017, 15=2019, 16=2022, 17=2025. An authorized DBA
+   reviews/applies the script and creates the Windows login. No sysadmin needed.
+   For local SQL with a virtual Collector, the principal is
+   NT SERVICE\SqlObserverTestCollector. For remote domain SQL, a virtual account
+   authenticates as DOMAIN\APPHOST$. Remote workgroup SQL needs an independently
+   configured trusted identity; virtual machine authentication is insufficient.
+4. After registration, edit Server\appsettings.json under the chosen ProgramData
+   directory: set AllTargets=false and TargetIds=["the-returned-target-guid"].
+   Keep only the intended group roles and restart SqlObserverTestServer.
+5. Verify discovery, freshness, and captures. /ready tests the repository only.
+   Open the selected HTTPS port through your approved firewall policy if remote
+   browser access is required. PostgreSQL need not be exposed remotely.
+
+FAILURE, RETRY AND REMOVAL
+Setup automatically writes a timestamped log in the installing user's TEMP
+directory. To choose a fixed filename, launch the installer with
+  /LOG="C:\existing-directory\SqlObserver-setup.log"
+The log records prerequisite detection and prerequisite installer exit codes.
+The elevated configuration helper registers SqlObserver.Server and
+SqlObserver.Collector as Application event sources before starting services.
+Service accounts retain non-admin permissions. Runtime service messages appear
+in Windows Logs\Application; service start/stop failures appear in System.
+If configuration fails, setup-failure.json in the chosen ProgramData directory
+records a fixed phase ID, exception type, HRESULT and UTC time, without exception
+messages or connection material. The same phase and code print in the console.
+Windows failures also include the native error number and, for service identity
+inspection, a fixed operation name. HRESULT alone can hide the actual Win32 code.
+The identity check reads token SIDs with query access and enables an already
+assigned SeDebugPrivilege only if cross-account process access is denied. It
+restores the inspector's prior privilege state and never elevates service accounts.
+From an elevated console, run Setup\SqlObserver.TestSetup.exe
+--check-service-identity for a read-only check against the existing Windows NSI
+service before retrying configuration. No service is started, stopped or changed.
+If it fails, retain the printed operation and native error number before retrying.
+Migration failures also identify the migration number and bounded failure code
+(for example postgres_42501 for insufficient privileges), without provider text.
+install-state.json records whether service cleanup failed; inspect retained
+services before retrying if cleanup could not complete.
+.NET detection uses the machine-wide x64 dotnet host with --list-runtimes,
+and requires both Microsoft.NETCore.App and Microsoft.AspNetCore.App at stable
+10.0.13 or a later 10.0 patch. A newer 10.x minor is accepted when no 10.0
+runtime is installed for that framework, matching .NET's default selection.
+The selected ASP.NET Core minor must have a matching or newer .NET 10.x runtime.
+Detection uses the machine-registered x64 dotnet host when present, otherwise
+Program Files\dotnet\dotnet.exe. A user-local or x86 runtime does not qualify.
+PowerShell detection checks machine-wide version folders and registered install
+locations, then runs pwsh.exe without profiles to verify stable x64 7.5 or later.
+Newer PowerShell major versions qualify; preview versions do not.
+PostgreSQL discovery checks both registry views and Program Files installations,
+then verifies the actual x64 server executable. All stable 18.x updates qualify.
+PostgreSQL 19+ and .NET 11+ alone do not satisfy this application's PostgreSQL 18
+and .NET 10 requirements. Those versions may coexist; setup does not downgrade
+or upgrade them. Only the missing supported prerequisites are installed.
+All prerequisite results are logged before installation begins and checked again
+afterward. Required prerequisite restarts are explicitly reported.
+
+An installed PostgreSQL server must also be running on 127.0.0.1:5432. The
+configuration console verifies the live server version, administrator rights,
+database availability and TLS separately. Custom Windows service names work;
+TLS setup matches pg_ctl.exe and its exact data-directory argument.
+
+On failure, configuration files and the verified migration prefix remain for
+inspection. Setup does not delete data, reset credentials/keys, alter an existing
+ledger, or present failure as healthy. Resolve the cause, then run Configure test
+services from the Start menu with a NEW repository/configuration directory. If
+the operator group was already created, select it as an existing group on retry.
+Repository roles are shared across the PostgreSQL cluster. A new bootstrap login
+receives temporary administration rights on validated existing repository roles;
+these rights and dependent bootstrap grants are revoked when migration ends.
+Do not delete protected keys while their captured evidence is retained.
+If PostgreSQL itself failed during cleanup or the process was killed, inspect
+repository-setup.json for the exact bootstrap login. A PostgreSQL administrator
+must disable that login and revoke any recorded protected-owner memberships
+before a new attempt. Never grant protected-owner memberships to runtime logins.
+If an earlier attempt enabled PostgreSQL test TLS, supply that attempt's public
+repository-root.crt when retrying; the retained TLS key directory remains in use.
+
+Uninstall through Windows Installed Apps. Only services whose executable belongs
+to this installation are stopped/deleted, and binaries are removed afterward.
+If service ownership or stopping cannot be verified, uninstall fails before
+deleting files. PostgreSQL, repository data/roles, configuration, keys, public
+trust certificates, operator groups and granted service-logon rights survive.
+There is intentionally no automatic purge or silent configuration mode.
+
+To upgrade this first test-installer version, preserve/back up all retained data
+and obtain an explicitly tested upgrade procedure. Do not aim a fresh installer
+at a retained database or reuse an old configuration directory automatically.
+
+See Application\README.md and Application\Docs for the detailed application,
+authorization, SQL compatibility, and manual deployment documentation. Treat
+this TEST-INSTALL.txt as the installer-specific procedure; the older single-host
+guide also contains source-build and manual-service examples that are not needed
+for this installer.

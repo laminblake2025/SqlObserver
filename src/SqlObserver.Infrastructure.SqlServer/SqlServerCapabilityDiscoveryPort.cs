@@ -473,7 +473,8 @@ public sealed class SqlServerCapabilityDiscoveryPort : ISqlServerCapabilityDisco
             encryptOption is null
                 ? IsTransportEncryptedByPolicy(netTransport)
                 : string.Equals(encryptOption, "TRUE", StringComparison.OrdinalIgnoreCase),
-            usedPermissionFallback, hasBackupsetSelect, hasSysjobhistorySelect, hasSqlAgentHistory);
+            usedPermissionFallback, hasBackupsetSelect, hasSysjobhistorySelect, hasSqlAgentHistory,
+            ContractVersion: contractVersion);
     }
 
     private static async ValueTask EnsureSingleRowAsync(
@@ -650,7 +651,7 @@ public sealed class SqlServerCapabilityDiscoveryPort : ISqlServerCapabilityDisco
             new SqlServerEditionName(detail.Edition),
             ParseEngineEdition(detail.EngineEdition),
             detail.Platform);
-        CapabilityEvidence[] capabilities = CreateCapabilityEvidence(detail);
+        CapabilityEvidence[] capabilities = CreateCapabilityEvidence(detail, request.ConnectionPolicy.TrustServerCertificate);
         PermissionEvidence[] permissions = CreatePermissionEvidence(detail);
         DateTimeOffset checkedAt = GetUtcMicrosecondNow();
 
@@ -701,7 +702,7 @@ public sealed class SqlServerCapabilityDiscoveryPort : ISqlServerCapabilityDisco
             AddAligned(checkedAt, request.RefreshInterval.Value));
     }
 
-    private static CapabilityEvidence[] CreateCapabilityEvidence(DetailedEvidence detail)
+    private static CapabilityEvidence[] CreateCapabilityEvidence(DetailedEvidence detail, bool trustServerCertificate)
     {
         bool windowsAuthentication = detail.AuthenticationScheme is
             SqlServerAuthenticationScheme.Kerberos or SqlServerAuthenticationScheme.Ntlm;
@@ -730,8 +731,12 @@ public sealed class SqlServerCapabilityDiscoveryPort : ISqlServerCapabilityDisco
                 windowsAuthentication ? CapabilityEvidenceReason.Verified : CapabilityEvidenceReason.ProbeUnavailable),
             new CapabilityEvidence(
                 ValidatedTlsCapabilityId,
+                detail.TransportEncrypted && !trustServerCertificate ? CapabilityAvailability.Available : CapabilityAvailability.Unavailable,
+                detail.TransportEncrypted && !trustServerCertificate ? CapabilityEvidenceReason.Verified : CapabilityEvidenceReason.FeatureDisabled),
+            ..(trustServerCertificate ? (IEnumerable<CapabilityEvidence>)[new CapabilityEvidence(
+                new CapabilityId(SqlServerCertificateTrustOverrides.TrustedCapability),
                 detail.TransportEncrypted ? CapabilityAvailability.Available : CapabilityAvailability.Unavailable,
-                detail.TransportEncrypted ? CapabilityEvidenceReason.Verified : CapabilityEvidenceReason.FeatureDisabled),
+                detail.TransportEncrypted ? CapabilityEvidenceReason.Verified : CapabilityEvidenceReason.FeatureDisabled)] : []),
             new CapabilityEvidence(
                 NonSysAdminCapabilityId,
                 detail.IsSysAdmin ? CapabilityAvailability.Unavailable : CapabilityAvailability.Available,

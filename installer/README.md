@@ -1,6 +1,18 @@
 # Installer assets
 
-WiX packaging and PostgreSQL installation or integration assets remain reserved
+## Unsigned test installer
+
+The separate [test installer](test/TEST-INSTALL.txt) provides an interactive,
+offline Windows x64 lab bootstrapper with bundled prerequisites, fresh-repository
+configuration, Windows services, and data-preserving uninstall. Build it with
+`tools/build-test-installer.ps1` around a verified lab package. Its source and
+tests live under `installer/test/`; it does not change or consume the foundation
+assessment's mutation authority. It is unsigned, fresh-install-only, and does
+not satisfy production release or native installer certification gates.
+
+## Production foundation
+
+Production WiX packaging and PostgreSQL installation or integration assets remain reserved
 for a later M12 package. The current foundation contains only closed assessment
 contracts under `contracts/`; it does not create an MSI/Burn package or install,
 register, start, stop, or uninstall services. It does not provision PostgreSQL,
@@ -13,3 +25,63 @@ and JSON (bounded IDs, hashes, statuses, and UTC timestamps only) and always
 reports `readyToMutate: false` until an accepted pinned owner policy and the
 remaining lifecycle decisions/evidence exist. Local foundation checks are not
 installer, runtime, support, or release evidence; ADR-0016 remains Proposed.
+
+## Test installer prerequisite compatibility
+
+Detection runs executable probes and checks every prerequisite before installing
+missing components. Stale registry version strings alone cannot satisfy a probe.
+
+| Product | Accepted versions and discovery |
+| --- | --- |
+| Windows | Server 2022+ x64 (build 20348+); server product type is required, with no upper build bound |
+| .NET / ASP.NET Core | Stable x64 10.0.13+ patches; newer 10.x minors when no 10.0 is installed, matching default host selection. The x64 machine registration selects the host, with Program Files as fallback. Other majors may coexist but cannot replace .NET 10. |
+| PowerShell | Stable x64 7.5+ including later majors. Probe version folders and all registered machine installations, without relying on a fixed MSI GUID or user PATH. |
+| PostgreSQL | Stable x64 18.x updates. Probe server binaries found through either registry view or Program Files; reject clients, stale registrations, previews and other majors. The live connection separately verifies version and administrator rights. |
+
+These rules follow the application's existing contracts; they do not certify
+unreleased product versions. The runtime uses [.NET's default minor roll-forward
+policy](https://learn.microsoft.com/en-us/dotnet/core/versions/selection), and
+repository compatibility and migrations explicitly require PostgreSQL major 18.
+See [PostgreSQL versioning](https://www.postgresql.org/support/versioning/) for
+the distinction between compatible updates and major upgrades.
+
+`tools/test-test-installer-prerequisites.ps1` compiles and runs the production
+Inno detector functions against executable fixtures for future versions, missing
+or failed probes, x86 binaries, preview versions, mixed runtime versions and
+registry-free directory discovery, plus the actual local .NET and PowerShell
+hosts. Windows' Framework64 C# compiler builds those test fixtures. The setup
+policy tests cover PostgreSQL service command parsing with custom names and
+quoted/unquoted paths. Neither test suite substitutes for a full Windows Server
+install/configure/uninstall run; that lifecycle remains pending in the receipt.
+
+The elevated helper provisions Application log sources `SqlObserver.Server` and
+`SqlObserver.Collector` before service startup, retaining existing Application
+registrations and refusing conflicts with another log. Sources remain on
+uninstall to preserve historical log interpretation. Service identity membership
+checks request token query and duplicate access; no service account elevation is
+needed. Configuration failures write only phase/type/HRESULT/time diagnostics to
+`setup-failure.json`, and a logging failure cannot skip service cleanup.
+
+To additionally verify native source creation, idempotence, event writing and
+conflict rejection, run the setup tests from an elevated Windows administrator
+session with `SQLOBSERVER_INSTALLER_EVENTLOG_TEST=1`. This opt-in test creates and
+removes uniquely named disposable sources in Application and System. It skips
+without both the opt-in and an elevated token.
+
+For the diagnosed test-host state where SSL is on but the original
+`ProgramData\SqlObserverTest\PostgresTls` certificate/key files are missing,
+`tools/repair-test-postgresql-tls.ps1` provides a separate recovery action. It
+requires elevated PowerShell 7.5+, verifies the observed PostgreSQL 18 local
+cluster and NetworkService identity, and refuses to replace an existing pair.
+Without `-Apply` it only inspects. With `-Apply` it atomically creates a fresh
+protected `ProgramData\SqlObserverPostgresTls` directory, generates a test issuer
+and server pair, updates only `ssl_cert_file` and `ssl_key_file`, reloads, then
+opens a new `verify-full` connection. It never sets SSL off, rewrites databases,
+resets users, or touches captured-data keys. The PostgreSQL administrator password
+is prompted by psql for inspection, application, and verification; it is never
+saved. Keep the new TLS directory and provide its `repository-root.crt` at the
+configuration helper's existing PostgreSQL root prompt. The recovery tool does
+not rerun application configuration or migrations. Certificate, chain, hostname,
+overwrite-refusal and protected-directory behavior can be verified with
+`tools/test-test-postgresql-tls-repair.ps1`; live server recovery still requires
+the affected host. Never delete TLS files referenced by a retained cluster.

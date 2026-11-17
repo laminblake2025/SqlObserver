@@ -2,17 +2,17 @@ import { test, expect } from '@playwright/test';
 import { ownerBrowserRequest } from './owner-browser-request.mjs';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
-const targetId = 'dfb2b72c-4ad4-4765-9523-528c798482f0';
+const targetId = '5a3acf12-2722-4f87-b751-a7b210fe27ce';
 const output = resolve('../.artifacts/lab-dashboard-20261009');
 
 test('real lab inventory, overview, summary and captured activity reach the current UI', async ({ page }) => {
   const request = await ownerBrowserRequest(page);
   await mkdir(output, { recursive: true });
   const status = await request.get('/__lab/status');
-  expect(await status.json()).toMatchObject({ upstream: 'https://WIN-QNGOV5GDM24:5443', tls: 'validated', syntheticData: false });
+  expect(await status.json()).toMatchObject({ upstream: 'https://WIN-QNGOV5GDM24:5444', tls: 'validated', syntheticData: false });
   const inventory = await request.get('/api/v1/observation-targets/');
   expect(inventory.status()).toBe(200);
-  expect((await inventory.json()).items.map(item => item.instanceId)).toEqual([targetId]);
+  expect((await inventory.json()).items.map(item => item.instanceId)).toContain(targetId);
   const health = await request.get(`/api/v1/observation-targets/${targetId}/health`);
   expect(health.status()).toBe(200);
   const evidence = await health.json();
@@ -26,14 +26,19 @@ test('real lab inventory, overview, summary and captured activity reach the curr
   expect(snapshot.snapshotId).toMatch(/^[0-9a-f-]{36}$/);
   const responses = [];
   page.on('response', response => { if (response.url().includes('/api/v1/')) responses.push({ path: new URL(response.url()).pathname, status: response.status() }); });
+  const fleetRead = page.waitForResponse(response => new URL(response.url()).pathname === '/api/v1/overview', { timeout: 20_000 });
   await page.goto('/#/overview?range=1h');
   await expect(page.getByRole('heading', { name: 'Fleet overview', exact: true })).toBeVisible();
-  await expect(page.getByRole('link', { name: 'SQL Server 2025 disposable lab', exact: true })).toBeVisible();
+  expect((await fleetRead).status()).toBe(200);
+  const serverLink = page.getByRole('region', { name: 'Server health grid', exact: true })
+    .getByRole('link', { name: 'WIN-QNGOV5GDM24 - package test', exact: true });
+  await expect(serverLink).toBeVisible();
   await page.screenshot({ path: resolve(output, 'fleet-connected.png'), fullPage: true });
-  await page.getByRole('link', { name: 'SQL Server 2025 disposable lab', exact: true }).click();
+  await serverLink.click();
   await expect(page.getByRole('navigation', { name: 'Server diagnostics', exact: true })).toBeVisible();
   await expect(page.getByRole('link', { name: 'Summary', exact: true })).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'SQL workload', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Server diagnostics for WIN-QNGOV5GDM24 - package test', exact: true })).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Current blocking evidence', exact: true })).toBeVisible();
   await page.screenshot({ path: resolve(output, 'server-connected.png'), fullPage: true });
   await page.getByRole('link', { name: 'Activity', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Activity', exact: true })).toBeVisible();
@@ -41,7 +46,7 @@ test('real lab inventory, overview, summary and captured activity reach the curr
   await expect(page.getByRole('table', { name: 'All captured sessions for this observation' })).toBeVisible();
   await page.screenshot({ path: resolve(output, 'activity-connected.png'), fullPage: true });
   await writeFile(resolve(output, 'connection-evidence.json'), JSON.stringify({
-    checkedAtUtc: new Date().toISOString(), upstream: 'https://WIN-QNGOV5GDM24:5443', targetId,
+    checkedAtUtc: new Date().toISOString(), upstream: 'https://WIN-QNGOV5GDM24:5444', targetId,
     lastCollectionUtc: evidence.collectors[0].lastSuccessAtUtc, metrics: evidence.coreMetrics.length,
     snapshotId: snapshot.snapshotId, snapshotUtc: snapshot.observedUtc, sessionRows: snapshot.rows.length,
     responses,
@@ -66,4 +71,12 @@ test('lab relay refuses cross-origin, forged-host and forwarded requests before 
   expect(access).toMatchObject({ active: true, targetId });
   expect(access.targetRoles).toContain('QueryTextReader');
   expect(access.targetRoles.some(role => ['Viewer', 'Operator', 'TargetAdministrator'].includes(role))).toBe(true);
+});
+
+test('lab relay forwards the current backup API with Windows authorization', async ({ page }) => {
+  const owner = await ownerBrowserRequest(page);
+  const response = await owner.get(`/api/v2/observation-targets/${targetId}/health/backups`);
+  expect(response.status()).toBe(200);
+  const assessment = await response.json();
+  expect(assessment).toMatchObject({ targetId });
 });

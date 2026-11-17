@@ -494,6 +494,7 @@ public sealed partial class PostgreSqlCollectorRuntimeRepositoryPort : ICollecto
     private readonly NpgsqlDataSource _dataSource;
     private readonly PostgreSqlCapabilityProfilePort _capabilityProfiles;
     private readonly IdentityFingerprintKey? _fingerprintKey;
+    private readonly SqlServerCertificateTrustOverrides _certificateTrust = SqlServerCertificateTrustOverrides.None;
 
     public PostgreSqlCollectorRuntimeRepositoryPort(NpgsqlDataSource dataSource)
     {
@@ -501,11 +502,12 @@ public sealed partial class PostgreSqlCollectorRuntimeRepositoryPort : ICollecto
         _capabilityProfiles = new PostgreSqlCapabilityProfilePort(dataSource);
     }
 
-    public PostgreSqlCollectorRuntimeRepositoryPort(NpgsqlDataSource dataSource, IdentityFingerprintKey fingerprintKey)
+    public PostgreSqlCollectorRuntimeRepositoryPort(NpgsqlDataSource dataSource, IdentityFingerprintKey fingerprintKey, SqlServerCertificateTrustOverrides? certificateTrust = null)
     {
         _dataSource = dataSource ?? throw new ArgumentNullException(nameof(dataSource));
         _fingerprintKey = fingerprintKey ?? throw new ArgumentNullException(nameof(fingerprintKey));
-        _capabilityProfiles = new PostgreSqlCapabilityProfilePort(dataSource);
+        _certificateTrust = certificateTrust ?? SqlServerCertificateTrustOverrides.None;
+        _capabilityProfiles = new PostgreSqlCapabilityProfilePort(dataSource, _certificateTrust);
     }
 
     public async ValueTask<CollectorCatalogReconcileResult> ReconcileCatalogAsync(
@@ -1227,7 +1229,7 @@ public sealed partial class PostgreSqlCollectorRuntimeRepositoryPort : ICollecto
         command.Parameters.AddWithValue("next_consecutive_failures", request.NextCircuit.ConsecutiveFailures);
     }
 
-    private static DueRow ReadDueRow(NpgsqlDataReader reader)
+    private DueRow ReadDueRow(NpgsqlDataReader reader)
     {
         DateTimeOffset repositoryTime = PostgreSqlRuntimeSupport.ReadUtcTimestamp(reader, 18);
         string circuitState = reader.GetString(14);
@@ -1248,7 +1250,7 @@ public sealed partial class PostgreSqlCollectorRuntimeRepositoryPort : ICollecto
         return new DueRow(
             new MonitoredInstanceId(reader.GetGuid(0)),
             new ObservationTargetRevision(reader.GetInt64(1)),
-            ReadConnectionPolicy(reader, 2),
+            _certificateTrust.Apply(reader.GetGuid(0), ReadConnectionPolicy(reader, 2)),
             new CollectorId(reader.GetString(9)),
             reader.GetInt32(10),
             reader.GetInt32(11),

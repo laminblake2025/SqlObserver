@@ -25,14 +25,15 @@ internal static class M4TestData
         int failureThreshold = 3,
         int maxRows = 10_000,
         int maxResponseBytes = 33_554_432,
-        int version = 1)
+        int version = 1,
+        IReadOnlyList<CapabilityId>? requiredCapabilities = null)
     {
         _ = executionOrder;
         return new CollectorManifest(
             new CollectorId(id),
             new CollectorDisplayName(id),
             new CollectorManifestVersion(version),
-            [new CapabilityId("connection.tds")],
+            requiredCapabilities ?? [new CapabilityId("connection.tds")],
             [
                 new CollectorPermissionRequirement(
                     new SqlServerPermissionId("server.view-performance-state"),
@@ -105,7 +106,8 @@ internal static class M4TestData
         DateTimeOffset? validUntilUtc = null,
         SqlServerPlatform platform = SqlServerPlatform.Windows,
         SqlServerEngineEdition edition = SqlServerEngineEdition.Enterprise,
-        int majorVersion = 16)
+        int majorVersion = 16,
+        IReadOnlyList<CapabilityEvidence>? capabilities = null)
     {
         return new CapabilityProfile(
             TargetId,
@@ -123,7 +125,7 @@ internal static class M4TestData
             SqlServerAuthenticationScheme.Kerberos,
             transportEncrypted: true,
             isSysAdmin: false,
-            [
+            capabilities ?? [
                 new CapabilityEvidence(
                     new CapabilityId("connection.tds"),
                     CapabilityAvailability.Available,
@@ -145,13 +147,14 @@ internal static class M4TestData
         CollectorManifest manifest,
         CapabilityProfile? profile = null,
         CollectorCircuitSnapshot? circuit = null,
-        DateTimeOffset? repositoryTime = null)
+        DateTimeOffset? repositoryTime = null,
+        SqlServerConnectionPolicy? connectionPolicy = null)
     {
         DateTimeOffset now = repositoryTime ?? RepositoryTime;
         return new CollectorDueWorkItem(
             TargetId,
             TargetRevision,
-            CreateConnectionPolicy(),
+            connectionPolicy ?? CreateConnectionPolicy(),
             manifest.Id,
             manifest.ManifestVersion.Value,
             manifest.OutputSchemaVersion.Value,

@@ -186,6 +186,7 @@ public enum SqlServerAuthenticationMode
 public enum SqlServerTransportSecurity
 {
     EncryptAndValidateCertificate = 1,
+    EncryptAndTrustServerCertificate = 2,
 }
 
 public sealed record SqlServerConnectTimeout
@@ -209,7 +210,8 @@ public sealed record SqlServerConnectTimeout
 }
 
 /// <summary>
-/// A Windows-integrated, encrypted, certificate-validating target connection policy. It has no
+/// A Windows-integrated, encrypted target connection policy. Certificate validation is the default;
+/// an administrator may explicitly trust the certificate for a configured target. It has no
 /// password, secret reference, arbitrary driver option, or connection-string surface.
 /// </summary>
 public sealed class SqlServerConnectionPolicy
@@ -217,7 +219,8 @@ public sealed class SqlServerConnectionPolicy
     public SqlServerConnectionPolicy(
         SqlServerEndpoint endpoint,
         SqlServerConnectTimeout connectTimeout,
-        SqlServerCertificateHostName? certificateHostName = null)
+        SqlServerCertificateHostName? certificateHostName = null,
+        bool trustServerCertificate = false)
     {
         ArgumentNullException.ThrowIfNull(endpoint);
         ArgumentNullException.ThrowIfNull(connectTimeout);
@@ -225,7 +228,7 @@ public sealed class SqlServerConnectionPolicy
         ConnectTimeout = connectTimeout;
         CertificateHostName = certificateHostName;
         AuthenticationMode = SqlServerAuthenticationMode.WindowsIntegrated;
-        TransportSecurity = SqlServerTransportSecurity.EncryptAndValidateCertificate;
+        TransportSecurity = trustServerCertificate ? SqlServerTransportSecurity.EncryptAndTrustServerCertificate : SqlServerTransportSecurity.EncryptAndValidateCertificate;
     }
 
     public SqlServerEndpoint Endpoint { get; }
@@ -237,6 +240,8 @@ public sealed class SqlServerConnectionPolicy
     public SqlServerAuthenticationMode AuthenticationMode { get; }
 
     public SqlServerTransportSecurity TransportSecurity { get; }
+
+    public bool TrustServerCertificate => TransportSecurity == SqlServerTransportSecurity.EncryptAndTrustServerCertificate;
 }
 
 /// <summary>Configuration accepted for a new target before asynchronous discovery.</summary>
