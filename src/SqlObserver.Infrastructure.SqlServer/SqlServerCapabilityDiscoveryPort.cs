@@ -473,7 +473,8 @@ public sealed class SqlServerCapabilityDiscoveryPort : ISqlServerCapabilityDisco
             encryptOption is null
                 ? IsTransportEncryptedByPolicy(netTransport)
                 : string.Equals(encryptOption, "TRUE", StringComparison.OrdinalIgnoreCase),
-            usedPermissionFallback, hasBackupsetSelect, hasSysjobhistorySelect, hasSqlAgentHistory);
+            usedPermissionFallback, hasBackupsetSelect, hasSysjobhistorySelect, hasSqlAgentHistory,
+            ContractVersion: contractVersion);
     }
 
     private static async ValueTask EnsureSingleRowAsync(

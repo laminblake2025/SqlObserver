@@ -15,16 +15,18 @@ public sealed class MigrationIntegrationTests
     private readonly PostgreSql18Fixture _fixture;
 
     [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public async Task RollbackCleanupPreservesOriginalFailureAfterTransactionCompletion(bool disposed)
+    [InlineData(typeof(PostgreSqlMigrationPort), false)]
+    [InlineData(typeof(PostgreSqlMigrationPort), true)]
+    [InlineData(typeof(PostgreSqlPartitionMaintenancePort), false)]
+    [InlineData(typeof(PostgreSqlPartitionMaintenancePort), true)]
+    public async Task RollbackCleanupPreservesOriginalFailureAfterTransactionCompletion(Type portType, bool disposed)
     {
         await using RepositoryTestDatabase database = await _fixture.CreateDatabaseAsync();
         await using NpgsqlConnection connection = await database.DataSource.OpenConnectionAsync();
         await using NpgsqlTransaction transaction = await connection.BeginTransactionAsync();
         await transaction.CommitAsync();
         if (disposed) await transaction.DisposeAsync();
-        var cleanup = typeof(PostgreSqlMigrationPort).GetMethod("RollbackWithoutMaskingAsync",
+        var cleanup = portType.GetMethod("RollbackWithoutMaskingAsync",
             System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
         Assert.NotNull(cleanup);
         await Assert.IsAssignableFrom<Task>(cleanup.Invoke(null, [transaction]));

@@ -335,7 +335,14 @@ public sealed class SqlServerCapabilityIntegrationTests
             assetsV4: SqlServerCapabilityV4AssetCatalog.LoadEmbedded());
         CapabilityDiscoveryRequest discoveryRequest = CreateLabRequest(TimeSpan.FromSeconds(10));
         CapabilityProfile profile = await discovery.DiscoverAsync(discoveryRequest, CancellationToken.None);
-        Assert.Equal(16, profile.ServerIdentity?.Version.Major);
+        Assert.NotNull(profile.ServerIdentity);
+        await using (SqlConnection identityConnection = await connectionFactory.OpenConnectionAsync(discoveryRequest.ConnectionPolicy, CancellationToken.None))
+        await using (var identityCommand = new SqlCommand("SELECT CONVERT(int, SERVERPROPERTY('ProductMajorVersion'));", identityConnection) { CommandTimeout = 5 })
+        {
+            int nativeMajor = Assert.IsType<int>(await identityCommand.ExecuteScalarAsync(CancellationToken.None));
+            Assert.InRange(nativeMajor, 15, 17);
+            Assert.Equal(nativeMajor, profile.ServerIdentity.Version.Major);
+        }
 
         var collector = new SqlServerVolumeCapacityCollector(
             new IdentityFingerprintKey(new byte[32]), connectionFactory);

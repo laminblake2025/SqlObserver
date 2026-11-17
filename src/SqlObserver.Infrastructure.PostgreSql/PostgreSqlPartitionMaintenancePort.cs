@@ -625,9 +625,10 @@ public sealed class PostgreSqlPartitionMaintenancePort : IPartitionMaintenancePo
         {
             await transaction.RollbackAsync(CancellationToken.None).ConfigureAwait(false);
         }
-        catch (NpgsqlException)
+        catch (Exception exception) when (exception is NpgsqlException or InvalidOperationException)
         {
-            // Preserve the original failure; disposal handles a broken transaction/connection.
+            // A canceled command can already have completed or disposed the transaction.
+            // Cleanup must preserve the original failure, including cancellation.
         }
     }
 
